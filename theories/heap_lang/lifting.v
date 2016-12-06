@@ -74,7 +74,7 @@ Lemma wp_fork E e Φ :
   ▷ Φ (LitV LitUnit) ∗ ▷ WP e {{ _, True }} ⊢ WP Fork e @ E {{ Φ }}.
 Proof.
   rewrite -(wp_lift_pure_det_head_step (Fork e) (Lit LitUnit) [e]) //=; eauto.
-  - by rewrite later_sep -(wp_value _ _ (Lit _)) // big_sepL_singleton.
+  - by rewrite later_sep -(wp_value _ _ _ (Lit _)) // big_sepL_singleton.
   - intros; inv_head_step; eauto.
 Qed.
 

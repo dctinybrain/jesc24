@@ -35,23 +35,24 @@ Proof.
 Qed.
 
 (* Program logic adequacy *)
-Record adequate {Λ} (e1 : expr Λ) (σ1 : state Λ) (φ : val Λ → Prop) := {
+Record adequate {Λ} (p : bool) (e1 : expr Λ) (σ1 : state Λ) (φ : val Λ → Prop) := {
   adequate_result t2 σ2 v2 :
    rtc step ([e1], σ1) (of_val v2 :: t2, σ2) → φ v2;
   adequate_safe t2 σ2 e2 :
+   p →
    rtc step ([e1], σ1) (t2, σ2) →
-   e2 ∈ t2 → (is_Some (to_val e2) ∨ reducible e2 σ2)
+   e2 ∈ t2 → progress e2 σ2
 }.
 
 Theorem adequate_tp_safe {Λ} (e1 : expr Λ) t2 σ1 σ2 φ :
-  adequate e1 σ1 φ →
+  adequate true e1 σ1 φ →
   rtc step ([e1], σ1) (t2, σ2) →
   Forall (λ e, is_Some (to_val e)) t2 ∨ ∃ t3 σ3, step (t2, σ2) (t3, σ3).
 Proof.
   intros Had ?.
   destruct (decide (Forall (λ e, is_Some (to_val e)) t2)) as [|Ht2]; [by left|].
   apply (not_Forall_Exists _), Exists_exists in Ht2; destruct Ht2 as (e2&?&He2).
-  destruct (adequate_safe e1 σ1 φ Had t2 σ2 e2) as [?|(e3&σ3&efs&?)];
+  destruct (adequate_safe true e1 σ1 φ Had t2 σ2 e2) as [?|(e3&σ3&efs&?)];
     rewrite ?eq_None_not_Some; auto.
   { exfalso. eauto. }
   destruct (elem_of_list_split t2 e2) as (t2'&t2''&->); auto.
@@ -59,19 +60,22 @@ Proof.
 Qed.
 
 Section adequacy.
-Context `{irisG Λ Σ}.
+Context `{irisG Λ Σ} (p : bool).
 Implicit Types e : expr Λ.
 Implicit Types P Q : iProp Σ.
 Implicit Types Φ : val Λ → iProp Σ.
 Implicit Types Φs : list (val Λ → iProp Σ).
 
-Notation world σ := (wsat ∗ ownE ⊤ ∗ state_interp σ)%I.
+Notation world' E σ := (wsat ∗ ownE E ∗ state_interp σ)%I.
+Notation world σ := (world' ⊤ σ).
 
-Notation wptp t := ([∗ list] ef ∈ t, WP ef {{ _, True }})%I.
+Notation wp' E e Φ := (WP e @ p; E {{ Φ }})%I.
+Notation wp e Φ := (wp' ⊤ e Φ).
+Notation wptp t := ([∗ list] ef ∈ t, WP ef @ p; ⊤ {{ _, True }})%I.
 
-Lemma wp_step e1 σ1 e2 σ2 efs Φ :
+Lemma wp_step E e1 σ1 e2 σ2 efs Φ :
   prim_step e1 σ1 e2 σ2 efs →
-  world σ1 ∗ WP e1 {{ Φ }} ==∗ ▷ |==> ◇ (world σ2 ∗ WP e2 {{ Φ }} ∗ wptp efs).
+  world' E σ1 ∗ wp' E e1 Φ ==∗ ▷ |==> ◇ (world' E σ2 ∗ wp' E e2 Φ ∗ wptp efs).
 Proof.
   rewrite {1}wp_unfold /wp_pre. iIntros (Hstep) "[(Hw & HE & Hσ) [H|[_ H]]]".
   { iDestruct "H" as (v) "[% _]". apply val_stuck in Hstep; simplify_eq. }
@@ -83,8 +87,8 @@ Qed.
 
 Lemma wptp_step e1 t1 t2 σ1 σ2 Φ :
   step (e1 :: t1,σ1) (t2, σ2) →
-  world σ1 ∗ WP e1 {{ Φ }} ∗ wptp t1
-  ==∗ ∃ e2 t2', ⌜t2 = e2 :: t2'⌝ ∗ ▷ |==> ◇ (world σ2 ∗ WP e2 {{ Φ }} ∗ wptp t2').
+  world σ1 ∗ wp e1 Φ ∗ wptp t1
+  ==∗ ∃ e2 t2', ⌜t2 = e2 :: t2'⌝ ∗ ▷ |==> ◇ (world σ2 ∗ wp e2 Φ ∗ wptp t2').
 Proof.
   iIntros (Hstep) "(HW & He & Ht)".
   destruct Hstep as [e1' σ1' e2' σ2' efs [|? t1'] t2' ?? Hstep]; simplify_eq/=.
@@ -98,9 +102,9 @@ Qed.
 
 Lemma wptp_steps n e1 t1 t2 σ1 σ2 Φ :
   nsteps step n (e1 :: t1, σ1) (t2, σ2) →
-  world σ1 ∗ WP e1 {{ Φ }} ∗ wptp t1 ⊢
+  world σ1 ∗ wp e1 Φ ∗ wptp t1 ⊢
   Nat.iter (S n) (λ P, |==> ▷ P) (∃ e2 t2',
-    ⌜t2 = e2 :: t2'⌝ ∗ world σ2 ∗ WP e2 {{ Φ }} ∗ wptp t2').
+    ⌜t2 = e2 :: t2'⌝ ∗ world σ2 ∗ wp e2 Φ ∗ wptp t2').
 Proof.
   revert e1 t1 t2 σ1 σ2; simpl; induction n as [|n IH]=> e1 t1 t2 σ1 σ2 /=.
   { inversion_clear 1; iIntros "?"; eauto 10. }
@@ -121,7 +125,7 @@ Qed.
 
 Lemma wptp_result n e1 t1 v2 t2 σ1 σ2 φ :
   nsteps step n (e1 :: t1, σ1) (of_val v2 :: t2, σ2) →
-  world σ1 ∗ WP e1 {{ v, ⌜φ v⌝ }} ∗ wptp t1 ⊢
+  world σ1 ∗ wp e1 (λ v, ⌜φ v⌝) ∗ wptp t1 ⊢
   Nat.iter (S (S n)) (λ P, |==> ▷ P) ⌜φ v2⌝.
 Proof.
   intros. rewrite wptp_steps //.
@@ -131,19 +135,19 @@ Proof.
   iMod ("H" with "[Hw HE]") as ">(_ & _ & $)"; iFrame; auto.
 Qed.
 
-Lemma wp_safe e σ Φ :
-  world σ ∗ WP e {{ Φ }} ==∗ ▷ ⌜is_Some (to_val e) ∨ reducible e σ⌝.
+Lemma wp_safe E e σ Φ :
+  world' E σ ∗ wp' E e Φ ==∗ ▷ ⌜if p then progress e σ else True⌝.
 Proof.
-  rewrite wp_unfold /wp_pre. iIntros "[(Hw&HE&Hσ) [H|[_ H]]]".
-  { iDestruct "H" as (v) "[% _]"; eauto 10. }
+  rewrite wp_unfold /wp_pre /progress. iIntros "[(Hw&HE&Hσ) [H|[_ H]]]".
+  { iDestruct "H" as (v) "[% _]"; destruct p; eauto 10. }
   rewrite fupd_eq. iMod ("H" with "* Hσ [-]") as ">(?&?&%&?)"; first by iFrame.
-  eauto 10.
+  destruct p; eauto 10.
 Qed.
 
 Lemma wptp_safe n e1 e2 t1 t2 σ1 σ2 Φ :
   nsteps step n (e1 :: t1, σ1) (t2, σ2) → e2 ∈ t2 →
-  world σ1 ∗ WP e1 {{ Φ }} ∗ wptp t1 ⊢
-  Nat.iter (S (S n)) (λ P, |==> ▷ P) ⌜is_Some (to_val e2) ∨ reducible e2 σ2⌝.
+  world σ1 ∗ wp e1 Φ ∗ wptp t1 ⊢
+  Nat.iter (S (S n)) (λ P, |==> ▷ P) ⌜if p then progress e2 σ2 else True⌝.
 Proof.
   intros ? He2. rewrite wptp_steps //; rewrite (Nat_iter_S_r (S n)). apply bupd_iter_mono.
   iDestruct 1 as (e2' t2') "(% & Hw & H & Htp)"; simplify_eq.
@@ -153,7 +157,7 @@ Qed.
 
 Lemma wptp_invariance n e1 e2 t1 t2 σ1 σ2 φ Φ :
   nsteps step n (e1 :: t1, σ1) (t2, σ2) →
-  (state_interp σ2 ={⊤,∅}=∗ ⌜φ⌝) ∗ world σ1 ∗ WP e1 {{ Φ }} ∗ wptp t1
+  (state_interp σ2 ={⊤,∅}=∗ ⌜φ⌝) ∗ world σ1 ∗ wp e1 Φ ∗ wptp t1
   ⊢ Nat.iter (S (S n)) (λ P, |==> ▷ P) ⌜φ⌝.
 Proof.
   intros ?. rewrite wptp_steps //.
@@ -165,12 +169,12 @@ Proof.
 Qed.
 End adequacy.
 
-Theorem wp_adequacy Σ Λ `{invPreG Σ} e σ φ :
+Theorem wp_adequacy Σ Λ `{invPreG Σ} p e σ φ :
   (∀ `{Hinv : invG Σ},
      True ={⊤}=∗ ∃ stateI : state Λ → iProp Σ,
        let _ : irisG Λ Σ := IrisG _ _ Hinv stateI in
-       stateI σ ∗ WP e {{ v, ⌜φ v⌝ }}) →
-  adequate e σ φ.
+       stateI σ ∗ WP e @ p; ⊤ {{ v, ⌜φ v⌝ }}) →
+  adequate p e σ φ.
 Proof.
   intros Hwp; split.
   - intros t2 σ2 v2 [n ?]%rtc_nsteps.
@@ -180,20 +184,20 @@ Proof.
     iDestruct "Hwp" as (Istate) "[HI Hwp]".
     iModIntro. iNext. iApply (@wptp_result _ _ (IrisG _ _ Hinv Istate)); eauto.
     iFrame. by iApply big_sepL_nil.
-  - intros t2 σ2 e2 [n ?]%rtc_nsteps ?.
+  - destruct p; last done. intros t2 σ2 e2 Hp [n ?]%rtc_nsteps ?.
     eapply (soundness (M:=iResUR Σ) _ (S (S (S n)))); iIntros "".
     rewrite Nat_iter_S. iMod wsat_alloc as (Hinv) "[Hw HE]".
     rewrite fupd_eq in Hwp; iMod (Hwp with "[$Hw $HE]") as ">(Hw & HE & Hwp)".
     iDestruct "Hwp" as (Istate) "[HI Hwp]".
-    iModIntro. iNext. iApply (@wptp_safe _ _ (IrisG _ _ Hinv Istate)); eauto.
+    iModIntro. iNext. iApply (@wptp_safe _ _ (IrisG _ _ Hinv Istate) true); eauto.
     iFrame. by iApply big_sepL_nil.
 Qed.
 
-Theorem wp_invariance Σ Λ `{invPreG Σ} e σ1 t2 σ2 φ Φ :
+Theorem wp_invariance Σ Λ `{invPreG Σ} p e σ1 t2 σ2 φ Φ :
   (∀ `{Hinv : invG Σ},
      True ={⊤}=∗ ∃ stateI : state Λ → iProp Σ,
        let _ : irisG Λ Σ := IrisG _ _ Hinv stateI in
-       stateI σ1 ∗ WP e {{ Φ }} ∗ (stateI σ2 ={⊤,∅}=∗ ⌜φ⌝)) →
+       stateI σ1 ∗ WP e @ p; ⊤ {{ Φ }} ∗ (stateI σ2 ={⊤,∅}=∗ ⌜φ⌝)) →
   rtc step ([e], σ1) (t2, σ2) →
   φ.
 Proof.

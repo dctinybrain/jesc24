@@ -36,6 +36,8 @@ Section language.
     ∃ e' σ' efs, prim_step e σ e' σ' efs.
   Definition atomic (e : expr Λ) : Prop :=
     ∀ σ e' σ' efs, prim_step e σ e' σ' efs → is_Some (to_val e').
+  Definition progress (e : expr Λ) (σ : state Λ) :=
+    is_Some (to_val e) ∨ reducible e σ.
   Inductive step (ρ1 ρ2 : cfg Λ) : Prop :=
     | step_atomic e1 σ1 e2 σ2 efs t1 t2 :
        ρ1 = (t1 ++ e1 :: t2, σ1) →
