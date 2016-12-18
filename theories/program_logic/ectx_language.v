@@ -3,7 +3,7 @@
 From iris.algebra Require Export base.
 From iris.program_logic Require Import language.
 
-(* We need to make thos arguments indices that we want canonical structure
+(* We need to make those arguments indices that we want canonical structure
    inference to use a keys. *)
 Class EctxLanguage (expr val ectx state : Type) := {
   of_val : val → expr;
