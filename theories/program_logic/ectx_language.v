@@ -89,8 +89,18 @@ Section ectx_language.
   Lemma head_prim_reducible e σ : head_reducible e σ → reducible e σ.
   Proof. intros (e'&σ'&efs&?). eexists e', σ', efs. by apply head_prim_step. Qed.
 
-  Lemma ectx_language_atomic e :
+  Lemma ectx_language_strong_atomic e :
     (∀ σ e' σ' efs, head_step e σ e' σ' efs → is_Some (to_val e')) →
+    (∀ K e', e = fill K e' → to_val e' = None → K = empty_ectx) →
+    strong_atomic e.
+  Proof.
+    intros Hatomic_step Hatomic_fill σ e' σ' efs [K e1' e2' -> -> Hstep].
+    assert (K = empty_ectx) as -> by eauto 10 using val_stuck.
+    rewrite fill_empty. eapply Hatomic_step. by rewrite fill_empty.
+  Qed.
+
+  Lemma ectx_language_atomic e :
+    (∀ σ e' σ' efs, head_step e σ e' σ' efs → irreducible e' σ') →
     (∀ K e', e = fill K e' → to_val e' = None → K = empty_ectx) →
     atomic e.
   Proof.

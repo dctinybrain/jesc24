@@ -41,6 +41,7 @@ Notation "{{ P } } e ? {{ v , Q } }" := (ht false ⊤ P%I e%E (λ v, Q)%I)
 
 Section hoare.
 Context `{irisG Λ Σ}.
+Implicit Types p : bool.
 Implicit Types P Q : iProp Σ.
 Implicit Types Φ Ψ : val Λ → iProp Σ.
 Implicit Types v : val Λ.
@@ -74,16 +75,28 @@ Proof.
   iIntros (v) "Hv". by iApply "HΦ".
 Qed.
 
-Lemma ht_atomic p E1 E2 P P' Φ Φ' e :
-  atomic e →
+Lemma ht_atomic' p E1 E2 P P' Φ Φ' e :
+  (strong_atomic e ∨ p ∧ atomic e) →
   (P ={E1,E2}=> P') ∧ {{ P' }} e @ p; E2 {{ Φ' }} ∧ (∀ v, Φ' v ={E2,E1}=> Φ v)
   ⊢ {{ P }} e @ p; E1 {{ Φ }}.
 Proof.
-  iIntros (?) "(#Hvs & #Hwp & #HΦ) !# HP". iApply (wp_atomic _ _ E2); auto.
+  iIntros (?) "(#Hvs & #Hwp & #HΦ) !# HP". iApply (wp_atomic' _ _ E2); auto.
   iMod ("Hvs" with "HP") as "HP". iModIntro.
   iApply (wp_wand with "[HP]"); [by iApply "Hwp"|].
   iIntros (v) "Hv". by iApply "HΦ".
 Qed.
+
+Lemma ht_strong_atomic p E1 E2 P P' Φ Φ' e :
+  strong_atomic e →
+  (P ={E1,E2}=> P') ∧ {{ P' }} e @ p; E2 {{ Φ' }} ∧ (∀ v, Φ' v ={E2,E1}=> Φ v)
+  ⊢ {{ P }} e @ p; E1 {{ Φ }}.
+Proof. by eauto using ht_atomic'. Qed.
+
+Lemma ht_atomic E1 E2 P P' Φ Φ' e :
+  atomic e →
+  (P ={E1,E2}=> P') ∧ {{ P' }} e @ E2 {{ Φ' }} ∧ (∀ v, Φ' v ={E2,E1}=> Φ v)
+  ⊢ {{ P }} e @ E1 {{ Φ }}.
+Proof. by eauto using ht_atomic'. Qed.
 
 Lemma ht_bind `{LanguageCtx Λ K} p E P Φ Φ' e :
   {{ P }} e @ p; E {{ Φ }} ∧ (∀ v, {{ Φ v }} K (of_val v) @ p; E {{ Φ' }})

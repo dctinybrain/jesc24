@@ -185,7 +185,7 @@ Definition atomic (e : expr) :=
   end.
 Lemma atomic_correct e : atomic e → language.atomic (to_expr e).
 Proof.
-  intros He. apply ectx_language_atomic.
+  intros He. apply language.weaken_atomic, ectx_language_strong_atomic.
   - intros σ e' σ' ef.
     destruct e; simpl; try done; repeat (case_match; try done);
     inversion 1; rewrite ?to_of_val; eauto. subst.

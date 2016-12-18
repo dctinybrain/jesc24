@@ -164,6 +164,7 @@ Notation "'{{{' P } } } e @ p ; E {{{ 'RET' pat ; Q } } }" :=
 
 Section wp.
 Context `{irisG Λ Σ}.
+Implicit Types p : bool.
 Implicit Types P : iProp Σ.
 Implicit Types Φ : val Λ → iProp Σ.
 Implicit Types v : val Λ.
@@ -242,8 +243,8 @@ Qed.
 Lemma wp_fupd p E e Φ : WP e @ p; E {{ v, |={E}=> Φ v }} ⊢ WP e @ p; E {{ Φ }}.
 Proof. iIntros "H". iApply (wp_strong_mono p E); try iFrame; auto. Qed.
 
-Lemma wp_atomic p E1 E2 e Φ :
-  atomic e →
+Lemma wp_atomic' p E1 E2 e Φ :
+  (strong_atomic e ∨ p ∧ atomic e) →
   (|={E1,E2}=> WP e @ p; E2 {{ v, |={E2,E1}=> Φ v }}) ⊢ WP e @ p; E1 {{ Φ }}.
 Proof.
   iIntros (Hatomic) "H". destruct (to_val e) as [v|] eqn:He.
@@ -254,9 +255,18 @@ Proof.
   { iDestruct "H" as (v') "[% ?]"; simplify_eq. }
   iMod ("H" $! σ1 with "Hσ") as "[$ H]".
   iModIntro. iNext. iIntros (e2 σ2 efs Hstep).
-  destruct (Hatomic _ _ _ _ Hstep) as [v <-%of_to_val].
-  iMod ("H" $! _ σ2 efs with "[#]") as "($ & H & $)"; auto.
-  iMod (wp_value_inv with "H") as ">H". by iApply wp_value'.
+  destruct Hatomic as [Hsa|[? Hwa]].
+  - destruct (Hsa _ _ _ _ Hstep) as [v <-%of_to_val].
+    iMod ("H" $! _ σ2 efs with "[#]") as "($ & H & $)"; auto.
+    iMod (wp_value_inv with "H") as ">H". by iApply wp_value'.
+  - destruct p; last done. iMod ("H" with "* []") as "(Hphy & H & $)"; first done.
+    rewrite wp_unfold /wp_pre. iDestruct "H" as "[H|H]".
+    * iDestruct "H" as (v) "[% >>?]". iModIntro. iFrame.
+      rewrite -(of_to_val e2 v) //. by iApply wp_value'.
+    * iDestruct "H" as "[_ H]".
+      iMod ("H" with "* Hphy") as "[H _]".
+      iDestruct "H" as %(? & ? & ? & ?). exfalso.
+      by eapply (Hwa _ _ _ _ Hstep).
 Qed.
 
 Lemma wp_fupd_step p E1 E2 e P Φ :
@@ -310,6 +320,13 @@ Proof. intros. by rewrite -wp_fupd -wp_value'. Qed.
 Lemma wp_value_fupd p E Φ e v :
   to_val e = Some v → (|={E}=> Φ v) ⊢ WP e @ p; E {{ Φ }}.
 Proof. intros. rewrite -wp_fupd -wp_value //. Qed.
+
+Lemma wp_strong_atomic p E1 E2 e Φ :
+  strong_atomic e → (|={E1,E2}=> WP e @ p; E2 {{ v, |={E2,E1}=> Φ v }}) ⊢ WP e @ p; E1 {{ Φ }}.
+Proof. by eauto using wp_atomic'. Qed.
+Lemma wp_atomic E1 E2 e Φ :
+  atomic e → (|={E1,E2}=> WP e @ E2 {{ v, |={E2,E1}=> Φ v }}) ⊢ WP e @ E1 {{ Φ }}.
+Proof. by eauto using wp_atomic'. Qed.
 
 Lemma wp_frame_l p E e Φ R : R ∗ WP e @ p; E {{ Φ }} ⊢ WP e @ p; E {{ v, R ∗ Φ v }}.
 Proof. iIntros "[??]". iApply (wp_strong_mono p E E _ Φ); try iFrame; eauto. Qed.
@@ -373,10 +390,17 @@ Section proofmode_classes.
   Proof. by rewrite /ElimModal fupd_frame_r wand_elim_r fupd_wp. Qed.
 
   (* lower precedence, if possible, it should always pick elim_upd_fupd_wp *)
-  Global Instance elim_modal_fupd_wp_atomic p E1 E2 e P Φ :
-    atomic e →
+  Global Instance elim_modal_fupd_wp_strong_atomic p E1 E2 e P Φ :
+    strong_atomic e →
     ElimModal (|={E1,E2}=> P) P
             (WP e @ p; E1 {{ Φ }}) (WP e @ p; E2 {{ v, |={E2,E1}=> Φ v }})%I | 100.
+  Proof. intros. by rewrite /ElimModal fupd_frame_r wand_elim_r wp_strong_atomic. Qed.
+
+  (* lower precedence than elim_modal_fupd_wp_strong_atomic (for no good reason) *)
+  Global Instance elim_modal_fupd_wp_atomic E1 E2 e P Φ :
+    atomic e →
+    ElimModal (|={E1,E2}=> P) P
+            (WP e @ E1 {{ Φ }}) (WP e @ E2 {{ v, |={E2,E1}=> Φ v }})%I | 110.
   Proof. intros. by rewrite /ElimModal fupd_frame_r wand_elim_r wp_atomic. Qed.
 
 End proofmode_classes.
