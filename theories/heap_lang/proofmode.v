@@ -25,7 +25,7 @@ Ltac wp_value_head := etrans; [|eapply wp_value; wp_done]; lazy beta.
 
 Ltac wp_seq_head :=
   lazymatch goal with
-  | |- _ ⊢ wp true ?E (Seq _ _) ?Q =>
+  | |- _ ⊢ wp progress ?E (Seq _ _) ?Q =>
     etrans; [|eapply wp_seq; wp_done]; iNext
   end.
 
@@ -33,15 +33,15 @@ Ltac wp_finish := intros_revert ltac:(
   rewrite /= ?to_of_val;
   try iNext;
   repeat lazymatch goal with
-  | |- _ ⊢ wp true ?E (Seq _ _) ?Q =>
+  | |- _ ⊢ wp progress ?E (Seq _ _) ?Q =>
      etrans; [|eapply wp_seq; wp_done]; iNext
-  | |- _ ⊢ wp true ?E _ ?Q => wp_value_head
+  | |- _ ⊢ wp progress ?E _ ?Q => wp_value_head
   end).
 
 Tactic Notation "wp_value" :=
   iStartProof;
   lazymatch goal with
-  | |- _ ⊢ wp true ?E ?e ?Q => reshape_expr e ltac:(fun K e' =>
+  | |- _ ⊢ wp progress ?E ?e ?Q => reshape_expr e ltac:(fun K e' =>
     wp_bind_core K; wp_value_head) || fail "wp_value: cannot find value in" e
   | _ => fail "wp_value: not a wp"
   end.
@@ -56,7 +56,7 @@ Ltac solve_of_val_unlock := try apply of_val_unlock; reflexivity.
 Tactic Notation "wp_rec" :=
   iStartProof;
   lazymatch goal with
-  | |- _ ⊢ wp true ?E ?e ?Q => reshape_expr e ltac:(fun K e' =>
+  | |- _ ⊢ wp progress ?E ?e ?Q => reshape_expr e ltac:(fun K e' =>
     match eval hnf in e' with App ?e1 _ =>
 (* hnf does not reduce through an of_val *)
 (*      match eval hnf in e1 with Rec _ _ _ => *)
@@ -69,7 +69,7 @@ Tactic Notation "wp_rec" :=
 Tactic Notation "wp_lam" :=
   iStartProof;
   lazymatch goal with
-  | |- _ ⊢ wp true ?E ?e ?Q => reshape_expr e ltac:(fun K e' =>
+  | |- _ ⊢ wp progress ?E ?e ?Q => reshape_expr e ltac:(fun K e' =>
     match eval hnf in e' with App ?e1 _ =>
 (*    match eval hnf in e1 with Rec BAnon _ _ => *)
     wp_bind_core K; etrans;
@@ -84,7 +84,7 @@ Tactic Notation "wp_seq" := wp_let.
 Tactic Notation "wp_op" :=
   iStartProof;
   lazymatch goal with
-  | |- _ ⊢ wp true ?E ?e ?Q => reshape_expr e ltac:(fun K e' =>
+  | |- _ ⊢ wp progress ?E ?e ?Q => reshape_expr e ltac:(fun K e' =>
     lazymatch eval hnf in e' with
     | BinOp LtOp _ _ => wp_bind_core K; apply wp_lt; wp_finish
     | BinOp LeOp _ _ => wp_bind_core K; apply wp_le; wp_finish
@@ -103,7 +103,7 @@ Tactic Notation "wp_op" :=
 Tactic Notation "wp_proj" :=
   iStartProof;
   lazymatch goal with
-  | |- _ ⊢ wp true ?E ?e ?Q => reshape_expr e ltac:(fun K e' =>
+  | |- _ ⊢ wp progress ?E ?e ?Q => reshape_expr e ltac:(fun K e' =>
     match eval hnf in e' with
     | Fst _ => wp_bind_core K; etrans; [|eapply wp_fst; wp_done]; wp_finish
     | Snd _ => wp_bind_core K; etrans; [|eapply wp_snd; wp_done]; wp_finish
@@ -114,7 +114,7 @@ Tactic Notation "wp_proj" :=
 Tactic Notation "wp_if" :=
   iStartProof;
   lazymatch goal with
-  | |- _ ⊢ wp true ?E ?e ?Q => reshape_expr e ltac:(fun K e' =>
+  | |- _ ⊢ wp progress ?E ?e ?Q => reshape_expr e ltac:(fun K e' =>
     match eval hnf in e' with
     | If _ _ _ =>
       wp_bind_core K;
@@ -126,7 +126,7 @@ Tactic Notation "wp_if" :=
 Tactic Notation "wp_match" :=
   iStartProof;
   lazymatch goal with
-  | |- _ ⊢ wp true ?E ?e ?Q => reshape_expr e ltac:(fun K e' =>
+  | |- _ ⊢ wp progress ?E ?e ?Q => reshape_expr e ltac:(fun K e' =>
     match eval hnf in e' with
     | Case _ _ _ =>
       wp_bind_core K;
@@ -139,7 +139,7 @@ Tactic Notation "wp_match" :=
 Tactic Notation "wp_bind" open_constr(efoc) :=
   iStartProof;
   lazymatch goal with
-  | |- _ ⊢ wp true ?E ?e ?Q => reshape_expr e ltac:(fun K e' =>
+  | |- _ ⊢ wp progress ?E ?e ?Q => reshape_expr e ltac:(fun K e' =>
     match e' with
     | efoc => unify e' efoc; wp_bind_core K
     end) || fail "wp_bind: cannot find" efoc "in" e
@@ -220,7 +220,7 @@ End heap.
 Tactic Notation "wp_apply" open_constr(lem) :=
   iStartProof;
   lazymatch goal with
-  | |- _ ⊢ wp true ?E ?e ?Q => reshape_expr e ltac:(fun K e' =>
+  | |- _ ⊢ wp progress ?E ?e ?Q => reshape_expr e ltac:(fun K e' =>
     wp_bind_core K; iApply lem; try iNext)
   | _ => fail "wp_apply: not a 'wp'"
   end.
@@ -228,7 +228,7 @@ Tactic Notation "wp_apply" open_constr(lem) :=
 Tactic Notation "wp_alloc" ident(l) "as" constr(H) :=
   iStartProof;
   lazymatch goal with
-  | |- _ ⊢ wp true ?E ?e ?Q =>
+  | |- _ ⊢ wp progress ?E ?e ?Q =>
     first
       [reshape_expr e ltac:(fun K e' =>
          match eval hnf in e' with Alloc _ => wp_bind_core K end)
@@ -250,7 +250,7 @@ Tactic Notation "wp_alloc" ident(l) :=
 Tactic Notation "wp_load" :=
   iStartProof;
   lazymatch goal with
-  | |- _ ⊢ wp true ?E ?e ?Q =>
+  | |- _ ⊢ wp progress ?E ?e ?Q =>
     first
       [reshape_expr e ltac:(fun K e' =>
          match eval hnf in e' with Load _ => wp_bind_core K end)
@@ -266,7 +266,7 @@ Tactic Notation "wp_load" :=
 Tactic Notation "wp_store" :=
   iStartProof;
   lazymatch goal with
-  | |- _ ⊢ wp true ?E ?e ?Q =>
+  | |- _ ⊢ wp progress ?E ?e ?Q =>
     first
       [reshape_expr e ltac:(fun K e' =>
          match eval hnf in e' with Store _ _ => wp_bind_core K end)
@@ -285,7 +285,7 @@ Tactic Notation "wp_store" :=
 Tactic Notation "wp_cas_fail" :=
   iStartProof;
   lazymatch goal with
-  | |- _ ⊢ wp true ?E ?e ?Q =>
+  | |- _ ⊢ wp progress ?E ?e ?Q =>
     first
       [reshape_expr e ltac:(fun K e' =>
          match eval hnf in e' with CAS _ _ _ => wp_bind_core K end)
@@ -306,7 +306,7 @@ Tactic Notation "wp_cas_fail" :=
 Tactic Notation "wp_cas_suc" :=
   iStartProof;
   lazymatch goal with
-  | |- _ ⊢ wp true ?E ?e ?Q =>
+  | |- _ ⊢ wp progress ?E ?e ?Q =>
     first
       [reshape_expr e ltac:(fun K e' =>
          match eval hnf in e' with CAS _ _ _ => wp_bind_core K end)

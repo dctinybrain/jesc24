@@ -4,7 +4,7 @@ From iris.proofmode Require Import tactics.
 
 Section lifting.
 Context `{irisG Λ Σ}.
-Implicit Types p : bool.
+Implicit Types p : pbit.
 Implicit Types v : val Λ.
 Implicit Types e : expr Λ.
 Implicit Types σ : state Λ.
@@ -24,7 +24,7 @@ Qed.
 
 Lemma wp_lift_stuck E Φ e :
   to_val e = None →
-  (∀ σ, state_interp σ ={E,∅}=∗ ⌜¬ progress e σ⌝)
+  (∀ σ, state_interp σ ={E,∅}=∗ ⌜¬ language.progress e σ⌝)
   ⊢ WP e @ E ?{{ Φ }}.
 Proof.
   iIntros (?) "H"; rewrite wp_unfold /wp_pre; iRight; iSplit; first done.
@@ -51,7 +51,7 @@ Proof.
 Qed.
 
 Lemma wp_lift_pure_stuck `{Inhabited (state Λ)} E Φ e :
-  (∀ σ, ¬ progress e σ) →
+  (∀ σ, ¬ language.progress e σ) →
   True ⊢ WP e @ E ?{{ Φ }}.
 Proof.
   iIntros (Hstuck); iApply wp_lift_stuck.

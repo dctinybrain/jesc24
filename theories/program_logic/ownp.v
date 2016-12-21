@@ -70,7 +70,7 @@ Qed.
 (** Lifting *)
 Section lifting.
   Context `{ownPG Λ Σ}.
-  Implicit Types p : bool.
+  Implicit Types p : pbit.
   Implicit Types e : expr Λ.
   Implicit Types Φ : val Λ → iProp Σ.
 
@@ -103,7 +103,7 @@ Section lifting.
   Qed.
 
   Lemma ownP_lift_stuck E Φ e :
-    (|={E,∅}=> ∃ σ, ⌜¬ progress e σ⌝ ∗ ▷ ownP σ)
+    (|={E,∅}=> ∃ σ, ⌜¬ language.progress e σ⌝ ∗ ▷ ownP σ)
     ⊢ WP e @ E ?{{ Φ }}.
   Proof.
     iIntros "H". destruct (to_val e) as [v|] eqn:EQe.
@@ -199,7 +199,7 @@ Section ectx_lifting.
   Import ectx_language.
   Context {expr val ectx state} {Λ : EctxLanguage expr val ectx state}.
   Context `{ownPG (ectx_lang expr) Σ} `{Inhabited state}.
-  Implicit Types p : bool.
+  Implicit Types p : pbit.
   Implicit Types Φ : val → iProp Σ.
   Implicit Types e : expr.
   Hint Resolve head_prim_reducible head_reducible_prim_step.

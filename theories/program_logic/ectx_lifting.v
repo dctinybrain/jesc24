@@ -5,7 +5,7 @@ From iris.proofmode Require Import tactics.
 Section wp.
 Context {expr val ectx state} {Λ : EctxLanguage expr val ectx state}.
 Context `{irisG (ectx_lang expr) Σ} `{Inhabited state}.
-Implicit Types p : bool.
+Implicit Types p : pbit.
 Implicit Types P : iProp Σ.
 Implicit Types Φ : val → iProp Σ.
 Implicit Types v : val.
@@ -51,7 +51,7 @@ Lemma wp_lift_pure_head_step E Φ e1 :
     WP e2 @ E {{ Φ }} ∗ [∗ list] ef ∈ efs, WP ef {{ _, True }})
   ⊢ WP e1 @ E {{ Φ }}.
 Proof.
-  iIntros (??) "H". iApply (wp_lift_pure_step true);
+  iIntros (??) "H". iApply (wp_lift_pure_step progress);
     eauto using (reducible_not_val _ inhabitant).
   iNext. iIntros (????). iApply "H". eauto.
 Qed.
