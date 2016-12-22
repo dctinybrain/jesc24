@@ -16,7 +16,7 @@ Lemma wp_ectx_bind {p E e} K Φ :
   WP e @ p; E {{ v, WP fill K (of_val v) @ p; E {{ Φ }} }} ⊢ WP fill K e @ p; E {{ Φ }}.
 Proof. apply: weakestpre.wp_bind. Qed.
 
-Lemma wp_lift_head p E Φ e1 :
+Lemma wp_lift_head_step p E Φ e1 :
   to_val e1 = None →
   (∀ σ1, state_interp σ1 ={E,∅}=∗
     ⌜head_reducible e1 σ1⌝ ∗
