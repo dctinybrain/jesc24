@@ -183,9 +183,9 @@ Definition atomic (e : expr) :=
   | App (Rec _ _ (Lit _)) (Lit _) => true
   | _ => false
   end.
-Lemma atomic_correct e : atomic e → language.atomic (to_expr e).
+Lemma atomic_correct e : atomic e → language.strong_atomic (to_expr e).
 Proof.
-  intros He. apply language.weaken_atomic, ectx_language_strong_atomic.
+  intros He. apply ectx_language_strong_atomic.
   - intros σ e' σ' ef.
     destruct e; simpl; try done; repeat (case_match; try done);
     inversion 1; rewrite ?to_of_val; eauto. subst.
@@ -224,13 +224,13 @@ Ltac solve_to_val :=
 
 Ltac solve_atomic :=
   match goal with
-  | |- language.atomic ?e =>
-     let e' := W.of_expr e in change (language.atomic (W.to_expr e'));
+  | |- language.strong_atomic ?e =>
+     let e' := W.of_expr e in change (language.strong_atomic (W.to_expr e'));
      apply W.atomic_correct; vm_compute; exact I
   end.
-Hint Extern 10 (language.atomic _) => solve_atomic.
+Hint Extern 10 (language.strong_atomic _) => solve_atomic.
 (* For the side-condition of elim_upd_fupd_wp_atomic *)
-Hint Extern 10 (language.atomic _) => solve_atomic : typeclass_instances.
+Hint Extern 10 (language.strong_atomic _) => solve_atomic : typeclass_instances.
 
 (** Substitution *)
 Ltac simpl_subst :=
