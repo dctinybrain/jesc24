@@ -12,9 +12,10 @@ Section LiftingTests.
   Definition heap_e  : expr :=
     let: "x" := ref #1 in "x" <- !"x" + #1 ;; !"x".
 
-  Lemma heap_e_spec E : WP heap_e @ E {{ v, ⌜v = #2⌝ }}%I.
+  Lemma heap_e_spec E :
+    ↑heapN ⊆ E → heap_ctx ⊢ WP heap_e @ E {{ v, ⌜v = #2⌝ }}.
   Proof.
-    iIntros "". rewrite /heap_e.
+    iIntros (?) "#?". rewrite /heap_e.
     wp_alloc l. wp_let. wp_load. wp_op. wp_store. by wp_load.
   Qed.
 
@@ -23,9 +24,10 @@ Section LiftingTests.
     let: "y" := ref #1 in
     "x" <- !"x" + #1 ;; !"x".
 
-  Lemma heap_e2_spec E : WP heap_e2 @ E {{ v, ⌜v = #2⌝ }}%I.
+  Lemma heap_e2_spec E :
+    ↑heapN ⊆ E → heap_ctx ⊢ WP heap_e2 @ E {{ v, ⌜v = #2⌝ }}.
   Proof.
-    iIntros "". rewrite /heap_e2.
+    iIntros (?) "#?". rewrite /heap_e2.
     wp_alloc l. wp_let. wp_alloc l'. wp_let.
     wp_load. wp_op. wp_store. wp_load. done.
   Qed.
@@ -62,5 +64,6 @@ Section LiftingTests.
   Proof. iIntros "". wp_apply Pred_spec. wp_let. by wp_apply Pred_spec. Qed.
 End LiftingTests.
 
-Lemma heap_e_adequate σ : adequate progress heap_e σ (= #2).
+Lemma heap_e_adequate h :
+  adequate progress heap_e (good_state h) (= #2).
 Proof. eapply (heap_adequacy heapΣ)=> ?. by apply heap_e_spec. Qed.

@@ -50,6 +50,8 @@ Inductive expr :=
   | InjL (e : expr)
   | InjR (e : expr)
   | Case (e0 : expr) (e1 : expr) (e2 : expr)
+  (* Safety properties *)
+  | Assert (e : expr)
   (* Concurrency *)
   | Fork (e : expr)
   (* Heap *)
@@ -65,7 +67,8 @@ Fixpoint is_closed (X : list string) (e : expr) : bool :=
   | Var x => bool_decide (x ∈ X)
   | Rec f x e => is_closed (f :b: x :b: X) e
   | Lit _ => true
-  | UnOp _ e | Fst e | Snd e | InjL e | InjR e | Fork e | Alloc e | Load e =>
+  | UnOp _ e | Fst e | Snd e | InjL e | InjR e | Assert e | Fork e
+  | Alloc e | Load e =>
      is_closed X e
   | App e1 e2 | BinOp _ e1 e2 | Pair e1 e2 | Store e1 e2 =>
      is_closed X e1 && is_closed X e2
@@ -108,8 +111,14 @@ Fixpoint to_val (e : expr) : option val :=
   | _ => None
   end.
 
-(** The state: heaps of vals. *)
-Definition state := gmap loc val.
+(** The state: heaps of vals and an error bit. *)
+Definition heap := gmap loc val.
+CoInductive state : Type := State of heap * bool.
+Definition heap_of (σ : state) : heap := let: State (h, _) := σ in h.
+Definition is_good (σ : state) : bool := let: State (_, b) := σ in b.
+Definition good_state (h : heap) : state := State (h, true).
+Definition mark_bad (σ : state) : state := State (heap_of σ, false).
+Definition hupd (σ : state) (h : heap) : state := State (h, is_good σ).
 
 (** Equality and other typeclass stuff *)
 Lemma to_of_val v : to_val (of_val v) = Some v.
@@ -140,6 +149,7 @@ Defined.
 
 Instance expr_inhabited : Inhabited expr := populate (Lit LitUnit).
 Instance val_inhabited : Inhabited val := populate (LitV LitUnit).
+Instance state_inhabited : Inhabited state := populate (good_state ∅).
 
 Canonical Structure stateC := leibnizC state.
 Canonical Structure valC := leibnizC val.
@@ -160,6 +170,7 @@ Inductive ectx_item :=
   | InjLCtx
   | InjRCtx
   | CaseCtx (e1 : expr) (e2 : expr)
+  | AssertCtx
   | AllocCtx
   | LoadCtx
   | StoreLCtx (e2 : expr)
@@ -183,9 +194,10 @@ Definition fill_item (Ki : ectx_item) (e : expr) : expr :=
   | InjLCtx => InjL e
   | InjRCtx => InjR e
   | CaseCtx e1 e2 => Case e e1 e2
+  | AssertCtx => Assert e
   | AllocCtx => Alloc e
   | LoadCtx => Load e
-  | StoreLCtx e2 => Store e e2 
+  | StoreLCtx e2 => Store e e2
   | StoreRCtx v1 => Store (of_val v1) e
   | CasLCtx e1 e2 => CAS e e1 e2
   | CasMCtx v0 e2 => CAS (of_val v0) e e2
@@ -209,6 +221,7 @@ Fixpoint subst (x : string) (es : expr) (e : expr)  : expr :=
   | InjL e => InjL (subst x es e)
   | InjR e => InjR (subst x es e)
   | Case e0 e1 e2 => Case (subst x es e0) (subst x es e1) (subst x es e2)
+  | Assert e => Assert (subst x es e)
   | Fork e => Fork (subst x es e)
   | Alloc e => Alloc (subst x es e)
   | Load e => Load (subst x es e)
@@ -245,11 +258,11 @@ Inductive head_step : expr → state → expr → state → list (expr) → Prop
      head_step (App (Rec f x e1) e2) σ e' σ []
   | UnOpS op e v v' σ :
      to_val e = Some v →
-     un_op_eval op v = Some v' → 
+     un_op_eval op v = Some v' →
      head_step (UnOp op e) σ (of_val v') σ []
   | BinOpS op e1 e2 v1 v2 v' σ :
      to_val e1 = Some v1 → to_val e2 = Some v2 →
-     bin_op_eval op v1 v2 = Some v' → 
+     bin_op_eval op v1 v2 = Some v' →
      head_step (BinOp op e1 e2) σ (of_val v') σ []
   | IfTrueS e1 e2 σ :
      head_step (If (Lit $ LitBool true) e1 e2) σ e1 σ []
@@ -267,25 +280,29 @@ Inductive head_step : expr → state → expr → state → list (expr) → Prop
   | CaseRS e0 v0 e1 e2 σ :
      to_val e0 = Some v0 →
      head_step (Case (InjR e0) e1 e2) σ (App e2 e0) σ []
+  | AssertTrueS σ :
+     head_step (Assert (Lit $ LitBool true)) σ (Lit LitUnit) σ []
+  | AssertFalseS σ :
+     head_step (Assert (Lit $ LitBool false)) σ (Lit LitUnit) (mark_bad σ) []
   | ForkS e σ:
      head_step (Fork e) σ (Lit LitUnit) σ [e]
-  | AllocS e v σ l :
-     to_val e = Some v → σ !! l = None →
-     head_step (Alloc e) σ (Lit $ LitLoc l) (<[l:=v]>σ) []
-  | LoadS l v σ :
-     σ !! l = Some v →
+  | AllocS e v σ h l :
+     to_val e = Some v → heap_of σ = h → h !! l = None →
+     head_step (Alloc e) σ (Lit $ LitLoc l) (hupd σ (<[l:=v]>h)) []
+  | LoadS l v σ h :
+     heap_of σ = h → h !! l = Some v →
      head_step (Load (Lit $ LitLoc l)) σ (of_val v) σ []
-  | StoreS l e v σ :
-     to_val e = Some v → is_Some (σ !! l) →
-     head_step (Store (Lit $ LitLoc l) e) σ (Lit LitUnit) (<[l:=v]>σ) []
-  | CasFailS l e1 v1 e2 v2 vl σ :
+  | StoreS l e v σ h :
+     to_val e = Some v → heap_of σ = h → is_Some (h !! l) →
+     head_step (Store (Lit $ LitLoc l) e) σ (Lit LitUnit) (hupd σ (<[l:=v]>h)) []
+  | CasFailS l e1 v1 e2 v2 vl σ h :
      to_val e1 = Some v1 → to_val e2 = Some v2 →
-     σ !! l = Some vl → vl ≠ v1 →
+     heap_of σ = h → h !! l = Some vl → vl ≠ v1 →
      head_step (CAS (Lit $ LitLoc l) e1 e2) σ (Lit $ LitBool false) σ []
-  | CasSucS l e1 v1 e2 v2 σ :
+  | CasSucS l e1 v1 e2 v2 σ h :
      to_val e1 = Some v1 → to_val e2 = Some v2 →
-     σ !! l = Some v1 →
-     head_step (CAS (Lit $ LitLoc l) e1 e2) σ (Lit $ LitBool true) (<[l:=v2]>σ) [].
+     heap_of σ = h → h !! l = Some v1 →
+     head_step (CAS (Lit $ LitLoc l) e1 e2) σ (Lit $ LitBool true) (hupd σ (<[l:=v2]>h)) [].
 
 (** Basic properties about the language *)
 Instance fill_item_inj Ki : Inj (=) (=) (fill_item Ki).
@@ -312,9 +329,10 @@ Proof.
     end; auto.
 Qed.
 
-Lemma alloc_fresh e v σ :
-  let l := fresh (dom _ σ) in
-  to_val e = Some v → head_step (Alloc e) σ (Lit (LitLoc l)) (<[l:=v]>σ) [].
+Lemma alloc_fresh e v σ h :
+  let l := fresh (dom _ h) in
+  to_val e = Some v → heap_of σ = h →
+  head_step (Alloc e) σ (Lit (LitLoc l)) (hupd σ (<[l:=v]>h)) [].
 Proof. by intros; apply AllocS, (not_elem_of_dom (D:=gset _)), is_fresh. Qed.
 
 (* Misc *)

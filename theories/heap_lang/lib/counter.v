@@ -25,16 +25,18 @@ Section mono_proof.
     (∃ n, own γ (● (n : mnat)) ∗ l ↦ #n)%I.
 
   Definition mcounter (l : loc) (n : nat) : iProp Σ :=
-    (∃ γ, inv N (mcounter_inv γ l) ∧ own γ (◯ (n : mnat)))%I.
+    (∃ γ, ⌜heapN ⊥ N⌝ ∧ heap_ctx ∧
+          inv N (mcounter_inv γ l) ∧ own γ (◯ (n : mnat)))%I.
 
   (** The main proofs. *)
   Global Instance mcounter_persistent l n : PersistentP (mcounter l n).
   Proof. apply _. Qed.
 
   Lemma newcounter_mono_spec (R : iProp Σ) :
-    {{{ True }}} newcounter #() {{{ l, RET #l; mcounter l 0 }}}.
+    heapN ⊥ N →
+    {{{ heap_ctx }}} newcounter #() {{{ l, RET #l; mcounter l 0 }}}.
   Proof.
-    iIntros (Φ) "HΦ". rewrite -wp_fupd /newcounter /=. wp_seq. wp_alloc l as "Hl".
+    iIntros (? Φ) "#Hh HΦ". rewrite -wp_fupd /newcounter. wp_seq. wp_alloc l as "Hl".
     iMod (own_alloc (● (O:mnat) ⋅ ◯ (O:mnat))) as (γ) "[Hγ Hγ']"; first done.
     iMod (inv_alloc N _ (mcounter_inv γ l) with "[Hl Hγ]").
     { iNext. iExists 0%nat. by iFrame. }
@@ -45,7 +47,7 @@ Section mono_proof.
     {{{ mcounter l n }}} incr #l {{{ RET #(); mcounter l (S n) }}}.
   Proof.
     iIntros (Φ) "Hl HΦ". iLöb as "IH". wp_rec.
-    iDestruct "Hl" as (γ) "[#Hinv Hγf]".
+    iDestruct "Hl" as (γ) "(% & #? & #Hinv & Hγf)".
     wp_bind (! _)%E. iInv N as (c) ">[Hγ Hl]" "Hclose".
     wp_load. iMod ("Hclose" with "[Hl Hγ]") as "_"; [iNext; iExists c; by iFrame|].
     iModIntro. wp_let. wp_op.
@@ -69,7 +71,7 @@ Section mono_proof.
   Lemma read_mono_spec l j :
     {{{ mcounter l j }}} read #l {{{ i, RET #i; ⌜j ≤ i⌝%nat ∧ mcounter l i }}}.
   Proof.
-    iIntros (ϕ) "Hc HΦ". iDestruct "Hc" as (γ) "[#Hinv Hγf]".
+    iIntros (ϕ) "Hc HΦ". iDestruct "Hc" as (γ) "(% & #? & #Hinv & Hγf)".
     rewrite /read /=. wp_let. iInv N as (c) ">[Hγ Hl]" "Hclose". wp_load.
     iDestruct (own_valid_2 with "Hγ Hγf")
       as %[?%mnat_included _]%auth_valid_discrete_2.
@@ -96,7 +98,7 @@ Section contrib_spec.
     (∃ n, own γ (● Some (1%Qp, n)) ∗ l ↦ #n)%I.
 
   Definition ccounter_ctx (γ : gname) (l : loc) : iProp Σ :=
-    inv N (ccounter_inv γ l).
+    (⌜heapN ⊥ N⌝ ∧ heap_ctx ∧ inv N (ccounter_inv γ l))%I.
 
   Definition ccounter (γ : gname) (q : frac) (n : nat) : iProp Σ :=
     own γ (◯ Some (q, n)).
@@ -107,10 +109,11 @@ Section contrib_spec.
   Proof. by rewrite /ccounter -own_op -auth_frag_op. Qed.
 
   Lemma newcounter_contrib_spec (R : iProp Σ) :
-    {{{ True }}} newcounter #()
+    heapN ⊥ N →
+    {{{ heap_ctx }}} newcounter #()
     {{{ γ l, RET #l; ccounter_ctx γ l ∗ ccounter γ 1 0 }}}.
   Proof.
-    iIntros (Φ) "HΦ". rewrite -wp_fupd /newcounter /=. wp_seq. wp_alloc l as "Hl".
+    iIntros (? Φ) "#Hh HΦ". rewrite -wp_fupd /newcounter /=. wp_seq. wp_alloc l as "Hl".
     iMod (own_alloc (● (Some (1%Qp, O%nat)) ⋅ ◯ (Some (1%Qp, 0%nat))))
       as (γ) "[Hγ Hγ']"; first done.
     iMod (inv_alloc N _ (ccounter_inv γ l) with "[Hl Hγ]").
@@ -122,7 +125,7 @@ Section contrib_spec.
     {{{ ccounter_ctx γ l ∗ ccounter γ q n }}} incr #l
     {{{ RET #(); ccounter γ q (S n) }}}.
   Proof.
-    iIntros (Φ) "[#? Hγf] HΦ". iLöb as "IH". wp_rec.
+    iIntros (Φ) "(#(%&?&?) & Hγf) HΦ". iLöb as "IH". wp_rec.
     wp_bind (! _)%E. iInv N as (c) ">[Hγ Hl]" "Hclose".
     wp_load. iMod ("Hclose" with "[Hl Hγ]") as "_"; [iNext; iExists c; by iFrame|].
     iModIntro. wp_let. wp_op.
@@ -143,7 +146,7 @@ Section contrib_spec.
     {{{ ccounter_ctx γ l ∗ ccounter γ q n }}} read #l
     {{{ c, RET #c; ⌜n ≤ c⌝%nat ∧ ccounter γ q n }}}.
   Proof.
-    iIntros (Φ) "[#? Hγf] HΦ".
+    iIntros (Φ) "(#(%&?&?) & Hγf) HΦ".
     rewrite /read /=. wp_let. iInv N as (c) ">[Hγ Hl]" "Hclose". wp_load.
     iDestruct (own_valid_2 with "Hγ Hγf")
       as %[[? ?%nat_included]%Some_pair_included_total_2 _]%auth_valid_discrete_2.
@@ -155,7 +158,7 @@ Section contrib_spec.
     {{{ ccounter_ctx γ l ∗ ccounter γ 1 n }}} read #l
     {{{ n, RET #n; ccounter γ 1 n }}}.
   Proof.
-    iIntros (Φ) "[#? Hγf] HΦ".
+    iIntros (Φ) "(#(%&?&?) & Hγf) HΦ".
     rewrite /read /=. wp_let. iInv N as (c) ">[Hγ Hl]" "Hclose". wp_load.
     iDestruct (own_valid_2 with "Hγ Hγf") as %[Hn _]%auth_valid_discrete_2.
     apply (Some_included_exclusive _) in Hn as [= ->]%leibniz_equiv; last done.

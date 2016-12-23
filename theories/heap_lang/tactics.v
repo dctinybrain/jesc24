@@ -26,6 +26,8 @@ Inductive expr :=
   | InjL (e : expr)
   | InjR (e : expr)
   | Case (e0 : expr) (e1 : expr) (e2 : expr)
+  (* Safety properties *)
+  | Assert (e : expr)
   (* Concurrency *)
   | Fork (e : expr)
   (* Heap *)
@@ -51,6 +53,7 @@ Fixpoint to_expr (e : expr) : heap_lang.expr :=
   | InjL e => heap_lang.InjL (to_expr e)
   | InjR e => heap_lang.InjR (to_expr e)
   | Case e0 e1 e2 => heap_lang.Case (to_expr e0) (to_expr e1) (to_expr e2)
+  | Assert e => heap_lang.Assert (to_expr e)
   | Fork e => heap_lang.Fork (to_expr e)
   | Alloc e => heap_lang.Alloc (to_expr e)
   | Load e => heap_lang.Load (to_expr e)
@@ -80,6 +83,7 @@ Ltac of_expr e :=
   | heap_lang.Case ?e0 ?e1 ?e2 =>
      let e0 := of_expr e0 in let e1 := of_expr e1 in let e2 := of_expr e2 in
      constr:(Case e0 e1 e2)
+  | heap_lang.Assert ?e => let e := of_expr e in constr:(Assert e)
   | heap_lang.Fork ?e => let e := of_expr e in constr:(Fork e)
   | heap_lang.Alloc ?e => let e := of_expr e in constr:(Alloc e)
   | heap_lang.Load ?e => let e := of_expr e in constr:(Load e)
@@ -100,7 +104,8 @@ Fixpoint is_closed (X : list string) (e : expr) : bool :=
   | Var x => bool_decide (x ∈ X)
   | Rec f x e => is_closed (f :b: x :b: X) e
   | Lit _ => true
-  | UnOp _ e | Fst e | Snd e | InjL e | InjR e | Fork e | Alloc e | Load e =>
+  | UnOp _ e | Fst e | Snd e | InjL e | InjR e | Assert e | Fork e
+  | Alloc e | Load e =>
      is_closed X e
   | App e1 e2 | BinOp _ e1 e2 | Pair e1 e2 | Store e1 e2 =>
      is_closed X e1 && is_closed X e2
@@ -158,6 +163,7 @@ Fixpoint subst (x : string) (es : expr) (e : expr)  : expr :=
   | InjL e => InjL (subst x es e)
   | InjR e => InjR (subst x es e)
   | Case e0 e1 e2 => Case (subst x es e0) (subst x es e1) (subst x es e2)
+  | Assert e => Assert (subst x es e)
   | Fork e => Fork (subst x es e)
   | Alloc e => Alloc (subst x es e)
   | Load e => Load (subst x es e)
@@ -173,6 +179,7 @@ Qed.
 
 Definition atomic (e : expr) :=
   match e with
+  | Assert (Lit (LitBool _)) => true
   | Alloc e => bool_decide (is_Some (to_val e))
   | Load e => bool_decide (is_Some (to_val e))
   | Store e1 e2 => bool_decide (is_Some (to_val e1) ∧ is_Some (to_val e2))
@@ -229,7 +236,7 @@ Ltac solve_atomic :=
      apply W.atomic_correct; vm_compute; exact I
   end.
 Hint Extern 10 (language.strong_atomic _) => solve_atomic.
-(* For the side-condition of elim_upd_fupd_wp_atomic *)
+(* For the side-condition of elim_modal_fupd_wp_strong_atomic *)
 Hint Extern 10 (language.strong_atomic _) => solve_atomic : typeclass_instances.
 
 (** Substitution *)
@@ -278,6 +285,7 @@ Ltac reshape_expr e tac :=
   | InjL ?e => go (InjLCtx :: K) e
   | InjR ?e => go (InjRCtx :: K) e
   | Case ?e0 ?e1 ?e2 => go (CaseCtx e1 e2 :: K) e0
+  | Assert ?e => go (AssertCtx :: K) e
   | Alloc ?e => go (AllocCtx :: K) e
   | Load ?e => go (LoadCtx :: K) e
   | Store ?e1 ?e2 => reshape_val e1 ltac:(fun v1 => go (StoreRCtx v1 :: K) e2)

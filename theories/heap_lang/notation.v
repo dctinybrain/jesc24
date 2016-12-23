@@ -45,6 +45,7 @@ Notation "e1 ≠ e2" := (UnOp NegOp (BinOp EqOp e1%E e2%E)) (at level 70) : expr
 Notation "~ e" := (UnOp NegOp e%E) (at level 75, right associativity) : expr_scope.
 (* The unicode ← is already part of the notation "_ ← _; _" for bind. *)
 Notation "e1 <- e2" := (Store e1%E e2%E) (at level 80) : expr_scope.
+Notation "'assert:' e" := (Assert e%E) (at level 99) : expr_scope.
 Notation "'rec:' f x := e" := (Rec f%bind x%bind e%E)
   (at level 102, f at level 1, x at level 1, e at level 200) : expr_scope.
 Notation "'rec:' f x := e" := (locked (RecV f%bind x%bind e%E))

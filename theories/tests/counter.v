@@ -84,19 +84,19 @@ Definition I (γ : gname) (l : loc) : iProp Σ :=
   (∃ c : nat, l ↦ #c ∗ own γ (Auth c))%I.
 
 Definition C (l : loc) (n : nat) : iProp Σ :=
-  (∃ N γ, inv N (I γ l) ∧ own γ (Frag n))%I.
+  (∃ N γ, ⌜heapN ⊥ N⌝ ∧ heap_ctx ∧ inv N (I γ l) ∧ own γ (Frag n))%I.
 
 (** The main proofs. *)
 Global Instance C_persistent l n : PersistentP (C l n).
 Proof. apply _. Qed.
 
-Lemma newcounter_spec :
-  {{ True }} newcounter #() {{ v, ∃ l, ⌜v = #l⌝ ∧ C l 0 }}.
+Lemma newcounter_spec N :
+  heapN ⊥ N →
+  heap_ctx ⊢ {{ True }} newcounter #() {{ v, ∃ l, ⌜v = #l⌝ ∧ C l 0 }}.
 Proof.
-  iIntros "!# _ /=". rewrite -wp_fupd /newcounter /=. wp_seq. wp_alloc l as "Hl".
+  iIntros (?) "#? !# _ /=". rewrite -wp_fupd /newcounter /=. wp_seq. wp_alloc l as "Hl".
   iMod (own_alloc (Auth 0)) as (γ) "Hγ"; first done.
   rewrite (auth_frag_op 0 0) //; iDestruct "Hγ" as "[Hγ Hγf]".
-  set (N := nroot .@ "C").
   iMod (inv_alloc N _ (I γ l) with "[Hl Hγ]") as "#?".
   { iIntros "!>". iExists 0%nat. by iFrame. }
   iModIntro. rewrite /C; eauto 10.
@@ -106,7 +106,7 @@ Lemma incr_spec l n :
   {{ C l n }} incr #l {{ v, ⌜v = #()⌝ ∧ C l (S n) }}.
 Proof.
   iIntros "!# Hl /=". iLöb as "IH". wp_rec.
-  iDestruct "Hl" as (N γ) "[#Hinv Hγf]".
+  iDestruct "Hl" as (N γ) "(% & #Hh & #Hinv & Hγf)".
   wp_bind (! _)%E; iInv N as (c) "[Hl Hγ]" "Hclose".
   wp_load. iMod ("Hclose" with "[Hl Hγ]"); [iNext; iExists c; by iFrame|].
   iModIntro. wp_let. wp_op.
@@ -128,7 +128,7 @@ Qed.
 Lemma read_spec l n :
   {{ C l n }} read #l {{ v, ∃ m : nat, ⌜v = #m ∧ n ≤ m⌝ ∧ C l m }}.
 Proof.
-  iIntros "!# Hl /=". iDestruct "Hl" as (N γ) "[#Hinv Hγf]".
+  iIntros "!# Hl /=". iDestruct "Hl" as (N γ) "(% & #Hh & #Hinv & Hγf)".
   rewrite /read /=. wp_let. iInv N as (c) "[Hl Hγ]" "Hclose". wp_load.
   iDestruct (own_valid γ (Frag n ⋅ Auth c) with "[-]") as % ?%auth_frag_valid.
   { iApply own_op. by iFrame. }
