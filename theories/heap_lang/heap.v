@@ -273,17 +273,16 @@ Section low.
     end.
   Proof. by destruct v; rewrite lowval_low lowval_unfold. Qed.
 
-  Lemma low_recv_alt f x e `{!Closed (f :b: x :b: []) e} :
+  Lemma low_rec f x e `{!Closed (f :b: x :b: []) e} :
     low (RecV f x e) ⊣⊢
-    □ ▷ ∀ e2 v2 Φ, ⌜to_val e2 = Some v2⌝ -∗ low v2 -∗
-      (∀ v, low v -∗ Φ v) -∗ WP subst' x e2 (subst' f (Rec f x e) e) ?{{ Φ }}.
+    □ ▷ ∀ v Φ, low v -∗ (∀ v, low v -∗ Φ v) -∗
+    WP subst' x (of_val v) (subst' f (Rec f x e) e) ?{{ Φ }}.
   Proof.
     rewrite low_val. iSplit.
-    - iIntros "#Hv !#". iNext. iIntros (e2 v2 Φ) "% #Hv2 HΦ".
-      iApply (wp_wand with "[Hv Hv2] [$HΦ]"). rewrite -(of_to_val e2 v2) //.
-      by iApply ("Hv" with "[$Hv2]").
+    - iIntros "#Hv !#". iNext. iIntros (v2 Φ) "#Hv2 HΦ".
+      iApply (wp_wand with "[Hv Hv2] [$HΦ]"). by iApply ("Hv" with "[$Hv2]").
     - iIntros "#Hv !#". iNext. iIntros (v2) "#Hv2".
-      iApply ("Hv" with "[%] [$Hv2] []"). done. by iIntros.
+      iApply ("Hv" with "[$Hv2] []"). by iIntros.
   Qed.
 
   Global Instance val_low_lit_timeless lit : TimelessP (low (LitV lit)).
