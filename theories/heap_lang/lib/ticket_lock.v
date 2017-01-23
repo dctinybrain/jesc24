@@ -13,8 +13,8 @@ Definition wait_loop: val :=
       then #() (* my turn *)
       else "wait_loop" "x" "lk".
 
-Definition newlock : val :=
-  λ: <>, ((* owner *) ref #0, (* next *) ref #0).
+Definition newlock' : val :=
+  λ: <>, ((* owner *) ref #0, (* next *) ref #1).
 
 Definition acquire : val :=
   rec: "acquire" "lk" :=
@@ -36,7 +36,7 @@ Instance subG_tlockΣ {Σ} : subG tlockΣ Σ → tlockG Σ.
 Proof. by intros ?%subG_inG. Qed.
 
 Section proof.
-  Context `{!heapG Σ, !tlockG Σ} (N : namespace).
+  Context `{!heapG Σ, !tlockG Σ} (p : pbit) (N : namespace).
 
   Definition lock_inv (γ : gname) (lo ln : loc) (R : iProp Σ) : iProp Σ :=
     (∃ o n : nat,
@@ -73,22 +73,25 @@ Section proof.
     iDestruct (own_valid_2 with "H1 H2") as %[[] _].
   Qed.
 
-  Lemma newlock_spec (R : iProp Σ) :
+  Lemma newlock'_spec (R : iProp Σ) :
     heapN ⊥ N →
-    {{{ heap_ctx ∗ R }}} newlock #() {{{ lk γ, RET lk; is_lock γ lk R }}}.
+    {{{ heap_ctx }}} newlock' #() @ p; ⊤
+    {{{ lk γ, RET lk; is_lock γ lk R ∗ locked γ }}}.
   Proof.
-    iIntros (? Φ) "(#Hh & HR) HΦ". rewrite -wp_fupd /newlock /=.
+    iIntros (? Φ) "#Hh HΦ". rewrite -wp_fupd /newlock /=.
     wp_seq. wp_alloc lo as "Hlo". wp_alloc ln as "Hln".
-    iMod (own_alloc (● (Excl' 0%nat, ∅) ⋅ ◯ (Excl' 0%nat, ∅))) as (γ) "[Hγ Hγ']".
-    { by rewrite -auth_both_op. }
-    iMod (inv_alloc _ _ (lock_inv γ lo ln R) with "[-HΦ]").
-    { iNext. rewrite /lock_inv.
-      iExists 0%nat, 0%nat. iFrame. iLeft. by iFrame. }
-    iModIntro. iApply ("HΦ" $! (#lo, #ln)%V γ). iExists lo, ln. eauto.
+    iMod (own_alloc (● (Excl' 0%nat, GSet (seq_set 0 1)) ⋅
+      ◯ (∅, GSet {[0%nat]}) ⋅ ◯ (Excl' 0%nat, ∅))) as (γ) "((Hγ1 & Hγ2) & Hγ3)".
+    { by rewrite -assoc -auth_frag_op -auth_both_op pair_op left_id right_id
+      auth_valid_discrete /=  prod_included -gset_disj_union //= right_id. }
+    iMod (inv_alloc _ _ (lock_inv γ lo ln R) with "[-HΦ Hγ3]").
+    { iNext. rewrite /lock_inv. iExists 0%nat, 1%nat. iFrame. by iRight. }
+    iModIntro. iApply ("HΦ" $! (#lo, #ln)%V γ). iSplitR "Hγ3".
+    by iExists lo, ln; eauto. by iExists 0%nat.
   Qed.
 
   Lemma wait_loop_spec γ lk x R :
-    {{{ issued γ lk x R }}} wait_loop #x lk {{{ RET #(); locked γ ∗ R }}}.
+    {{{ issued γ lk x R }}} wait_loop #x lk @ p; ⊤ {{{ RET #(); locked γ ∗ R }}}.
   Proof.
     iIntros (Φ) "Hl HΦ". iDestruct "Hl" as (lo ln) "(% & #? & % & #? & Ht)".
     iLöb as "IH". wp_rec. subst. wp_let. wp_proj. wp_bind (! _)%E.
@@ -98,7 +101,7 @@ Section proof.
       + iMod ("Hclose" with "[Hlo Hln Hainv Ht]") as "_".
         { iNext. iExists o, n. iFrame. eauto. }
         iModIntro. wp_let. wp_op=>[_|[]] //.
-        wp_if. 
+        wp_if.
         iApply ("HΦ" with "[-]"). rewrite /locked. iFrame. eauto.
       + iDestruct (own_valid_2 with "Ht Haown") as % [_ ?%gset_disj_valid_op].
         set_solver.
@@ -109,7 +112,7 @@ Section proof.
   Qed.
 
   Lemma acquire_spec γ lk R :
-    {{{ is_lock γ lk R }}} acquire lk {{{ RET #(); locked γ ∗ R }}}.
+    {{{ is_lock γ lk R }}} acquire lk @ p; ⊤ {{{ RET #(); locked γ ∗ R }}}.
   Proof.
     iIntros (ϕ) "Hl HΦ". iDestruct "Hl" as (lo ln) "(% & #? & % & #?)".
     iLöb as "IH". wp_rec. wp_bind (! _)%E. subst. wp_proj.
@@ -132,7 +135,7 @@ Section proof.
       iModIntro. wp_if.
       iApply (wait_loop_spec γ (#lo, #ln) with "[-HΦ]").
       + rewrite /issued; eauto 10.
-      + by iNext. 
+      + by iNext.
     - wp_cas_fail.
       iMod ("Hclose" with "[Hlo' Hln' Hauth Haown]") as "_".
       { iNext. iExists o', n'. by iFrame. }
@@ -140,7 +143,7 @@ Section proof.
   Qed.
 
   Lemma release_spec γ lk R :
-    {{{ is_lock γ lk R ∗ locked γ ∗ R }}} release lk {{{ RET #(); True }}}.
+    {{{ is_lock γ lk R ∗ locked γ ∗ R }}} release lk @ p; ⊤ {{{ RET #(); True }}}.
   Proof.
     iIntros (Φ) "(Hl & Hγ & HR) HΦ". iDestruct "Hl" as (lo ln) "(% & #? & % & #?)"; subst.
     iDestruct "Hγ" as (o) "Hγo".
@@ -170,5 +173,5 @@ End proof.
 Typeclasses Opaque is_lock issued locked.
 
 Definition ticket_lock `{!heapG Σ, !tlockG Σ} : lock Σ :=
-  {| lock.locked_exclusive := locked_exclusive; lock.newlock_spec := newlock_spec;
+  {| lock.locked_exclusive := locked_exclusive; lock.newlock'_spec := newlock'_spec;
      lock.acquire_spec := acquire_spec; lock.release_spec := release_spec |}.
