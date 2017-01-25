@@ -16,15 +16,14 @@ Proof.
 Qed.
 
 Theorem heap_safety Σ `{heapPreG Σ} p e h1 t2 σ2 :
-  (∀ `{heapG Σ}, ∃ Φ, heap_ctx -∗ WP e @ p; ⊤ {{ Φ }}) →
+  (∀ `{heapG Σ}, heap_ctx -∗ WP e @ p; ⊤ {{ v, True }}) →
   rtc step ([e], good_state h1) (t2, σ2) → is_good σ2.
 Proof.
   intros Hwp Hsteps.
   apply: (ownP_invariance  _ p _ _ _ _ is_good) Hsteps=> /= ?.
   iIntros "Hσ". iMod (heap_ctx_alloc with "Hσ") as (γ) "#Hh".
   set G := (HeapG _  _ _ γ). iModIntro. iSplitL.
-  - case: (Hwp G) => Φ Hwp'. iExists Φ. by iApply Hwp'.
-  - by iApply (@heap_ctx_is_good _ G with "Hh").
+  by iApply (Hwp G). by iApply (@heap_ctx_is_good _ G).
 Qed.
 
 Corollary robust_safety Σ `{heapPreG Σ} C p e t2 σ2 :
@@ -33,9 +32,9 @@ Corollary robust_safety Σ `{heapPreG Σ} C p e t2 σ2 :
   rtc step ([ctx_fill C e], good_state ∅) (t2, σ2) → is_good σ2.
 Proof.
   move=>?? Hwp Hsteps. apply: (heap_safety Σ) Hsteps=>?.
-  exists low. iIntros "#Hh". rewrite (substitute_empty (ctx_fill _ _)).
-  iApply (robust_safety' with "[$Hh] [] [] []").
+  iIntros "#Hh". rewrite (substitute_empty (ctx_fill _ _)).
+  iApply (robust_safetyI with "[$Hh] [] [] []"); auto.
   - by iApply adv_ctx_low.
   - by rewrite low_env_empty.
-  - iAlways. iSplit. done. by iApply Hwp.
+  - iAlways. by iApply Hwp.
 Qed.

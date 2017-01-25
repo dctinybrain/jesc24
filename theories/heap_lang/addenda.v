@@ -290,7 +290,7 @@ Theorem wp_invariance Σ Λ `{invPreG Σ} p e σ1 t2 σ2 φ :
   (∀ `{Hinv : invG Σ},
      True ={⊤}=∗ ∃ stateI : state Λ → iProp Σ,
        let _ : irisG Λ Σ := IrisG _ _ Hinv stateI in
-       stateI σ1 ∗ (∃ Φ, WP e @ p; ⊤ {{ Φ }}) ∗ (stateI σ2 ={⊤,∅}=∗ ⌜φ⌝)) →
+       stateI σ1 ∗ WP e @ p; ⊤ {{ v, True }} ∗ (stateI σ2 ={⊤,∅}=∗ ⌜φ⌝)) →
   rtc step ([e], σ1) (t2, σ2) →
   φ.
 Proof.
@@ -299,7 +299,6 @@ Proof.
   rewrite Nat_iter_S. iMod wsat_alloc as (Hinv) "[Hw HE]".
   rewrite {1}fupd_eq in Hwp; iMod (Hwp with "[$Hw $HE]") as ">(Hw & HE & Hwp)".
   iDestruct "Hwp" as (Istate) "(HIstate & Hwp & Hclose)".
-  iDestruct "Hwp" as (Φ) "Hwp".
   iModIntro. iNext. iApply (@wptp_invariance _ _ (IrisG _ _ Hinv Istate)); eauto.
   iFrame "Hw HE Hwp HIstate Hclose". by iApply big_sepL_nil.
 Qed.
@@ -312,7 +311,7 @@ Import adequacy.
 
 Theorem ownP_invariance Σ `{ownPPreG Λ Σ} p e σ1 t2 σ2 φ :
   (∀ `{ownPG Λ Σ},
-    ownP σ1 ={⊤}=∗ (∃ Φ, WP e @ p; ⊤ {{ Φ }}) ∗ |={⊤,∅}=> ∃ σ', ownP σ' ∧ ⌜φ σ'⌝) →
+    ownP σ1 ={⊤}=∗ WP e @ p; ⊤ {{ v, True }} ∗ |={⊤,∅}=> ∃ σ', ownP σ' ∧ ⌜φ σ'⌝) →
   rtc step ([e], σ1) (t2, σ2) →
   φ σ2.
 Proof.

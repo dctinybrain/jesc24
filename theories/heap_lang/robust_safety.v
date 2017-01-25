@@ -1407,4 +1407,13 @@ Section robust_safety.
     - by rewrite -safe_cas_m.
     - by rewrite -safe_cas_r.
   Qed.
+
+  (** The internal version of [robust_safety]. *)
+  Corollary robust_safetyI C Γ p e Φ `{!Closed [] e} :
+    heap_ctx -∗ low C -∗ low Γ -∗ □ WP e @ p; ⊤ {{ low }} -∗
+    (∀ v, low v -∗ Φ v) -∗ WP substitute Γ (ctx_fill C e) ?{{ Φ }}.
+  Proof.
+    iIntros "Hh HC HΓ #He". rewrite -wp_wand.
+    iApply (robust_safety' with "[$Hh] [$HC] [$HΓ]"). by iAlways; iSplit.
+  Qed.
 End robust_safety.
