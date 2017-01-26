@@ -701,3 +701,163 @@ Section heap.
       iMod ("Hcl" with "* [Hh]") as "Ha"; first by eauto. by iApply "HΦ".
   Qed.
 End heap.
+
+(** * Eliminating low values *)
+(**
+  These lemmas are useful at the boundary between verified and
+  adversarial code.
+*)
+Section wp_low_val.
+  Context `{heapG Σ}.
+  Implicit Types e : expr.
+  Implicit Types v : val.
+
+  Lemma wp_low_val_app v1 v2 :
+    {{{ low v1 ∗ low v2 }}} App (of_val v1) (of_val v2)
+    ?{{{ v, RET v; low v }}}.
+  Proof.
+    iIntros (Φ) "#[Hv1 Hv2] HΦ".
+    case: (decide (is_rec (of_val v1)))=>Hrec;
+      last by iApply wp_stuck_app_nrec.
+    move: Hrec=>[] f [] x [] erec Hrec.
+    case: (decide (Closed (f :b: x :b: []) erec))=>?;
+      last by iApply wp_stuck_app_open.
+    have->: v1 = RecV f x erec.
+    { apply (inj Some). by rewrite -to_val_rec Hrec to_of_val. }
+    rewrite (low_val (RecV _ _ _)) always_elim.
+    iApply wp_rec; [done|by exists v2|]. iNext.
+    iApply (wp_wand with "[] [$HΦ]"). by iApply ("Hv1" with "[$Hv2]").
+  Qed.
+
+  Lemma un_op_eval_low op v1 v2 : un_op_eval op v1 = Some v2 → low v2.
+  Proof.
+    by case: op; case: v1=> // -[] // ? /= [] <-; rewrite low_val low_lit.
+  Qed.
+
+  Lemma wp_low_val_un_op E op v Φ :
+    ▷(∀ v, low v -∗ Φ v) -∗ WP UnOp op (of_val v) @ E ?{{ Φ }}.
+  Proof.
+    iIntros "HΦ".
+    case EV: (un_op_eval op v)=>[v'|]; last by iApply wp_stuck_un_op.
+    iApply wp_un_op; eauto. iNext.
+    iApply "HΦ". by iApply un_op_eval_low.
+  Qed.
+
+  Lemma bin_op_eval_low op v1 v2 v3 :
+    bin_op_eval op v1 v2 = Some v3 → low v3.
+  Proof.
+    case: op; try by case: v1=> // -[] // ?; case: v2=>// -[] // ? /= [] <-;
+      rewrite low_val low_lit.
+    by rewrite/bin_op_eval; case: (bool_decide _)=> -[] <-;
+      rewrite low_val low_lit.
+  Qed.
+
+  Lemma wp_low_val_bin_op E op v1 v2 Φ :
+    ▷(∀ v, low v -∗ Φ v) -∗ WP BinOp op (of_val v1) (of_val v2) @ E ?{{ Φ }}.
+  Proof.
+    iIntros "HΦ".
+    case EV: (bin_op_eval op v1 v2)=>[v'|]; last by iApply wp_stuck_bin_op.
+    iApply wp_bin_op; eauto. iNext.
+    iApply "HΦ". by iApply bin_op_eval_low.
+  Qed.
+
+  Lemma wp_low_val_if E v e1 e2 Φ :
+    ▷ (WP e1 @ E ?{{ Φ }} ∧ WP e2 @ E ?{{ Φ }}) -∗
+    WP If (of_val v) e1 e2 @ E ?{{ Φ }}.
+  Proof.
+    iIntros "Hes".
+    case: (decide (is_lit_bool (of_val v)))=>Hbool; last by iApply wp_stuck_if.
+    case: Hbool=>[] [] <-.
+    - iApply wp_if_true. iNext. by iDestruct "Hes" as "[? _]".
+    - iApply wp_if_false. iNext. by iDestruct "Hes" as "[_ ?]".
+  Qed.
+
+  Lemma wp_low_val_fst E v :
+    {{{ low v }}} Fst (of_val v) @ E ?{{{ v, RET v; low v }}}.
+  Proof.
+    iIntros (Φ) "#Hv HΦ".
+    case: (decide (is_pair_val (of_val v)))=>Hp; last by iApply wp_stuck_fst.
+    case: Hp=>e1 [] e2 [] [] v1 He1 [] [] v2 He2 Hp. rewrite Hp.
+    iApply wp_fst; [done|by exists v2|]. have->: v = PairV v1 v2.
+    { move: Hp He1 He2. case: v=> //= v1' v2' [] <-<-.
+      by rewrite 2!to_of_val => -[] -> [] ->. }
+    rewrite low_val. iDestruct "Hv" as "(Hv1&_)". iNext.
+    by iApply ("HΦ" with "[$Hv1]").
+  Qed.
+
+  Lemma wp_low_val_snd E v :
+    {{{ low v }}} Snd (of_val v) @ E ?{{{ v, RET v; low v }}}.
+  Proof.
+    iIntros (Φ) "#Hv HΦ".
+    case: (decide (is_pair_val (of_val v)))=>Hp; last by iApply wp_stuck_snd.
+    case: Hp=>e1 [] e2 [] [] v1 He1 [] [] v2 He2 Hp. rewrite Hp.
+    iApply wp_snd; [by exists v1|done|]. have->: v = PairV v1 v2.
+    { move: Hp He1 He2. case: v=> //= v1' v2' [] <-<-.
+      by rewrite 2!to_of_val => -[] -> [] ->. }
+    rewrite low_val. iDestruct "Hv" as "(_&Hv2)". iNext.
+    by iApply ("HΦ" with "[$Hv2]").
+  Qed.
+
+  Lemma wp_low_val_case E v e1 e2 Φ :
+    low v -∗
+    ▷ (∀ v0, low v0 -∗
+      WP App e1 (of_val v0) @ E ?{{ Φ }} ∧
+      WP App e2 (of_val v0) @ E ?{{ Φ }}) -∗
+    WP Case (of_val v) e1 e2 @ E ?{{ Φ }}.
+  Proof.
+    iIntros "#Hv Hk".
+    case: (decide (is_inj_val (of_val v)))=>Hc; last by iApply wp_stuck_case.
+    move: Hc=>[] e0 [] [] v0 He0 [] Hc; rewrite Hc -(of_to_val e0 v0) //.
+    - iApply wp_case_inl; first by exists v0.
+      have->: v = InjLV v0 by move: Hc He0; case: v => //= v' [] <-;
+        rewrite to_of_val => -[] ->.
+      rewrite low_val. iNext. setoid_rewrite and_elim_l.
+      by iApply ("Hk" with "[$Hv]").
+    - iApply wp_case_inr; first by exists v0.
+      have->: v = InjRV v0 by move: Hc He0; case: v => //= v' [] <-;
+        rewrite to_of_val => -[] ->.
+      rewrite low_val. iNext. setoid_rewrite and_elim_r.
+      by iApply ("Hk" with "[$Hv]").
+  Qed.
+
+  Lemma wp_low_val_load E v :
+    ↑heapN ⊆ E →
+    {{{ heap_ctx ∗ ▷low v }}} Load (of_val v) @ E ?{{{ v, RET v; low v }}}.
+  Proof.
+    iIntros (? Φ) "#(Hh&Hv) HΦ".
+    case: (decide (is_loc (of_val v)))=>Hl; last by iApply wp_stuck_load.
+    case: Hl=>l Hl. rewrite Hl.
+    iApply (wp_load_low with "[$Hh Hv] [$HΦ]"); first done.
+    have->: v = LitV (LitLoc l) by case: v Hl => // -[] //= ? [] ->.
+    rewrite low_val low_lit. by iFrame.
+  Qed.
+
+  Lemma wp_low_val_store E v1 v2 :
+    ↑heapN ⊆ E →
+    {{{ heap_ctx ∗ ▷low v1 ∗ ▷low v2 }}} Store (of_val v1) (of_val v2) @ E
+    ?{{{ v, RET v; low v }}}.
+  Proof.
+    iIntros (? Φ) "(Hh&Hv1&Hv2) HΦ".
+    case: (decide (is_loc (of_val v1)))=>Hl; last by iApply wp_stuck_store.
+    case: Hl=>l Hl. rewrite Hl.
+    iApply (wp_store_low with "[$Hh Hv1 $Hv2] [HΦ]"); [done|done| |].
+    - have->: v1 = LitV (LitLoc l) by case: v1 Hl => // -[] //= ? [] ->.
+      rewrite low_val low_lit. by iFrame.
+    - iNext. iIntros "_". iApply "HΦ". by rewrite low_val low_lit.
+  Qed.
+
+  Lemma wp_low_val_cas E v1 v2 v3 :
+    ↑heapN ⊆ E →
+    {{{ heap_ctx ∗ ▷low v1 ∗ ▷low v3 }}}
+      CAS (of_val v1) (of_val v2) (of_val v3) @ E
+    ?{{{ v, RET v; low v }}}.
+  Proof.
+    iIntros (? Φ) "(Hh&Hv1&Hv3) HΦ".
+    case: (decide (is_loc (of_val v1)))=>Hl; last by iApply wp_stuck_cas.
+    case: Hl=>l Hl. rewrite Hl.
+    iApply (wp_cas_low with "[$Hh Hv1 $Hv3] [HΦ]"); [done|done|done| |].
+    - have->: v1 = LitV (LitLoc l) by case: v1 Hl => // -[] //= ? [] ->.
+      rewrite low_val low_lit. by iFrame.
+    - iNext. iIntros (b) "_". iApply "HΦ". by rewrite low_val low_lit.
+  Qed.
+End wp_low_val.

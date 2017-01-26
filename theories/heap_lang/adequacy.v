@@ -26,13 +26,22 @@ Proof.
   by iApply (Hwp G). by iApply (@heap_ctx_is_good _ G).
 Qed.
 
+(*
+	PDS: This is just a special case of the more general
+	result with expression
+
+		C_1[e_1] ;; C_2[e_2] ;; ⋯ ;; C_n[e_n]
+
+	where each e_i is semantically low and each C_i
+	is adversarial.
+*)
 Corollary robust_safety Σ `{heapPreG Σ} C p e t2 σ2 :
   adv_ctx C → is_closed [] e →
   (∀ `{heapG Σ}, heap_ctx ⊢ WP e @ p; ⊤ {{ low }}) →
   rtc step ([ctx_fill C e], good_state ∅) (t2, σ2) → is_good σ2.
 Proof.
   move=>?? Hwp Hsteps. apply: (heap_safety Σ) Hsteps=>?.
-  iIntros "#Hh". rewrite (substitute_empty (ctx_fill _ _)).
+  iIntros "#Hh". rewrite -(substitute_empty (ctx_fill _ _)).
   iApply (robust_safetyI with "[$Hh] [] [] []"); auto.
   - by iApply adv_ctx_low.
   - by rewrite low_env_empty.
