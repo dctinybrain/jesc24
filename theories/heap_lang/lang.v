@@ -12,7 +12,9 @@ Definition loc := positive. (* Really, any countable type. *)
 Inductive base_lit : Set :=
   | LitInt (n : Z) | LitBool (b : bool) | LitUnit | LitLoc (l : loc).
 Inductive un_op : Set :=
-  | NegOp | MinusUnOp.
+  | NegOp | MinusUnOp
+  (* PDS: Hack. *)
+  | FunofOp | LitofOp | LocofOp | PairofOp | InlofOp | InrofOp.
 Inductive bin_op : Set :=
   | PlusOp | MinusOp | LeOp | LtOp | EqOp.
 
@@ -233,10 +235,26 @@ Definition subst' (mx : binder) (es : expr) : expr → expr :=
   match mx with BNamed x => subst x es | BAnon => id end.
 
 (** The stepping relation *)
+Notation NONEV := (InjLV (LitV LitUnit)) (only parsing).
+Notation SOMEV x := (InjRV x) (only parsing).
+
 Definition un_op_eval (op : un_op) (v : val) : option val :=
   match op, v with
   | NegOp, LitV (LitBool b) => Some $ LitV $ LitBool (negb b)
   | MinusUnOp, LitV (LitInt n) => Some $ LitV $ LitInt (- n)
+  (* PDS: Hack. *)
+  | FunofOp, RecV _ _ _ _ => Some $ SOMEV v
+  | FunofOp, _ => Some $ NONEV
+  | LitofOp, LitV _ => Some $ SOMEV v
+  | LitofOp, _ => Some $ NONEV
+  | LocofOp, LitV (LitLoc _) => Some $ SOMEV v
+  | LocofOp, _ => Some $ NONEV
+  | PairofOp, PairV _ _ => Some $ SOMEV v
+  | PairofOp, _ => Some $ NONEV
+  | InlofOp, InjLV v => Some $ SOMEV v
+  | InlofOp, _ => Some $ NONEV
+  | InrofOp, InjRV v => Some $ SOMEV v
+  | InrofOp, _ => Some $ NONEV
   | _, _ => None
   end.
 

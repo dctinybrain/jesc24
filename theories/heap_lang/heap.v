@@ -719,43 +719,54 @@ Section wp_low_val.
     iIntros (Φ) "#[Hv1 Hv2] HΦ".
     case: (decide (is_rec (of_val v1)))=>Hrec;
       last by iApply wp_stuck_app_nrec.
-    move: Hrec=>[] f [] x [] erec Hrec.
-    case: (decide (Closed (f :b: x :b: []) erec))=>?;
-      last by iApply wp_stuck_app_open.
-    have->: v1 = RecV f x erec.
-    { apply (inj Some). by rewrite -to_val_rec Hrec to_of_val. }
+    destruct (is_rec_val _ Hrec) as (f&x&e&?&->).
     rewrite (low_val (RecV _ _ _)) always_elim.
     iApply wp_rec; [done|by exists v2|]. iNext.
     iApply (wp_wand with "[] [$HΦ]"). by iApply ("Hv1" with "[$Hv2]").
   Qed.
 
-  Lemma un_op_eval_low op v1 v2 : un_op_eval op v1 = Some v2 → low v2.
+  Hint Extern 1 (_ -∗ low (LitInt _)) => rewrite (low_lit (LitInt _)).
+  Hint Extern 1 (_ -∗ low (LitBool _)) => rewrite (low_lit (LitBool _)).
+  Hint Extern 1 (_ -∗ low LitUnit) => rewrite (low_lit LitUnit).
+  Hint Extern 1 (_ -∗ low (LitV ?lit)) => rewrite (low_val (LitV lit)).
+  Hint Extern 1 (low (InjLV ?v) -∗ low (InjRV ?v)) =>
+    rewrite (low_val (InjLV v)) (low_val (InjRV v)).
+  Hint Extern 2 (_ -∗ low (InjLV ?v)) =>
+    rewrite (low_val (InjLV v)) -later_intro.
+  Hint Extern 2 (_ -∗ low (InjRV ?v)) =>
+    rewrite (low_val (InjRV v)) -later_intro.
+
+  Lemma un_op_eval_low op v1 v2 :
+    un_op_eval op v1 = Some v2 → low v1 -∗ low v2.
   Proof.
-    by case: op; case: v1=> // -[] // ? /= [] <-; rewrite low_val low_lit.
+    case: op; destruct v1 as [|lit| | |];
+    repeat (discriminate 1 || injection 1 as <- || destruct lit);
+    auto.
   Qed.
 
   Lemma wp_low_val_un_op E op v Φ :
-    ▷(∀ v, low v -∗ Φ v) -∗ WP UnOp op (of_val v) @ E ?{{ Φ }}.
+    low v -∗ ▷(∀ v, low v -∗ Φ v) -∗ WP UnOp op (of_val v) @ E ?{{ Φ }}.
   Proof.
-    iIntros "HΦ".
+    iIntros "Hv HΦ".
     case EV: (un_op_eval op v)=>[v'|]; last by iApply wp_stuck_un_op.
     iApply wp_un_op; eauto. iNext.
     iApply "HΦ". by iApply un_op_eval_low.
   Qed.
 
   Lemma bin_op_eval_low op v1 v2 v3 :
-    bin_op_eval op v1 v2 = Some v3 → low v3.
+    bin_op_eval op v1 v2 = Some v3 → low v1 ∗ low v2 -∗ low v3.
   Proof.
-    case: op; try by case: v1=> // -[] // ?; case: v2=>// -[] // ? /= [] <-;
-      rewrite low_val low_lit.
-    by rewrite/bin_op_eval; case: (bool_decide _)=> -[] <-;
-      rewrite low_val low_lit.
+    case: op; destruct v1 as [|lit1| | |]; destruct v2 as [|lit2| | |];
+    repeat (discriminate 1 || injection 1 as <- || destruct lit1
+      || destruct lit2);
+    auto.
   Qed.
 
   Lemma wp_low_val_bin_op E op v1 v2 Φ :
-    ▷(∀ v, low v -∗ Φ v) -∗ WP BinOp op (of_val v1) (of_val v2) @ E ?{{ Φ }}.
+    low v1 ∗ low v2 -∗ ▷(∀ v, low v -∗ Φ v) -∗
+    WP BinOp op (of_val v1) (of_val v2) @ E ?{{ Φ }}.
   Proof.
-    iIntros "HΦ".
+    iIntros "Hvi HΦ".
     case EV: (bin_op_eval op v1 v2)=>[v'|]; last by iApply wp_stuck_bin_op.
     iApply wp_bin_op; eauto. iNext.
     iApply "HΦ". by iApply bin_op_eval_low.
@@ -766,8 +777,8 @@ Section wp_low_val.
     WP If (of_val v) e1 e2 @ E ?{{ Φ }}.
   Proof.
     iIntros "Hes".
-    case: (decide (is_lit_bool (of_val v)))=>Hbool; last by iApply wp_stuck_if.
-    case: Hbool=>[] [] <-.
+    case: (decide (is_bool (of_val v)))=>Hbool; last by iApply wp_stuck_if.
+    case: Hbool=>-[]->.
     - iApply wp_if_true. iNext. by iDestruct "Hes" as "[? _]".
     - iApply wp_if_false. iNext. by iDestruct "Hes" as "[_ ?]".
   Qed.
@@ -776,11 +787,9 @@ Section wp_low_val.
     {{{ low v }}} Fst (of_val v) @ E ?{{{ v, RET v; low v }}}.
   Proof.
     iIntros (Φ) "#Hv HΦ".
-    case: (decide (is_pair_val (of_val v)))=>Hp; last by iApply wp_stuck_fst.
-    case: Hp=>e1 [] e2 [] [] v1 He1 [] [] v2 He2 Hp. rewrite Hp.
-    iApply wp_fst; [done|by exists v2|]. have->: v = PairV v1 v2.
-    { move: Hp He1 He2. case: v=> //= v1' v2' [] <-<-.
-      by rewrite 2!to_of_val => -[] -> [] ->. }
+    case: (decide (is_pair (of_val v)))=>Hp; last by iApply wp_stuck_fst.
+    destruct (is_pair_val _ Hp) as (v1&v2&->).
+    iApply wp_fst; [done|by exists v2|].
     rewrite low_val. iDestruct "Hv" as "(Hv1&_)". iNext.
     by iApply ("HΦ" with "[$Hv1]").
   Qed.
@@ -789,11 +798,9 @@ Section wp_low_val.
     {{{ low v }}} Snd (of_val v) @ E ?{{{ v, RET v; low v }}}.
   Proof.
     iIntros (Φ) "#Hv HΦ".
-    case: (decide (is_pair_val (of_val v)))=>Hp; last by iApply wp_stuck_snd.
-    case: Hp=>e1 [] e2 [] [] v1 He1 [] [] v2 He2 Hp. rewrite Hp.
-    iApply wp_snd; [by exists v1|done|]. have->: v = PairV v1 v2.
-    { move: Hp He1 He2. case: v=> //= v1' v2' [] <-<-.
-      by rewrite 2!to_of_val => -[] -> [] ->. }
+    case: (decide (is_pair (of_val v)))=>Hp; last by iApply wp_stuck_snd.
+    destruct (is_pair_val _ Hp) as (v1&v2&->).
+    iApply wp_snd; [by exists v1|done|].
     rewrite low_val. iDestruct "Hv" as "(_&Hv2)". iNext.
     by iApply ("HΦ" with "[$Hv2]").
   Qed.
@@ -806,16 +813,15 @@ Section wp_low_val.
     WP Case (of_val v) e1 e2 @ E ?{{ Φ }}.
   Proof.
     iIntros "#Hv Hk".
-    case: (decide (is_inj_val (of_val v)))=>Hc; last by iApply wp_stuck_case.
-    move: Hc=>[] e0 [] [] v0 He0 [] Hc; rewrite Hc -(of_to_val e0 v0) //.
-    - iApply wp_case_inl; first by exists v0.
-      have->: v = InjLV v0 by move: Hc He0; case: v => //= v' [] <-;
-        rewrite to_of_val => -[] ->.
+    case: (decide (is_inl (of_val v) ∨ is_inr (of_val v)))=>Hc;
+      last by iApply wp_stuck_case.
+    case: Hc=>[Hinl | Hinr].
+    - destruct (is_inl_val _ Hinl) as (v0&->).
+      iApply wp_case_inl; first by exists v0.
       rewrite low_val. iNext. setoid_rewrite and_elim_l.
       by iApply ("Hk" with "[$Hv]").
-    - iApply wp_case_inr; first by exists v0.
-      have->: v = InjRV v0 by move: Hc He0; case: v => //= v' [] <-;
-        rewrite to_of_val => -[] ->.
+    - destruct (is_inr_val _ Hinr) as (v0&->).
+      iApply wp_case_inr; first by exists v0.
       rewrite low_val. iNext. setoid_rewrite and_elim_r.
       by iApply ("Hk" with "[$Hv]").
   Qed.
@@ -826,9 +832,8 @@ Section wp_low_val.
   Proof.
     iIntros (? Φ) "#(Hh&Hv) HΦ".
     case: (decide (is_loc (of_val v)))=>Hl; last by iApply wp_stuck_load.
-    case: Hl=>l Hl. rewrite Hl.
+    destruct (is_loc_val _ Hl) as (l&->).
     iApply (wp_load_low with "[$Hh Hv] [$HΦ]"); first done.
-    have->: v = LitV (LitLoc l) by case: v Hl => // -[] //= ? [] ->.
     rewrite low_val low_lit. by iFrame.
   Qed.
 
@@ -839,10 +844,9 @@ Section wp_low_val.
   Proof.
     iIntros (? Φ) "(Hh&Hv1&Hv2) HΦ".
     case: (decide (is_loc (of_val v1)))=>Hl; last by iApply wp_stuck_store.
-    case: Hl=>l Hl. rewrite Hl.
+    destruct (is_loc_val _ Hl) as (l&->).
     iApply (wp_store_low with "[$Hh Hv1 $Hv2] [HΦ]"); [done|done| |].
-    - have->: v1 = LitV (LitLoc l) by case: v1 Hl => // -[] //= ? [] ->.
-      rewrite low_val low_lit. by iFrame.
+    - rewrite low_val low_lit. by iFrame.
     - iNext. iIntros "_". iApply "HΦ". by rewrite low_val low_lit.
   Qed.
 
@@ -854,10 +858,9 @@ Section wp_low_val.
   Proof.
     iIntros (? Φ) "(Hh&Hv1&Hv3) HΦ".
     case: (decide (is_loc (of_val v1)))=>Hl; last by iApply wp_stuck_cas.
-    case: Hl=>l Hl. rewrite Hl.
+    destruct (is_loc_val _ Hl) as (l&->).
     iApply (wp_cas_low with "[$Hh Hv1 $Hv3] [HΦ]"); [done|done|done| |].
-    - have->: v1 = LitV (LitLoc l) by case: v1 Hl => // -[] //= ? [] ->.
-      rewrite low_val low_lit. by iFrame.
+    - rewrite low_val low_lit. by iFrame.
     - iNext. iIntros (b) "_". iApply "HΦ". by rewrite low_val low_lit.
   Qed.
 End wp_low_val.

@@ -296,8 +296,8 @@ Section ftlr.
     iIntros "IHe". iIntros (γ Φ) "Hh Hγ He HΦ".
     rewrite low_expr substitute_expr.
     wp_bind (γ _). rewrite confined_alt.
-    iApply ("IHe" with "[$Hh] [$Hγ] [$He]"). iIntros (v) "_".
-    by iApply (wp_low_val_un_op with "[$HΦ]").
+    iApply ("IHe" with "[$Hh] [$Hγ] [$He]"). iIntros (v) "Hv".
+    by iApply (wp_low_val_un_op with "[$Hv] [$HΦ]").
   Qed.
   Hint Extern 1 (_ ⊢ confined (UnOp _ _)) => rewrite -confined_un_op.
 
@@ -308,10 +308,10 @@ Section ftlr.
     iIntros "[IHe1 IHe2]". iIntros (γ Φ) "#Hh #Hγ Hop HΦ".
     rewrite low_expr substitute_expr. iDestruct "Hop" as "(He1&He2)".
     wp_bind (γ _). rewrite confined_alt.
-    iApply ("IHe1" with "[$Hh] [$Hγ] [$He1]"). iIntros (v1) "_".
+    iApply ("IHe1" with "[$Hh] [$Hγ] [$He1]"). iIntros (v1) "Hv1".
     wp_bind (γ _). rewrite confined_alt.
-    iApply ("IHe2" with "[$Hh] [$Hγ] [$He2]"). iIntros (v2) "_".
-    by iApply (wp_low_val_bin_op with "[$HΦ]").
+    iApply ("IHe2" with "[$Hh] [$Hγ] [$He2]"). iIntros (v2) "Hv2".
+    by iApply (wp_low_val_bin_op with "[$Hv1 $Hv2] [$HΦ]").
   Qed.
   Hint Extern 1 (_ ⊢ confined (BinOp _ _ _)) => rewrite -confined_bin_op.
 
@@ -958,8 +958,8 @@ Section robust_safety.
     iIntros "IH". iIntros (γ p e Φ) "#Hh HC #Hγ He HΦ /=".
     rewrite low_ctx substitute_expr.
     wp_bind (γ _). rewrite safe_alt.
-    iApply ("IH" with "[$Hh] [$HC] [$Hγ] [$He]"). iIntros (v) "_".
-    by iApply (wp_low_val_un_op with "[$HΦ]").
+    iApply ("IH" with "[$Hh] [$HC] [$Hγ] [$He]"). iIntros (v) "Hv".
+    by iApply (wp_low_val_un_op with "[$Hv] [$HΦ]").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CUnOp _ _)) => rewrite -safe_un_op.
 
@@ -969,10 +969,10 @@ Section robust_safety.
     iIntros "IH". iIntros (γ p e Φ) "#Hh Hop #Hγ He HΦ /=".
     rewrite low_ctx substitute_expr. iDestruct "Hop" as "(HC1&He2)".
     wp_bind (γ _). rewrite safe_alt.
-    iApply ("IH" with "[$Hh] [$HC1] [$Hγ] [$He]"). iIntros (?) "_".
+    iApply ("IH" with "[$Hh] [$HC1] [$Hγ] [$He]"). iIntros (?) "Hv1".
     wp_bind (γ _).
-    iApply (ftlr with "[$Hh] [$Hγ] [$He2]"). iIntros (?) "_".
-    by iApply (wp_low_val_bin_op with "[$HΦ]").
+    iApply (ftlr with "[$Hh] [$Hγ] [$He2]"). iIntros (?) "Hv2".
+    by iApply (wp_low_val_bin_op with "[$Hv1 Hv2] [$HΦ]").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CBinOpL _ _ _)) => rewrite -safe_bin_op_l.
 
@@ -982,10 +982,10 @@ Section robust_safety.
     iIntros "IH". iIntros (γ p e Φ) "#Hh Hop #Hγ He HΦ /=".
     rewrite low_ctx substitute_expr. iDestruct "Hop" as "(He1&HC2)".
     wp_bind (γ _).
-    iApply (ftlr with "[$Hh] [$Hγ] [$He1]"). iIntros (?) "_".
+    iApply (ftlr with "[$Hh] [$Hγ] [$He1]"). iIntros (?) "Hv1".
     wp_bind (γ _). rewrite safe_alt.
-    iApply ("IH" with "[$Hh] [$HC2] [$Hγ] [$He]"). iIntros (?) "_".
-    by iApply (wp_low_val_bin_op with "[$HΦ]").
+    iApply ("IH" with "[$Hh] [$HC2] [$Hγ] [$He]"). iIntros (?) "Hv2".
+    by iApply (wp_low_val_bin_op with "[$Hv1 Hv2] [$HΦ]").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CBinOpR _ _ _)) => rewrite -safe_bin_op_r.
 

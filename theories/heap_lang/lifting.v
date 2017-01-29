@@ -51,6 +51,88 @@ Lemma wp_bindi {p E e} Ki Φ :
      WP fill_item Ki e @ p; E {{ Φ }}.
 Proof. exact: weakestpre.wp_bind. Qed.
 
+(** Cracking values *)
+
+Definition is_rec e : Prop := ∃ f x erec, e = Rec f x erec.
+Global Instance is_rec_dec e : Decision (is_rec e).
+Proof.
+  rewrite /is_rec. case: e; try by intros; right; naive_solver.
+  move=>f x e. left. by exists f, x, e.
+Defined.
+
+Definition is_lit e : Prop := ∃ lit, e = Lit lit.
+Global Instance is_lit_dec e : Decision (is_lit e).
+Proof.
+  rewrite /is_lit. destruct e; try by right; naive_solver.
+  by left; eexists.
+Defined.
+
+Definition is_loc e : Prop := ∃ l, e = Lit (LitLoc l).
+Global Instance is_loc_dec e : Decision (is_loc e).
+Proof.
+  rewrite /is_loc. case: e; try by intros; right; naive_solver.
+  case; try by intros; right; naive_solver. move=>l. left. by exists l.
+Defined.
+
+Definition is_bool e : Prop := ∃ b, e = Lit (LitBool b).
+Global Instance is_bool_dec e : Decision (is_bool e).
+Proof.
+  rewrite /is_bool. case: e; try by intros; right; naive_solver.
+  case; try by intros; right; naive_solver. move=>b. left. by exists b.
+Defined.
+
+Definition is_pair e : Prop := ∃ e1 e2, e = Pair e1 e2.
+Global Instance is_pair_dec e : Decision (is_pair e).
+Proof.
+  rewrite /is_pair. destruct e; try by right; naive_solver.
+  by left; do 2!eexists.
+Defined.
+
+Definition is_inl e : Prop := ∃ e1, e = InjL e1.
+Global Instance is_inl_dec e : Decision (is_inl e).
+Proof.
+  rewrite /is_inl. destruct e; try by right; naive_solver.
+  by left; eexists.
+Defined.
+
+Definition is_inr e : Prop := ∃ e1, e = InjR e1.
+Global Instance is_inr_dec e : Decision (is_inr e).
+Proof.
+  rewrite /is_inr. destruct e; try by right; naive_solver.
+  by left; eexists.
+Defined.
+
+Lemma is_val v :
+  let e := of_val v in is_rec e ∨ is_lit e ∨ is_pair e ∨ is_inl e ∨ is_inr e.
+Proof.
+  unfold is_rec, is_lit, is_pair, is_inl, is_inr. destruct v; naive_solver.
+Qed.
+
+Lemma is_val_exhaustive v :
+  let e := of_val v in
+  ¬ is_rec e → ¬ is_lit e → ¬ is_pair e → ¬ is_inl e → ¬ is_inr e → False.
+Proof. intros. move: (is_val v)=>?. naive_solver. Qed.
+
+Lemma is_rec_val v : is_rec (of_val v) → ∃ f x e C, v = @RecV f x e C.
+Proof.
+  case=>f [] x [] e. case: v=>// ??? C [] ???; subst. by exists f, x, e, C.
+Qed.
+
+Lemma is_loc_val v : is_loc (of_val v) → ∃ l, v = LitV (LitLoc l).
+Proof. case=>l. case: v=>// ? [] ?; subst. by exists l. Qed.
+
+Lemma is_lit_val v : is_lit (of_val v) → ∃ lit, v = LitV lit.
+Proof. case=>lit. case: v=>// ? [] ?; subst. by exists lit. Qed.
+
+Lemma is_pair_val v : is_pair (of_val v) → ∃ v1 v2, v = PairV v1 v2.
+Proof. case=>? [] ?. case: v=>// v1 v2 [] ??; subst. by exists v1, v2. Qed.
+
+Lemma is_inl_val v : is_inl (of_val v) → ∃ v1, v = InjLV v1.
+Proof. case=>? []. case: v=>// v1 [] ?; subst. by exists v1. Qed.
+
+Lemma is_inr_val v : is_inr (of_val v) → ∃ v1, v = InjRV v1.
+Proof. case=>? []. case: v=>// v1 [] ?; subst. by exists v1. Qed.
+
 (** Base axioms for core primitives of the language: Stateless reductions *)
 Lemma wp_stuck_var x E Φ : True ⊢ WP Var x @ E ?{{ Φ }}.
 Proof.
@@ -64,14 +146,6 @@ Proof.
   move=>?.
   apply wp_lift_pure_head_stuck; first by rewrite/=/to_val; case_decide.
   move=>[|Ki ?] /= ????? ?. by subst; inversion 1. by destruct Ki.
-Qed.
-
-Definition is_rec e : Prop := ∃ f x erec, Rec f x erec = e.
-
-Global Instance is_rec_dec e : Decision (is_rec e).
-Proof.
-  rewrite /is_rec. case: e; try by intros; right; naive_solver.
-  move=>f x e. left. by exists f, x, e.
 Qed.
 
 Lemma wp_stuck_app_nrec E e1 v1 e2 v2 Φ :
@@ -148,18 +222,10 @@ Proof.
   intros; inv_head_step; eauto.
 Qed.
 
-Definition is_lit_bool e : Prop := ∃ b, Lit (LitBool b) = e.
-
-Global Instance is_lit_bool_dec e : Decision (is_lit_bool e).
-Proof.
-  rewrite /is_lit_bool. case: e; try by intros; right; naive_solver.
-  case; try by intros; right; naive_solver. move=>b. left. by exists b.
-Qed.
-
 Lemma wp_stuck_if E e v e1 e2 Φ :
-  to_val e = Some v → ¬ is_lit_bool e → WP If e e1 e2 @ E ?{{ Φ }}%I.
+  to_val e = Some v → ¬ is_bool e → WP If e e1 e2 @ E ?{{ Φ }}%I.
 Proof.
-  rewrite/is_lit_bool=>??.
+  rewrite/is_bool=>??.
   apply wp_lift_pure_head_stuck=>//-[|Ki ?] /= ????? Hfill Hstep.
   { rewrite -Hfill in Hstep. inversion Hstep; subst; naive_solver. }
   case: Ki Hfill => //= ?? [] ???; subst. apply: stuck_by_val Hstep. naive_solver.
@@ -179,22 +245,12 @@ Proof.
   intros; inv_head_step; eauto.
 Qed.
 
-Definition is_pair_val e : Prop :=
-  ∃ e1 e2, is_Some (to_val e1) ∧ is_Some (to_val e2) ∧ e = Pair e1 e2.
-
-Global Instance is_pair_val_dec v : Decision (is_pair_val (of_val v)).
-Proof.
-  rewrite /is_pair_val. case: v; try by intros; right; naive_solver.
-  move=>v1 v2. left. do 2!eexists. by eauto using to_of_val.
-Qed.
-
 Lemma wp_stuck_fst E e v Φ :
-  to_val e = Some v → ¬ is_pair_val e → WP Fst e @ E ?{{ Φ }}%I.
+  to_val e = Some v → ¬ is_pair e → WP Fst e @ E ?{{ Φ }}%I.
 Proof.
-  rewrite/is_pair_val=>? Hp.
+  rewrite/is_pair=>??.
   apply wp_lift_pure_head_stuck=>//-[|Ki ?] /= ?? e2 ?? Hfill Hstep.
-  { rewrite -Hfill in Hstep. inversion Hstep; subst.
-    apply: Hp. eexists e2, _. naive_solver. }
+  { rewrite -Hfill in Hstep. inversion Hstep; subst. naive_solver. }
   case: Ki Hfill => //= [] ?; subst. apply: stuck_by_val Hstep. naive_solver.
 Qed.
 
@@ -208,12 +264,11 @@ Proof.
 Qed.
 
 Lemma wp_stuck_snd E e v Φ :
-  to_val e = Some v → ¬ is_pair_val e → WP Snd e @ E ?{{ Φ }}%I.
+  to_val e = Some v → ¬ is_pair e → WP Snd e @ E ?{{ Φ }}%I.
 Proof.
-  rewrite/is_pair_val=>? Hp.
+  rewrite/is_pair=>? ?.
   apply wp_lift_pure_head_stuck=>//-[|Ki ?] /= ?? e2 ?? Hfill Hstep.
-  { rewrite -Hfill in Hstep. inversion Hstep; subst.
-    apply: Hp. exists e1, e2. naive_solver. }
+  { rewrite -Hfill in Hstep. inversion Hstep; subst. naive_solver. }
   case: Ki Hfill => //= [] ?; subst. apply: stuck_by_val Hstep. naive_solver.
 Qed.
 
@@ -226,22 +281,13 @@ Proof.
   intros; inv_head_step; eauto.
 Qed.
 
-Definition is_inj_val e : Prop :=
-  ∃ e', is_Some (to_val e') ∧ (e = InjL e' ∨ e = InjR e').
-
-Global Instance is_inj_val_dec v : Decision (is_inj_val (of_val v)).
-Proof.
-  rewrite /is_inj_val. destruct v; solve
-    [by right; naive_solver | by left; eexists; eauto using to_of_val].
-Qed.
-
 Lemma wp_stuck_case E e v e1 e2 Φ :
-  to_val e = Some v → ¬ is_inj_val e → WP Case e e1 e2 @ E ?{{ Φ }}%I.
+  to_val e = Some v → ¬ (is_inl e ∨ is_inr e) →
+  WP Case e e1 e2 @ E ?{{ Φ }}%I.
 Proof.
-  rewrite/is_inj_val=>? Hs.
+  rewrite/is_inl/is_inr=>??.
   apply wp_lift_pure_head_stuck=>//-[|Ki ?] /= ????? Hfill Hstep.
-  { rewrite -Hfill in Hstep. inversion Hstep; subst;
-    apply: Hs; exists e0; naive_solver. }
+  { rewrite -Hfill in Hstep. inversion Hstep; subst; naive_solver. }
   case: Ki Hfill => //= ?? [] ???; subst. apply: stuck_by_val Hstep. naive_solver.
 Qed.
 
@@ -295,13 +341,6 @@ Proof.
   iSplitL; last by iApply big_sepL_nil. iApply "HΦ". by iSplit.
 Qed.
 
-Definition is_loc e : Prop := ∃ l, e = Lit (LitLoc l).
-
-Global Instance is_loc_dec e : Decision (is_loc e).
-Proof.
-  rewrite /is_loc. case: e; try by intros; right; naive_solver.
-  case; try by intros; right; naive_solver. move=>l. left. by exists l.
-Qed.
 
 Lemma wp_stuck_load E e v Φ :
   to_val e = Some v → ¬ is_loc e → WP Load e @ E ?{{ Φ }}%I.
@@ -424,5 +463,87 @@ Lemma wp_eq p E e1 e2 v1 v2 P Φ :
 Proof.
   intros. rewrite -wp_bin_op //; [].
   destruct (bool_decide_reflect (v1 = v2)); by eauto.
+Qed.
+
+Lemma wp_funof p E e v P Φ :
+  to_val e = Some v →
+  (is_rec e → P ⊢ ▷ Φ (SOMEV v)) →
+  (¬ is_rec e → P ⊢ ▷ Φ NONEV) →
+  P ⊢ WP UnOp FunofOp e @ p; E {{ Φ }}.
+Proof.
+  move=>?. rewrite -(of_to_val e v) // => ??.
+  case: (decide (is_rec (of_val v)))=>Hrec;
+    [>rewrite -wp_un_op //; first by auto..].
+  - by destruct (is_rec_val _ Hrec) as (?&?&?&?&->).
+  - destruct v; try done. exfalso. apply: Hrec. by exists f, x, e0.
+Qed.
+
+Lemma wp_litof p E e v P Φ :
+  to_val e = Some v →
+  (is_lit e → P ⊢ ▷ Φ (SOMEV v)) →
+  (¬ is_lit e → P ⊢ ▷ Φ NONEV) →
+  P ⊢ WP UnOp LitofOp e @ p; E {{ Φ }}.
+Proof.
+  move=>?. rewrite -(of_to_val e v) // => ??.
+  case: (decide (is_lit (of_val v)))=>Hlit;
+    [>rewrite -wp_un_op //; first by auto..].
+  - by destruct (is_lit_val _ Hlit) as (?&->).
+  - destruct v; try done. exfalso. apply: Hlit. by exists l.
+Qed.
+
+Lemma wp_locof p E e v P Φ :
+  to_val e = Some v →
+  (is_loc e → P ⊢ ▷ Φ (SOMEV v)) →
+  (¬ is_loc e → P ⊢ ▷ Φ NONEV) →
+  P ⊢ WP UnOp LocofOp e @ p; E {{ Φ }}.
+Proof.
+  move=>?. rewrite -(of_to_val e v) // => ??.
+  case: (decide (is_loc (of_val v)))=>Hloc;
+    [>rewrite -wp_un_op //; first by auto..].
+  - by destruct (is_loc_val _ Hloc) as (?&->).
+  - destruct v; try done. destruct l; try done.
+    exfalso. apply: Hloc. by exists l.
+Qed.
+
+Lemma wp_pairof p E e v P Φ :
+  to_val e = Some v →
+  (is_pair e → P ⊢ ▷ Φ (SOMEV v)) →
+  (¬ is_pair e → P ⊢ ▷ Φ NONEV) →
+  P ⊢ WP UnOp PairofOp e @ p; E {{ Φ }}.
+Proof.
+  move=>?. rewrite -(of_to_val e v) // => ??.
+  case: (decide (is_pair (of_val v)))=>Hp;
+    [>rewrite -wp_un_op //; first by auto..].
+  - by destruct (is_pair_val _ Hp) as (?&?&->).
+  - destruct v; try done. exfalso. apply: Hp.
+    by exists (of_val v1), (of_val v2).
+Qed.
+
+Lemma wp_inlof p E e1 v1 P Φ :
+  to_val e1 = Some v1 →
+  (∀ v2, v1 = InjLV v2 → P ⊢ ▷ Φ (SOMEV v2)) →
+  (¬ is_inl e1 → P ⊢ ▷ Φ NONEV) →
+  P ⊢ WP UnOp InlofOp e1 @ p; E {{ Φ }}.
+Proof.
+  move=>?. rewrite -(of_to_val e1 v1) // => HP HP'.
+  case: (decide (is_inl (of_val v1)))=>Hinl.
+  - destruct (is_inl_val _ Hinl) as (v2&HV).
+    rewrite -wp_un_op //; first exact: HP. by rewrite HV.
+  - rewrite -wp_un_op //; first exact: HP'. destruct v1; try done.
+    exfalso. apply: Hinl. by exists (of_val v1).
+Qed.
+
+Lemma wp_inrof p E e1 v1 P Φ :
+  to_val e1 = Some v1 →
+  (∀ v2, v1 = InjRV v2 → P ⊢ ▷ Φ (SOMEV v2)) →
+  (¬ is_inr e1 → P ⊢ ▷ Φ NONEV) →
+  P ⊢ WP UnOp InrofOp e1 @ p; E {{ Φ }}.
+Proof.
+  move=>?. rewrite -(of_to_val e1 v1) // => HP HP'.
+  case: (decide (is_inr (of_val v1)))=>Hinr.
+  - destruct (is_inr_val _ Hinr) as (v2&HV).
+    rewrite -wp_un_op //; first exact: HP. by rewrite HV.
+  - rewrite -wp_un_op //; first exact: HP'. destruct v1; try done.
+    exfalso. apply: Hinr. by exists (of_val v1).
 Qed.
 End lifting.

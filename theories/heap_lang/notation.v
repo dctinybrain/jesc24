@@ -52,6 +52,24 @@ Notation "'rec:' f x := e" := (locked (RecV f%bind x%bind e%E))
   (at level 102, f at level 1, x at level 1, e at level 200) : val_scope.
 Notation "'if:' e1 'then' e2 'else' e3" := (If e1%E e2%E e3%E)
   (at level 200, e1, e2, e3 at level 200) : expr_scope.
+Notation "'iffun:' e0 'as' x => e1 'else' e2" :=
+  (Match (UnOp FunofOp e0) BAnon e2 x%bind e1)
+  (at level 200, e0, x, e1, e2 at level 200, only parsing) : expr_scope.
+Notation "'iflit:' e0 'as' x => e1 'else' e2" :=
+  (Match (UnOp LitofOp e0) BAnon e2 x%bind e1)
+  (at level 200, e0, x, e1, e2 at level 200, only parsing) : expr_scope.
+Notation "'ifloc:' e0 'as' x => e1 'else' e2" :=
+  (Match (UnOp LocofOp e0) BAnon e2 x%bind e1)
+  (at level 200, e0, x, e1, e2 at level 200, only parsing) : expr_scope.
+Notation "'ifpair:' e0 'as' x  => e1 'else' e2" :=
+  (Match (UnOp PairofOp e0) BAnon e2 x%bind e1)
+  (at level 200, e0, x, e1, e2 at level 200, only parsing) : expr_scope.
+Notation "'ifinl:' e0 'as' x  => e1 'else' e2" :=
+  (Match (UnOp InlofOp e0) BAnon e2 x%bind e1)
+  (at level 200, e0, x, e1, e2 at level 200, only parsing) : expr_scope.
+Notation "'ifinr:' e0 'as' x  => e1 'else' e2" :=
+  (Match (UnOp InrofOp e0) BAnon e2 x%bind e1)
+  (at level 200, e0, x, e1, e2 at level 200, only parsing) : expr_scope.
 
 (** Derived notions, in order of declaration. The notations for let and seq
 are stated explicitly instead of relying on the Notations Let and Seq as
@@ -94,9 +112,6 @@ Notation "e1 || e2" :=
 (** Notations for option *)
 Notation NONE := (InjL #()) (only parsing).
 Notation SOME x := (InjR x) (only parsing).
-
-Notation NONEV := (InjLV #()) (only parsing).
-Notation SOMEV x := (InjRV x) (only parsing).
 
 Notation "'match:' e0 'with' 'NONE' => e1 | 'SOME' x => e2 'end'" :=
   (Match e0 BAnon e1 x%bind e2)

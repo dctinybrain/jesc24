@@ -15,9 +15,10 @@ Proof.
   iIntros "HΦ". rewrite /assume. wp_bind (Rec _ _ _).
   case: (decide (Closed [] e)) => ?; last by iApply wp_stuck_rec_open.
   wp_value. wp_let. wp_seq. iApply (wp_wand with "HΦ").
-  iIntros (v) "Hret". case: (decide (is_lit_bool v))=>Hb; last
-    by iApply wp_stuck_if; auto using to_of_val.
-  case: Hb=>[] b Hb. have {Hb}->: v = #b by apply (inj of_val); rewrite -Hb.
+  iIntros (v) "Hret". case: (decide (is_bool v))=>Hb;
+    last by iApply wp_stuck_if; auto using to_of_val.
+  destruct Hb as (b&Hb). have {Hb}->: v = LitV (LitBool b)
+    by move: Hb; case: v => // -[] // ? [] ?; subst.
   case: b.
   - iSpecialize ("Hret" with "[]"); first done. by wp_if.
   - iClear "Hret". wp_if. iApply wp_stuck_app_nrec.
