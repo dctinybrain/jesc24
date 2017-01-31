@@ -1,5 +1,5 @@
-From iris.heap_lang Require Export heap notation.
-From iris.heap_lang Require Import proofmode.
+From iris.heap_lang Require Export heap.
+From iris.heap_lang Require Import proofmode notation.
 From iris.proofmode Require Import tactics.
 Import uPred.
 
