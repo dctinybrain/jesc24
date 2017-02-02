@@ -76,10 +76,6 @@ Section ftlr.
   Qed.
   Hint Extern 1 (_ ⊢ confined (Var _)) => rewrite -confined_var.
 
-  Lemma of_val_rec f x e `{!Closed (f :b: x :b: []) e} :
-    Rec f x e = of_val (RecV f x e).
-  Proof. symmetry. apply of_to_val. exact: to_val_rec. Qed.
-
   Lemma confined_rec f x e : □ confined e -∗ confined (Rec f x e).
   Proof.
     iIntros "#IHe". iIntros (γ) "#Hh #Hγ #He".

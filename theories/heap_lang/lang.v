@@ -358,6 +358,10 @@ Lemma to_val_rec f x e `{!Closed (f :b: x :b: []) e} :
   to_val (Rec f x e) = Some (RecV f x e).
 Proof. rewrite /to_val. case_decide=> //. do 2 f_equal; apply proof_irrel. Qed.
 
+Lemma of_val_rec f x e `{!Closed (f :b: x :b: []) e} :
+  Rec f x e = of_val (RecV f x e).
+Proof. symmetry. apply of_to_val. exact: to_val_rec. Qed.
+
 (** Closed expressions *)
 Lemma is_closed_weaken X Y e : is_closed X e → X ⊆ Y → is_closed Y e.
 Proof. revert X Y; induction e; naive_solver (eauto; set_solver). Qed.
