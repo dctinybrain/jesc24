@@ -13,6 +13,153 @@ Import addenda.option addenda.gmap addenda.csum.
 Import addenda.auth.
 
 Local Hint Resolve to_of_val.
+Local Notation ext R := (pointwise_relation _ R).
+
+(** * Lifting location predicates to value predicates *)
+(**
+	Given a predicate [Ψ] on locations, the predicate [on_val Ψ]
+	on values lifts [Ψ] structurally. If [Ψ] is persistent, so is
+	[on_val Ψ].
+
+	[on_val Ψ] can be thought of as a semantic subtype of values
+	supporting introduction and elimination rules as follows.
+
+	_Introduction:_ Lifted values (i) include all locations
+	satisfying [Ψ] and all other base values and (ii) are closed
+	under function abstraction, pairing, and injections.
+
+	_Elimination:_ Heap resources (q.v.) for lifted locations are
+	determined by [Ψ]; otherwise, eliminating a lifted value
+	produces a lifted value.
+*)
+Section lift.
+  Context `{irisG heap_lang Σ} (Ψ : loc → iProp Σ).
+
+  Definition on_lit : base_lit → iProp Σ := λ lit,
+    match lit with
+    | LitLoc l => Ψ l
+    | LitInt _ | LitBool _ | LitUnit => True
+    end%I.
+
+  (**
+    When proving a function [on_val Ψ], one may use any invariant and
+    need not make progress.
+  *)
+  Definition on_val_pre (rec : val -c> iProp Σ) : val -c> iProp Σ := λ v,
+    match v with
+    | RecV f x e _ => □ ▷ ∀ v, rec v -∗
+      WP subst' x (of_val v) (subst' f (Rec f x e) e) ?{{ rec }}
+    | LitV lit => on_lit lit
+    | PairV v1 v2 => ▷(rec v1 ∗ rec v2)
+    | InjLV v | InjRV v => ▷(rec v)
+    end%I.
+
+  Instance on_val_pre_contractive : Contractive on_val_pre.
+  Proof.
+    rewrite /on_val_pre=> n rec rec' Hrec ?.
+    repeat (f_contractive || f_equiv); apply Hrec.
+  Qed.
+
+  Definition on_val : val → iProp Σ := fixpoint on_val_pre.
+
+  Lemma on_val_unfold v : on_val v ≡ on_val_pre on_val v.
+  Proof. exact: (fixpoint_unfold on_val_pre). Qed.
+
+  Section persistent.
+    Context (HΨ : ∀ l, PersistentP (Ψ l)).
+
+    Global Instance on_lit_persistent lit : PersistentP (on_lit lit).
+    Proof. destruct lit; apply _. Qed.
+
+    Global Instance on_val_persistent v : PersistentP (on_val v).
+    Proof.
+      iIntros "Hv". iLöb as "IH" forall (v).
+      rewrite on_val_unfold. destruct v.
+      - by iDestruct "Hv" as "#Hv".
+      - by iDestruct "Hv" as "#Hv".
+      - rewrite always_later. iNext. iDestruct "Hv" as "(Hv1&Hv2)".
+        iDestruct ("IH" with "* Hv1") as "#Hv1'". iClear "Hv1".
+        iDestruct ("IH" with "* Hv2") as "#Hv2'". iClear "Hv2".
+        iAlways. by iFrame "#".
+      - rewrite always_later. iNext. by iSpecialize ("IH" with "* Hv").
+      - rewrite always_later. iNext. by iSpecialize ("IH" with "* Hv").
+    Qed.
+  End persistent.
+
+  Section timeless.
+    Context (HΨ : ∀ l, TimelessP (Ψ l)).
+
+    Global Instance on_lit_timeless lit : TimelessP (on_lit lit).
+    Proof. destruct lit; apply _. Qed.
+
+    Global Instance on_val_lit_timeless lit : TimelessP (on_val (LitV lit)).
+    Proof. by rewrite /TimelessP on_val_unfold on_lit_timeless. Qed.
+  End timeless.
+
+  Section loc_except_0.
+    Context (HΨ : ∀ l, IsExcept0 (Ψ l)).
+
+    Global Instance on_lit_loc_except_0 l : IsExcept0 (on_lit (LitLoc l)).
+    Proof. rewrite /IsExcept0 /=. by rewrite is_except_0. Qed.
+
+    Global Instance on_val_loc_except_0 l :
+      IsExcept0 (on_val (LitV (LitLoc l))).
+    Proof. rewrite /IsExcept0 on_val_unfold /=. by rewrite is_except_0. Qed.
+  End loc_except_0.
+
+  Global Instance on_val_rec_except_0 f x e `{!Closed (f :b: x :b: []) e} :
+    IsExcept0 (on_val (RecV f x e)).
+  Proof.
+    rewrite /IsExcept0 on_val_unfold /=.
+    by rewrite except_0_always except_0_later.
+  Qed.
+  Global Instance on_val_pair_except_0 v1 v2 : IsExcept0 (on_val (PairV v1 v2)).
+  Proof. rewrite /IsExcept0 on_val_unfold /=. by rewrite except_0_later. Qed.
+  Global Instance on_val_inl_except_0 v : IsExcept0 (on_val (InjLV v)).
+  Proof. rewrite /IsExcept0 on_val_unfold /=. by rewrite except_0_later. Qed.
+  Global Instance on_val_inr_except_0 v : IsExcept0 (on_val (InjRV v)).
+  Proof. rewrite /IsExcept0 on_val_unfold /=. by rewrite except_0_later. Qed.
+
+  Lemma on_val_elim v :
+    on_val v ⊣⊢
+    match v with
+    | RecV f x e _ => □ ▷ ∀ v Φ, on_val v -∗ (∀ v', on_val v' -∗ Φ v') -∗
+      WP subst' x (of_val v) (subst' f (Rec f x e) e) ?{{ Φ }}
+    | LitV lit => on_lit lit
+    | PairV v1 v2 => ▷(on_val v1 ∗ on_val v2)
+    | InjLV v | InjRV v => ▷(on_val v)
+    end%I.
+  Proof.
+    rewrite on_val_unfold. destruct v; try done. iSplit.
+    - iIntros "#Hv !#". iNext. iIntros (v2 Φ) "Hv2". rewrite -wp_wand.
+      by iApply ("Hv" with "[$Hv2]").
+    - iIntros "#Hv !#". iNext. iIntros (v2) "Hv2".
+      iApply ("Hv" with "[$Hv2] []"). by iIntros.
+  Qed.
+End lift.
+
+Section lift_ne.
+  Context `{irisG heap_lang Σ}.
+
+  Global Instance on_lit_ne n :
+    Proper (ext (dist n) ==> (=) ==> dist n) (@on_lit Σ).
+  Proof. solve_proper. Qed.
+  Global Instance on_lit_proper : Proper (ext (≡) ==> (=) ==> (≡)) (@on_lit Σ).
+  Proof. solve_proper. Qed.
+
+  Instance on_val_pre_ne n :
+    Proper (ext (dist n) ==> (=) ==> ext (dist n)) on_val_pre.
+  Proof. solve_proper. Qed.
+  Global Instance on_val_ne n :
+    Proper (ext (dist n) ==> (=) ==> dist n) on_val_pre.
+  Proof. solve_proper. Qed.
+  Global Instance on_val_proper : Proper (ext (≡) ==> (=) ==> (≡)) on_val_pre.
+  Proof. solve_proper. Qed.
+End lift_ne.
+
+Typeclasses Opaque on_lit on_val.
+Instance: Params (@on_lit) 1.
+Instance: Params (@on_val) 2.
 
 (** The CMRA we need. *)
 Local Notation heap := (gmap loc val).
@@ -59,38 +206,13 @@ Section definitions.
   Definition mapsto_eq : @mapsto = @mapsto_def := proj2_sig mapsto_aux.
 
   (** Low locations. *)
-  Definition lowloc_def l : iProp Σ := auth_own γ {[l := Lval]}.
-  Definition lowloc_aux : { x | x = @lowloc_def }. by eexists. Qed.
-  Definition lowloc := proj1_sig lowloc_aux.
-  Definition lowloc_eq : @lowloc = @lowloc_def := proj2_sig lowloc_aux.
+  Definition lowloc'_def l : iProp Σ := auth_own γ {[l := Lval]}.
+  Definition lowloc'_aux : { x | x = @lowloc'_def }. by eexists. Qed.
+  Definition lowloc' := proj1_sig lowloc'_aux.
+  Definition lowloc'_eq : @lowloc' = @lowloc'_def := proj2_sig lowloc'_aux.
 
-  (**
-    Low values. When proving a function low, one may use any
-    invariant.
-  *)
-  Definition lowval_pre (rec : val -c> iProp Σ) : val -c> iProp Σ := λ v,
-    match v with
-    | RecV f x e _ => □ ▷ ∀ v, rec v -∗
-      WP subst' x (of_val v) (subst' f (Rec f x e) e) ?{{ rec }}
-    | LitV (LitLoc l) => lowloc l
-    | LitV (LitInt _ | LitBool _ | LitUnit) => True
-    | PairV v1 v2 => ▷(rec v1 ∗ rec v2)
-    | InjLV v | InjRV v => ▷(rec v)
-    end%I.
-
-  Instance lowval_pre_contractive : Contractive lowval_pre.
-  Proof.
-    rewrite /lowval_pre=> n rec rec' Hrec ?.
-    repeat (f_contractive || f_equiv); apply Hrec.
-  Qed.
-
-  Definition lowval_def : val → iProp Σ := fixpoint lowval_pre.
-  Definition lowval_aux : { x | x = @lowval_def }. by eexists. Qed.
-  Definition lowval := proj1_sig lowval_aux.
-  Definition lowval_eq : @lowval = @lowval_def := proj2_sig lowval_aux.
-
-  Lemma lowval_unfold v : lowval v ≡ lowval_pre lowval v.
-  Proof. rewrite lowval_eq. apply (fixpoint_unfold lowval_pre). Qed.
+  (** Low values. *)
+  Notation lowval := (on_val lowloc').
 
   (**
     Invariant: The state is good and maps every high location to its
@@ -116,10 +238,10 @@ Section definitions.
   Global Instance heap_ctx_persistent : PersistentP heap_ctx'.
   Proof. apply _. Qed.
 End definitions.
-Typeclasses Opaque mapsto lowloc lowval.
+Typeclasses Opaque mapsto lowloc'.
+(* PDS: heap_ctx' not opaque because we lack some instances. *)
 Instance: Params (@mapsto) 2.
-Instance: Params (@lowloc) 2.
-Instance: Params (@lowval) 3.
+Instance: Params (@lowloc') 2.
 Instance: Params (@heap_ctx') 3.
 
 Notation "l ↦{ q } v" := (mapsto heap_name l q v)
@@ -130,6 +252,7 @@ Notation "l ↦{ q } -" := (∃ v, l ↦{q} v)%I
   (at level 20, q at level 50, format "l  ↦{ q }  -") : uPred_scope.
 Notation "l ↦ -" := (l ↦{1} -)%I (at level 20) : uPred_scope.
 
+Notation lowloc := (lowloc' heap_name).
 Notation heap_ctx := (heap_ctx' heap_name).
 Local Notation hinv := (hinv' heap_name).
 
@@ -163,36 +286,39 @@ Qed.
 (** * Low integrity predicates *)
 Class LowIntegrity Σ (A : Type) := Low {
   low : A → iProp Σ;
-  low_persistent a :> PersistentP (low a)
+  low_persistent a : PersistentP (low a);
+  low_ne n : Proper ((=) ==> dist n) low
 }.
-Arguments Low {_ _} _ _.
+Arguments Low {_ _} _ _ _.
 Arguments low {_ _ _} _ : simpl never.
 Instance: Params (@low) 3.
+
+Existing Instance low_persistent.
+Existing Instance low_ne.
+Instance low_proper `{LowIntegrity Σ A} : Proper ((=) ==> (≡)) low.
+Proof. solve_proper. Qed.
 
 Section low.
   Context `{heapG Σ}.
 
-  (** Low locations are defined by [lowloc]. *)
-  Global Instance lowloc_persistent l : PersistentP (lowloc heap_name l).
-  Proof. rewrite lowloc_eq /lowloc_def. apply _. Qed.
-  Global Instance loc_low : LowIntegrity Σ loc := Low (lowloc heap_name) _.
+  (**
+    Locations start off high and may be marked low by the
+    (irreversible) ghost move [heap_mark_low].
+  *)
+  Global Instance lowloc_persistent l : PersistentP (lowloc l).
+  Proof. rewrite lowloc'_eq /lowloc'_def. apply _. Qed.
+  Global Instance loc_low : LowIntegrity Σ loc := Low lowloc _ _.
   Global Instance loc_low_timeless (l : loc) : TimelessP (low l).
-  Proof. rewrite /low/= lowloc_eq /lowloc_def. apply _. Qed.
+  Proof. rewrite /low/= lowloc'_eq /lowloc'_def. apply _. Qed.
 
-  Lemma low_loc l : low l ⊣⊢ lowloc heap_name l.
-  Proof. by []. Qed.
+  Lemma low_loc l : low l ⊣⊢ lowloc l. Proof. by []. Qed.
 
-  (** Literals other than locations are automatically low. *)
-  Definition lowlit : base_lit → iProp Σ :=
-    λ lit, match lit with
-    | LitInt _ | LitBool _ | LitUnit => True
-    | LitLoc l => low l
-    end%I.
-  Global Instance lowlit_persistent lit : PersistentP (lowlit lit).
-  Proof. case: lit; apply _. Qed.
-  Global Instance lit_low : LowIntegrity Σ base_lit := Low lowlit _.
+  (** Literals other than locations are trivially low. *)
+  Global Instance lit_low : LowIntegrity Σ base_lit := Low (on_lit lowloc) _ _.
   Global Instance lit_low_timeless (lit : base_lit) : TimelessP (low lit).
-  Proof. case: lit; apply _. Qed.
+  Proof. apply _. Qed.
+
+  Lemma low_lit_eq lit : low lit ⊣⊢ on_lit lowloc lit. Proof. by []. Qed.
 
   Lemma low_lit lit :
     low lit ⊣⊢
@@ -204,7 +330,7 @@ Section low.
 
   (**
     A (syntactically) low expression contains neither assertions nor
-    high locations. (We reserve assertions for verified code.)
+    high locations. We reserve assertions for verified code.
   *)
   Definition lowexpr : expr → iProp Σ :=
     fix rec e := match e with
@@ -222,7 +348,7 @@ Section low.
   Proof.
     rewrite/lowexpr; elim: e=>//; rewrite-/lowexpr; by apply _.
   Qed.
-  Global Instance lowexpr_low : LowIntegrity Σ expr := Low lowexpr _.
+  Global Instance lowexpr_low : LowIntegrity Σ expr := Low lowexpr _ _.
   Global Instance lowexpr_low_timeless (e : expr) : TimelessP (low e).
   Proof.
     rewrite/lowexpr; elim: e=>//; rewrite-/lowexpr; by apply _.
@@ -243,57 +369,33 @@ Section low.
     end.
   Proof. by case: e. Qed.
 
-  (** Low values are defined by [lowval]. *)
-  Global Instance lowval_persistent v : PersistentP (lowval heap_name v).
-  Proof.
-    iIntros "Hv". iLöb as "IH" forall (v). rewrite lowval_unfold /lowval_pre.
-    destruct v.
-    - by iDestruct "Hv" as "#Hv".
-    - by iDestruct "Hv" as "#Hv".
-    - rewrite always_later. iNext. iDestruct "Hv" as "(Hv1&Hv2)".
-      iDestruct ("IH" with "* Hv1") as "#Hv1'".
-      iDestruct ("IH" with "* Hv2") as "#Hv2'". iClear "Hv1 Hv2".
-      iAlways. by iFrame "#".
-    - rewrite always_later. iNext. by iSpecialize ("IH" with "* Hv").
-    - rewrite always_later. iNext. by iSpecialize ("IH" with "* Hv").
-  Qed.
-  Global Instance val_low : LowIntegrity Σ val := Low (lowval heap_name) _.
+  (** Low values lift low locations to values. *)
+  Global Instance val_low : LowIntegrity Σ val := Low (on_val lowloc) _ _.
 
-  Lemma lowval_low v : low v ⊣⊢ lowval heap_name v.
-  Proof. by []. Qed.
+  Lemma low_val_eq v : low v ⊣⊢ on_val lowloc v. Proof. by []. Qed.
 
   Lemma low_val v :
     low v ⊣⊢
     match v with
-    | RecV f x e _ => □ ▷ ∀ v, low v -∗
-      WP subst' x (of_val v) (subst' f (Rec f x e) e) ?{{ low }}
+    | RecV f x e _ => □ ▷ ∀ v Φ, low v -∗ (∀ v', low v' -∗ Φ v') -∗
+      WP subst' x (of_val v) (subst' f (Rec f x e) e) ?{{ Φ }}
     | LitV lit => low lit
     | PairV v1 v2 => ▷ (low v1 ∗ low v2)
     | InjLV v | InjRV v => ▷ low v
     end.
-  Proof. by destruct v; rewrite lowval_low lowval_unfold. Qed.
+  Proof. by rewrite low_val_eq on_val_elim. Qed.
 
-  Lemma low_rec f x e `{!Closed (f :b: x :b: []) e} :
-    low (RecV f x e) ⊣⊢
-    □ ▷ ∀ v Φ, low v -∗ (∀ v, low v -∗ Φ v) -∗
-    WP subst' x (of_val v) (subst' f (Rec f x e) e) ?{{ Φ }}.
-  Proof.
-    rewrite low_val. iSplit.
-    - iIntros "#Hv !#". iNext. iIntros (v2 Φ) "#Hv2 HΦ".
-      iApply (wp_wand with "[Hv Hv2] [$HΦ]"). by iApply ("Hv" with "[$Hv2]").
-    - iIntros "#Hv !#". iNext. iIntros (v2) "#Hv2".
-      iApply ("Hv" with "[$Hv2] []"). by iIntros.
-  Qed.
-
-  Global Instance val_low_lit_timeless lit : TimelessP (low (LitV lit)).
-  Proof. by rewrite /TimelessP low_val lit_low_timeless. Qed.
-(* Also sound, but who cares?
-  Global Instance low_rec_except_0 f x e `{!Closed (f :b: x :b: []) e} :
+  Global Instance low_val_lit_timeless lit : TimelessP (low (LitV lit)).
+  Proof. apply _. Qed.
+  Global Instance low_val_rec_except_0 f x e `{!Closed (f :b: x :b: []) e} :
     IsExcept0 (low (RecV f x e)).
-  Global Instance low_pair_except_0 v1 v2 : IsExcept0 (low (PairV v1 v2)).
-  Global Instance low_inj_l_except_0 v : IsExcept0 (low (InjLV v)).
-  Global Instance low_inj_r_except_0 v : IsExcept0 (low (InjRV v)).
-*)
+  Proof. apply _. Qed.
+  Global Instance low_val_pair_except_0 v1 v2 : IsExcept0 (low (PairV v1 v2)).
+  Proof. apply _. Qed.
+  Global Instance low_val_inl_except_0 v : IsExcept0 (low (InjLV v)).
+  Proof. apply _. Qed.
+  Global Instance low_val_inr_except_0 v : IsExcept0 (low (InjRV v)).
+  Proof. apply _. Qed.
 End low.
 
 (** * Bookkeeping lemmas *)
@@ -490,7 +592,7 @@ Section heap.
   (** High and low locations are disjoint. *)
   Lemma high_not_low l q v : l ↦{q} v ∗ low l ⊢ False.
   Proof.
-    by rewrite mapsto_eq low_loc lowloc_eq
+    by rewrite mapsto_eq low_loc lowloc'_eq
       -auth_own_op auth_own_valid discrete_valid
       op_singleton singleton_valid.
   Qed.
@@ -548,7 +650,7 @@ Section heap.
     iDestruct (hinv_mark_low with "Hh Hv Hlow") as "Hh"; [done|done|].
     iMod ("Hcl" with "* [Hh]") as "Ha".
     - iFrame. iPureIntro. exact: to_heap_mark_low.
-    - by rewrite low_loc lowloc_eq /lowloc_def.
+    - by rewrite low_loc lowloc'_eq /lowloc'_def.
   Qed.
 
   (** Heap rules for high and low locations. *)
@@ -600,7 +702,7 @@ Section heap.
     {{{ v, RET v; low v }}}.
   Proof.
     iIntros (? Φ) "[#Hinv >Hl] HΦ".
-    rewrite /heap_ctx low_loc lowloc_eq /lowloc_def.
+    rewrite /heap_ctx low_loc lowloc'_eq /lowloc'_def.
     iMod (auth_open_strong with "[$Hinv $Hl]")
       as ([h h']) "(%&%&[Hh Hlow]&Hcl)"; first done.
     case: (to_heap_low_included h h' l) => // ? [v ?].
@@ -634,7 +736,7 @@ Section heap.
     {{{ RET LitV LitUnit; True }}}.
   Proof.
     iIntros (<-%of_to_val ? Φ) "(#Hinv&>Hl&Hv) HΦ".
-    rewrite /heap_ctx low_loc lowloc_eq /lowloc_def.
+    rewrite /heap_ctx low_loc lowloc'_eq /lowloc'_def.
     iMod (auth_open_strong with "[$Hinv $Hl]")
       as ([h h']) "(%&%&[Hh Hlow]&Hcl)"; first done.
     case: (to_heap_low_included h h' l) => // ? [v' ?].
@@ -684,7 +786,7 @@ Section heap.
     {{{ b, RET LitV (LitBool b); True }}}.
   Proof.
     iIntros (<-%of_to_val <-%of_to_val ? Φ) "(#Hinv&>Hl&Hv) HΦ".
-    rewrite /heap_ctx low_loc lowloc_eq /lowloc_def.
+    rewrite /heap_ctx low_loc lowloc'_eq /lowloc'_def.
     iMod (auth_open_strong with "[$Hinv $Hl]")
       as ([h h']) "(%&%&[Hh Hlow]&Hcl)"; first done.
     case: (to_heap_low_included h h' l) => // ? [v' ?].
@@ -702,77 +804,76 @@ Section heap.
   Qed.
 End heap.
 
-(** * Eliminating low values *)
+(** * Eliminating lifted/low values *)
 (**
   These lemmas are useful at the boundary between verified and
   adversarial code.
 *)
-Section wp_low_val.
-  Context `{heapG Σ}.
+Section wp_on_val.
+  Context `{heapG Σ} (Ψ : loc → iProp Σ).
   Implicit Types e : expr.
   Implicit Types v : val.
 
-  Lemma wp_low_val_app v1 v2 :
-    {{{ low v1 ∗ low v2 }}} App (of_val v1) (of_val v2)
-    ?{{{ v, RET v; low v }}}.
+  Lemma wp_on_val_app v1 v2 :
+    {{{ on_val Ψ v1 ∗ on_val Ψ v2 }}} App (of_val v1) (of_val v2)
+    ?{{{ v, RET v; on_val Ψ v }}}.
   Proof.
-    iIntros (Φ) "#[Hv1 Hv2] HΦ".
+    iIntros (Φ) "[Hv1 Hv2] HΦ".
     case: (decide (is_rec (of_val v1)))=>Hrec;
       last by iApply wp_stuck_app_nrec.
     destruct (is_rec_val _ Hrec) as (f&x&e&?&->).
-    rewrite (low_val (RecV _ _ _)) always_elim.
+    rewrite (on_val_elim _ (RecV _ _ _)) always_elim.
     iApply wp_rec; [done|by exists v2|]. iNext.
-    iApply (wp_wand with "[] [$HΦ]"). by iApply ("Hv1" with "[$Hv2]").
+    by iApply ("Hv1" with "[$Hv2]").
   Qed.
 
-  Hint Extern 1 (_ -∗ low (LitInt _)) => rewrite (low_lit (LitInt _)).
-  Hint Extern 1 (_ -∗ low (LitBool _)) => rewrite (low_lit (LitBool _)).
-  Hint Extern 1 (_ -∗ low LitUnit) => rewrite (low_lit LitUnit).
-  Hint Extern 1 (_ -∗ low (LitV ?lit)) => rewrite (low_val (LitV lit)).
-  Hint Extern 1 (low (InjLV ?v) -∗ low (InjRV ?v)) =>
-    rewrite (low_val (InjLV v)) (low_val (InjRV v)).
-  Hint Extern 2 (_ -∗ low (InjLV ?v)) =>
-    rewrite (low_val (InjLV v)) -later_intro.
-  Hint Extern 2 (_ -∗ low (InjRV ?v)) =>
-    rewrite (low_val (InjRV v)) -later_intro.
+  Hint Extern 1 (_ -∗ on_val Ψ (LitV ?lit)) =>
+    rewrite (on_val_elim Ψ (LitV lit)) /=.
+  Hint Extern 1 (on_val Ψ (InjLV ?v) -∗ on_val Ψ (InjRV ?v)) =>
+    rewrite (on_val_elim Ψ (InjLV v)) (on_val_elim Ψ (InjRV v)).
+  Hint Extern 2 (_ -∗ on_val Ψ (InjLV ?v)) =>
+    rewrite (on_val_elim Ψ (InjLV v)) -later_intro.
+  Hint Extern 2 (_ -∗ on_val Ψ (InjRV ?v)) =>
+    rewrite (on_val_elim Ψ (InjRV v)) -later_intro.
 
-  Lemma un_op_eval_low op v1 v2 :
-    un_op_eval op v1 = Some v2 → low v1 -∗ low v2.
+  Lemma on_val_un_op_eval op v1 v2 :
+    un_op_eval op v1 = Some v2 →
+    on_val Ψ v1 -∗ on_val Ψ v2.
   Proof.
     case: op; destruct v1 as [|lit| | |];
-    repeat (discriminate 1 || injection 1 as <- || destruct lit);
-    auto.
+    repeat (discriminate 1 || injection 1 as <- || destruct lit); auto.
   Qed.
 
-  Lemma wp_low_val_un_op E op v Φ :
-    low v -∗ ▷(∀ v, low v -∗ Φ v) -∗ WP UnOp op (of_val v) @ E ?{{ Φ }}.
+  Lemma wp_on_val_un_op E op v :
+    {{{ on_val Ψ v }}} UnOp op (of_val v) @ E ?{{{ v', RET v'; on_val Ψ v' }}}.
   Proof.
-    iIntros "Hv HΦ".
+    iIntros (Φ) "Hv HΦ".
     case EV: (un_op_eval op v)=>[v'|]; last by iApply wp_stuck_un_op.
     iApply wp_un_op; eauto. iNext.
-    iApply "HΦ". by iApply un_op_eval_low.
+    iApply "HΦ". by iApply on_val_un_op_eval.
   Qed.
 
-  Lemma bin_op_eval_low op v1 v2 v3 :
-    bin_op_eval op v1 v2 = Some v3 → low v1 ∗ low v2 -∗ low v3.
+  Lemma on_val_bin_op_eval op v1 v2 v3 :
+    bin_op_eval op v1 v2 = Some v3 →
+    on_val Ψ v1 ∗ on_val Ψ v2 -∗ on_val Ψ v3.
   Proof.
     case: op; destruct v1 as [|lit1| | |]; destruct v2 as [|lit2| | |];
     repeat (discriminate 1 || injection 1 as <- || destruct lit1
-      || destruct lit2);
-    auto.
+      || destruct lit2); auto.
   Qed.
 
-  Lemma wp_low_val_bin_op E op v1 v2 Φ :
-    low v1 ∗ low v2 -∗ ▷(∀ v, low v -∗ Φ v) -∗
-    WP BinOp op (of_val v1) (of_val v2) @ E ?{{ Φ }}.
+  Lemma wp_on_val_bin_op E op v1 v2 :
+    {{{ on_val Ψ v1 ∗ on_val Ψ v2 }}} BinOp op (of_val v1) (of_val v2) @ E
+    ?{{{ v', RET v'; on_val Ψ v' }}}.
   Proof.
-    iIntros "Hvi HΦ".
+    iIntros (Φ) "Hvi HΦ".
     case EV: (bin_op_eval op v1 v2)=>[v'|]; last by iApply wp_stuck_bin_op.
     iApply wp_bin_op; eauto. iNext.
-    iApply "HΦ". by iApply bin_op_eval_low.
+    iApply "HΦ". by iApply on_val_bin_op_eval.
   Qed.
 
-  Lemma wp_low_val_if E v e1 e2 Φ :
+  (* Misnamed. *)
+  Lemma wp_on_val_if E v e1 e2 Φ :
     ▷ (WP e1 @ E ?{{ Φ }} ∧ WP e2 @ E ?{{ Φ }}) -∗
     WP If (of_val v) e1 e2 @ E ?{{ Φ }}.
   Proof.
@@ -783,54 +884,59 @@ Section wp_low_val.
     - iApply wp_if_false. iNext. by iDestruct "Hes" as "[_ ?]".
   Qed.
 
-  Lemma wp_low_val_fst E v :
-    {{{ low v }}} Fst (of_val v) @ E ?{{{ v, RET v; low v }}}.
+  Lemma wp_on_val_fst E v :
+    {{{ on_val Ψ v }}} Fst (of_val v) @ E ?{{{ v', RET v'; on_val Ψ v' }}}.
   Proof.
-    iIntros (Φ) "#Hv HΦ".
+    iIntros (Φ) "Hv HΦ".
     case: (decide (is_pair (of_val v)))=>Hp; last by iApply wp_stuck_fst.
     destruct (is_pair_val _ Hp) as (v1&v2&->).
     iApply wp_fst; [done|by exists v2|].
-    rewrite low_val. iDestruct "Hv" as "(Hv1&_)". iNext.
+    rewrite ->on_val_elim. iDestruct "Hv" as "(Hv1&_)". iNext.
     by iApply ("HΦ" with "[$Hv1]").
   Qed.
 
-  Lemma wp_low_val_snd E v :
-    {{{ low v }}} Snd (of_val v) @ E ?{{{ v, RET v; low v }}}.
+  Lemma wp_on_val_snd E v :
+    {{{ on_val Ψ v }}} Snd (of_val v) @ E ?{{{ v', RET v'; on_val Ψ v' }}}.
   Proof.
-    iIntros (Φ) "#Hv HΦ".
+    iIntros (Φ) "Hv HΦ".
     case: (decide (is_pair (of_val v)))=>Hp; last by iApply wp_stuck_snd.
     destruct (is_pair_val _ Hp) as (v1&v2&->).
     iApply wp_snd; [by exists v1|done|].
-    rewrite low_val. iDestruct "Hv" as "(_&Hv2)". iNext.
+    rewrite ->on_val_elim. iDestruct "Hv" as "(_&Hv2)". iNext.
     by iApply ("HΦ" with "[$Hv2]").
   Qed.
 
-  Lemma wp_low_val_case E v e1 e2 Φ :
-    low v -∗
-    ▷ (∀ v0, low v0 -∗
+  Lemma wp_on_val_case E v e1 e2 Φ :
+    on_val Ψ v -∗
+    ▷ (∀ v0, on_val Ψ v0 -∗
       WP App e1 (of_val v0) @ E ?{{ Φ }} ∧
       WP App e2 (of_val v0) @ E ?{{ Φ }}) -∗
     WP Case (of_val v) e1 e2 @ E ?{{ Φ }}.
   Proof.
-    iIntros "#Hv Hk".
+    iIntros "Hv Hk".
     case: (decide (is_inl (of_val v) ∨ is_inr (of_val v)))=>Hc;
       last by iApply wp_stuck_case.
     case: Hc=>[Hinl | Hinr].
     - destruct (is_inl_val _ Hinl) as (v0&->).
       iApply wp_case_inl; first by exists v0.
-      rewrite low_val. iNext. setoid_rewrite and_elim_l.
+      rewrite on_val_elim. iNext. setoid_rewrite and_elim_l.
       by iApply ("Hk" with "[$Hv]").
     - destruct (is_inr_val _ Hinr) as (v0&->).
       iApply wp_case_inr; first by exists v0.
-      rewrite low_val. iNext. setoid_rewrite and_elim_r.
+      rewrite on_val_elim. iNext. setoid_rewrite and_elim_r.
       by iApply ("Hk" with "[$Hv]").
   Qed.
 
+  (**
+    The following are fundamental. By the heap invariant, one can
+    always eliminate low values.
+  *)
+
   Lemma wp_low_val_load E v :
     ↑heapN ⊆ E →
-    {{{ heap_ctx ∗ ▷low v }}} Load (of_val v) @ E ?{{{ v, RET v; low v }}}.
+    {{{ heap_ctx ∗ ▷ low v }}} Load (of_val v) @ E ?{{{ v', RET v'; low v' }}}.
   Proof.
-    iIntros (? Φ) "#(Hh&Hv) HΦ".
+    iIntros (? Φ) "(Hh&Hv) HΦ".
     case: (decide (is_loc (of_val v)))=>Hl; last by iApply wp_stuck_load.
     destruct (is_loc_val _ Hl) as (l&->).
     iApply (wp_load_low with "[$Hh Hv] [$HΦ]"); first done.
@@ -839,8 +945,8 @@ Section wp_low_val.
 
   Lemma wp_low_val_store E v1 v2 :
     ↑heapN ⊆ E →
-    {{{ heap_ctx ∗ ▷low v1 ∗ ▷low v2 }}} Store (of_val v1) (of_val v2) @ E
-    ?{{{ v, RET v; low v }}}.
+    {{{ heap_ctx ∗ ▷ low v1 ∗ ▷ low v2 }}} Store (of_val v1) (of_val v2) @ E
+    ?{{{ v', RET v'; low v' }}}.
   Proof.
     iIntros (? Φ) "(Hh&Hv1&Hv2) HΦ".
     case: (decide (is_loc (of_val v1)))=>Hl; last by iApply wp_stuck_store.
@@ -852,9 +958,9 @@ Section wp_low_val.
 
   Lemma wp_low_val_cas E v1 v2 v3 :
     ↑heapN ⊆ E →
-    {{{ heap_ctx ∗ ▷low v1 ∗ ▷low v3 }}}
+    {{{ heap_ctx ∗ ▷ low v1 ∗ ▷ low v3 }}}
       CAS (of_val v1) (of_val v2) (of_val v3) @ E
-    ?{{{ v, RET v; low v }}}.
+    ?{{{ v', RET v'; low v' }}}.
   Proof.
     iIntros (? Φ) "(Hh&Hv1&Hv3) HΦ".
     case: (decide (is_loc (of_val v1)))=>Hl; last by iApply wp_stuck_cas.
@@ -863,4 +969,4 @@ Section wp_low_val.
     - rewrite low_val low_lit. by iFrame.
     - iNext. iIntros (b) "_". iApply "HΦ". by rewrite low_val low_lit.
   Qed.
-End wp_low_val.
+End wp_on_val.

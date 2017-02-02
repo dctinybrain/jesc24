@@ -40,7 +40,7 @@ Inductive expr :=
   | Rec (f x : binder) (e : expr)
   | App (e1 e2 : expr)
   (* Base types and their operations *)
-  | Lit (l : base_lit)
+  | Lit (lit : base_lit)
   | UnOp (op : un_op) (e : expr)
   | BinOp (op : bin_op) (e1 e2 : expr)
   | If (e0 e1 e2 : expr)
@@ -86,7 +86,7 @@ Proof. rewrite /Closed. apply _. Qed.
 
 Inductive val :=
   | RecV (f x : binder) (e : expr) `{!Closed (f :b: x :b: []) e}
-  | LitV (l : base_lit)
+  | LitV (lit : base_lit)
   | PairV (v1 v2 : val)
   | InjLV (v : val)
   | InjRV (v : val).

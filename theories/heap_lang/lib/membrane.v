@@ -99,78 +99,6 @@ Section is_mon.
 End is_mon.
 Typeclasses Opaque is_mon.
 
-(** * Lifting location predicates to value predicates *)
-(**
-	Given a predicate [Ψ] on locations, the predicate [lift Ψ] on
-	values lifts [Ψ] structurally. If [Ψ] is persistent, so is
-	[lift Ψ].
-
-	Introduction: Lifted values (i) include all locations
-	satisfying [Ψ] and all other base values and (ii) are closed
-	under function abstraction, pairing, and injections.
-
-	Elimination: Heap resources for lifted locations are
-	determined by [Ψ]; otherwise, eliminating a lifted value
-	produces a lifted value.
-
-	For the membrane verification, the salient point is that [lift
-	Ψ (Rec f x e)] comprises a weakest-precondition for [e].
-*)
-Section lift.
-  Context `{heapG Σ} (Ψ : loc → iProp Σ).
-
-  Definition lift_pre (rec : val -c> iProp Σ) : val -c> iProp Σ := λ v,
-    match v with
-    | RecV f x e _ => □ ▷ ∀ v Φ, rec v -∗ (∀ v, rec v -∗ Φ v) -∗
-      WP subst' x (of_val v) (subst' f (Rec f x e) e) ?{{ Φ }}
-    | LitV (LitLoc l) => Ψ l
-    | LitV (LitInt _ | LitBool _ | LitUnit) => True
-    | PairV v1 v2 => ▷(rec v1 ∗ rec v2)
-    | InjLV v | InjRV v => ▷(rec v)
-    end%I.
-
-  Instance lift_pre_contractive : Contractive lift_pre.
-  Proof.
-    rewrite /lift_pre=> n rec rec' Hrec ?.
-    repeat (f_contractive || f_equiv); apply Hrec.
-  Qed.
-
-  Definition lift : val → iProp Σ := fixpoint lift_pre.
-
-  Lemma lift_unfold v : lift v ≡ lift_pre lift v.
-  Proof. exact: (fixpoint_unfold lift_pre). Qed.
-
-  Global Instance lift_persistent v :
-    (∀ l, PersistentP (Ψ l)) → PersistentP (lift v).
-  Proof.
-    move=>Hloc. iIntros "Hv". iLöb as "IH" forall (v).
-    rewrite lift_unfold. case: v.
-    - intros. by iDestruct "Hv" as "#Hv".
-    - by case; intros; iDestruct "Hv" as "#Hv".
-    - intros. rewrite always_later. iNext. iDestruct "Hv" as "(Hv1&Hv2)".
-      iDestruct ("IH" with "* Hv1") as "#Hv1'". iClear "Hv1".
-      iDestruct ("IH" with "* Hv2") as "#Hv2'". iClear "Hv2".
-      iAlways. by iFrame "#".
-    - intros. rewrite always_later. iNext.
-      by iSpecialize ("IH" with "* Hv").
-    - intros. rewrite always_later. iNext.
-      by iSpecialize ("IH" with "* Hv").
-  Qed.
-
-  Lemma lift_elim v :
-    lift v ⊣⊢
-    match v with
-    | RecV f x e _ => □ ▷ ∀ v Φ, lift v -∗ (∀ v, lift v -∗ Φ v) -∗
-      WP subst' x (of_val v) (subst' f (Rec f x e) e) ?{{ Φ }}
-    | LitV (LitLoc l) => Ψ l
-    | LitV (LitInt _ | LitBool _ | LitUnit) => True
-    | PairV v1 v2 => ▷(lift v1 ∗ lift v2)
-    | InjLV v | InjRV v => ▷(lift v)
-    end%I.
-  Proof. rewrite lift_unfold. by case: v. Qed.
-End lift.
-Typeclasses Opaque lift.
-
 (** * Membrane proof *)
 
 Section proof.
@@ -182,9 +110,9 @@ Section proof.
   Lemma wrap_unwrap :
     is_mon of_loc locout Ψ low -∗
     is_mon of_loc locin low Ψ -∗
-    □ ((∀ p E Φ, ▷(∀ v, is_mon id v (lift Ψ) low -∗ Φ v) -∗
+    □ ((∀ p E Φ, ▷(∀ v, is_mon id v (on_val Ψ) low -∗ Φ v) -∗
       WP membrane locout locin @ p; E {{ Φ }}) ∗
-     (∀ p E Φ, ▷(∀ v, is_mon id v low (lift Ψ) -∗ Φ v) -∗
+     (∀ p E Φ, ▷(∀ v, is_mon id v low (on_val Ψ) -∗ Φ v) -∗
       WP membrane locin locout @ p; E {{ Φ }}))%I.
   Proof.
     iIntros "#Hlocout #Hlocin".
@@ -201,11 +129,11 @@ Section proof.
       + iClear "Hlocout Hlocin".
         (* Unfold Hv early, to eat the later. *)
         destruct (is_rec_val _ Hrec) as (f&x&erec&?&->).
-          rewrite lift_elim always_elim. wp_match.
+          rewrite on_val_elim always_elim. wp_match.
         wp_apply "IHmku". iIntros (unwrap) "#Hunwrap". iClear "IHmku".
           rewrite/is_mon. wp_let.
         iApply "HΦ". clear Φ.
-        rewrite low_rec. iAlways. iNext. iIntros (v1 Φ) "Hv1 HΦ".
+        rewrite low_val. iAlways. iNext. iIntros (v1 Φ) "Hv1 HΦ".
           simpl_subst.
         wp_apply ("Hunwrap" with "* [$Hv1]"). iIntros (v2) "Hv2". wp_rec.
         wp_apply ("Hv" with "[$Hv2]"). iIntros (v3) "Hv3".
@@ -218,13 +146,14 @@ Section proof.
 
         (* Wrapping locations. *)
         wp_typecast Hloc; wp_match.
-        * destruct (is_loc_val _ Hloc) as (l&->). rewrite lift_elim /is_mon.
+        * destruct (is_loc_val _ Hloc) as (l&->).
+            rewrite on_val_elim /= /is_mon.
           wp_apply ("Hlocout" with "* [$Hv]"). iIntros (v1) "Hv1".
-          iApply "HΦ". by rewrite low_val.
+          iApply "HΦ". by rewrite low_val low_lit.
 
         (* Wrapping other literals. *)
         iApply "HΦ". destruct (is_lit_val _ Hlit) as (lit&HV).
-          rewrite HV low_val. rewrite HV /is_loc in Hloc.
+          rewrite HV low_val low_lit. rewrite HV /is_loc in Hloc.
         case: lit Hloc {Hlit HV} => // l Hloc. by exfalso; eauto.
       iClear "Hlocout".
 
@@ -232,7 +161,7 @@ Section proof.
       wp_typecast Hp.
       + (* Unfold Hv early, to eat the later. *)
         destruct (is_pair_val _ Hp) as (v1&v2&->).
-          rewrite lift_elim. iDestruct "Hv" as "#(Hv1 & Hv2)".
+          rewrite on_val_elim. iDestruct "Hv" as "#(Hv1 & Hv2)".
           wp_match. wp_proj.
         wp_apply ("Hwrap" with "* [$Hv1]"). iIntros (v'1) "Hv'1". wp_let.
           wp_proj.
@@ -243,7 +172,7 @@ Section proof.
       (* Wrapping left injections. *)
       wp_typecast v0 Hinl.
       + (* Unfold Hv early, to eat the later. *)
-        rewrite Hinl lift_elim. wp_match.
+        rewrite Hinl on_val_elim /=. wp_match.
         wp_apply ("Hwrap" with "* [$Hv]"). iIntros (v1) "Hv1". wp_value.
         iApply "HΦ". rewrite (low_val (InjLV _)). by iFrame.
       wp_match.
@@ -251,7 +180,7 @@ Section proof.
       (* Wrapping right injections. *)
       wp_typecast v0 Hinr.
       + (* Unfold Hv early, to eat the later. *)
-        rewrite Hinr lift_elim. wp_match.
+        rewrite Hinr on_val_elim /=. wp_match.
         wp_apply ("Hwrap" with "* [$Hv]"). iIntros (v1) "Hv1". wp_value.
         iApply "HΦ". rewrite (low_val (InjRV _)). by iFrame.
       wp_match.
@@ -267,11 +196,11 @@ Section proof.
       + iClear "Hlocout Hlocin".
         (* Unfold Hv early, to eat the later. *)
         destruct (is_rec_val v Hrec) as (f&x&erec&?&->).
-          rewrite low_rec always_elim. wp_match.
+          rewrite low_val always_elim. wp_match.
         wp_apply "IHmkw". iIntros (wrap) "#Hwrap". iClear "IHmkw".
           rewrite/is_mon. wp_let.
         iApply "HΦ". clear Φ.
-        rewrite lift_elim. iAlways. iNext. iIntros (v1 Φ) "Hv1 HΦ".
+        rewrite on_val_elim. iAlways. iNext. iIntros (v1 Φ) "Hv1 HΦ".
           simpl_subst.
         wp_apply ("Hwrap" with "* [$Hv1]"). iIntros (v2) "Hv2". wp_rec.
         wp_apply ("Hv" with "[$Hv2]"). iIntros (v3) "Hv3".
@@ -284,14 +213,15 @@ Section proof.
 
         (* Unwrapping locations. *)
         wp_typecast Hloc; wp_match.
-        * destruct (is_loc_val _ Hloc) as (l1&->). rewrite low_val /is_mon.
+        * destruct (is_loc_val _ Hloc) as (l1&->).
+            rewrite low_val low_lit /is_mon.
           wp_apply ("Hlocin" with "* [$Hv]"). iIntros (l2) "Hl2".
-          iApply "HΦ". by rewrite lift_elim.
+          iApply "HΦ". by rewrite on_val_elim /=.
 
         (* Unwrapping other literals. *)
         iApply "HΦ". destruct (is_lit_val _ Hlit) as (lit&HV).
-          rewrite HV lift_elim. rewrite HV /is_loc in Hloc.
-        case: lit Hloc {Hlit HV} => // l Hloc. by exfalso; eauto.
+          rewrite HV low_val on_val_elim. rewrite HV /is_loc in Hloc.
+        case: lit Hloc {Hlit HV} => //= l Hloc. by exfalso; eauto.
       iClear "Hlocin".
 
       (* Unwrapping pairs. *)
@@ -303,7 +233,7 @@ Section proof.
         wp_apply ("Hunwrap" with "* [$Hv1]"). iIntros (v'1) "Hv'1". wp_let.
           wp_proj.
         wp_apply ("Hunwrap" with "* [$Hv2]"). iIntros (v'2) "Hv'2". wp_let.
-        iApply "HΦ". rewrite (lift_elim _ (PairV _ _)). by iFrame.
+        iApply "HΦ". rewrite (on_val_elim _ (PairV _ _)). by iFrame.
       wp_match.
 
       (* Unwrapping left injections. *)
@@ -311,7 +241,7 @@ Section proof.
       + (* Unfold Hv early, to eat the later. *)
         rewrite Hinl (low_val (InjLV _)). wp_match.
         wp_apply ("Hunwrap" with "* [$Hv]"). iIntros (v1) "Hv1". wp_value.
-        iApply "HΦ". rewrite (lift_elim _ (InjLV _)). by iFrame.
+        iApply "HΦ". rewrite (on_val_elim _ (InjLV _)). by iFrame.
       wp_match.
 
       (* Unwrapping right injections. *)
@@ -319,20 +249,20 @@ Section proof.
       + (* Unfold Hv early, to eat the later. *)
         rewrite Hinr (low_val (InjRV _)). wp_match.
         wp_apply ("Hunwrap" with "* [$Hv]"). iIntros (v1) "Hv1". wp_value.
-        iApply "HΦ". rewrite (lift_elim _ (InjRV _)). by iFrame.
+        iApply "HΦ". rewrite (on_val_elim _ (InjRV _)). by iFrame.
       wp_match.
       iExFalso. iPureIntro. exact: is_val_exhaustive.
   Qed.
 
   (**
 	The membrane lifts reference monitors (of type [Ψ ↔ low]) on
-	locations to reference monitors (of type [lift Ψ → low]) on
+	locations to reference monitors (of type [on_val Ψ → low]) on
 	values.
   *)
   Lemma membrane_spec p E :
     {{{ is_mon of_loc locout Ψ low ∗ is_mon of_loc locin low Ψ }}}
       membrane locout locin @ p; E
-    {{{ wrap, RET wrap; is_mon id wrap (lift Ψ) low }}}.
+    {{{ wrap, RET wrap; is_mon id wrap (on_val Ψ) low }}}.
   Proof.
     iIntros (Φ) "[Hout Hin] HΦ".
     iDestruct (wrap_unwrap with "[$Hout] [$Hin]") as "(Hw & _)".

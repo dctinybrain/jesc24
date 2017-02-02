@@ -124,8 +124,8 @@ Section nonblocking.
       iDestruct "Hl" as "(Hsmall&Hlarge)". wp_let.
     set res := (caretaker_res l R)%I; iAssert res with "[Hsmall]" as "Hr";
       first by iExists false; iFrame.
-    wp_bind (make_sync _ _). iApply (make_sync_spec _ _ _ res with "[$Hh $Hr]");
-      first done. iNext. iIntros (sync) "#Hsync". wp_let.
+    wp_apply (make_sync_spec _ _ _ res with "[$Hh $Hr]"); first done.
+      iIntros (sync) "#Hsync". wp_let.
     iApply ("HΦ" $! _ l). iFrame. iExists sync. by iFrame "# %".
   Qed.
 
@@ -136,14 +136,15 @@ Section nonblocking.
     iIntros "#Hf !#". iIntros (Φ) "Hct HΦ".
       iDestruct "Hct" as (sync) "(%&#Hh&%&#Hsync)". subst.
       wp_lam. wp_let. iApply "HΦ". clear Φ.
-    rewrite low_rec. iAlways. iNext. iIntros (v Φ) "#Hv HΦ". simpl_subst.
-    wp_bind (Fst _). wp_proj. wp_value. rewrite/is_sync.
-      iApply ("Hsync" with "[%]"). iClear "Hsync".
+    rewrite low_val. iAlways. iNext. iIntros (v Φ) "#Hv HΦ". simpl_subst.
+      wp_proj. rewrite/is_sync.
+    wp_apply ("Hsync" with "[%]"). iClear "Hsync".
       iIntros (Ψ) "HR HΨ". iDestruct "HR" as (b) "(Hl&Hr)".
-    wp_bind (assume _)%E. iApply wp_assume. wp_proj. wp_load.
+    wp_apply wp_assume. wp_proj. wp_load.
       iIntros "Hb". iDestruct "Hb" as %[= Hb]. subst. iNext. wp_seq.
-    setoid_rewrite always_elim. iApply ("Hf" with "[$Hv $Hr]").
-      iClear (v) "Hf Hv". iNext. iIntros (v) "(Hv&Hr)".
+      setoid_rewrite always_elim.
+    wp_apply ("Hf" with "[$Hv $Hr]").
+      iClear (v) "Hf Hv". iIntros (v) "(Hv&Hr)".
     iApply ("HΨ" with "[Hl Hr]"). by iExists true; iFrame. by iApply "HΦ".
   Qed.
 
@@ -153,8 +154,8 @@ Section nonblocking.
   Proof.
     iIntros (Φ) "[Hct (Hlarge&Hr)] HΦ".
       iDestruct "Hct" as (sync) "(%&#Hh&%&#Hsync)". subst. wp_lam.
-    wp_bind (Fst _). wp_proj. wp_value. rewrite/is_sync.
-      iApply ("Hsync" with "[%]"). iIntros (Ψ) "HR HΨ".
+      wp_proj. rewrite/is_sync.
+    wp_apply ("Hsync" with "[%]"). iIntros (Ψ) "HR HΨ".
       iDestruct "HR" as (b) "(Hsmall&_)".
     iDestruct (mapsto_agree with "[$Hlarge $Hsmall]") as %[=<-].
       iCombine "Hsmall" "Hlarge" as "Hl". rewrite caretaker_split.
@@ -169,8 +170,8 @@ Section nonblocking.
   Proof.
     iIntros (Φ) "[Hct Hlarge] HΦ".
       iDestruct "Hct" as (sync) "(%&#Hh&%&#Hsync)". subst. wp_lam.
-    wp_bind (Fst _). wp_proj. wp_value. rewrite/is_sync.
-      iApply ("Hsync" with "[%]"). iIntros (Ψ) "HR HΨ".
+      wp_proj. rewrite/is_sync.
+    wp_apply ("Hsync" with "[%]"). iIntros (Ψ) "HR HΨ".
       iDestruct "HR" as (b) "(Hsmall&Hr)".
     iDestruct (mapsto_agree with "[$Hlarge $Hsmall]") as %[=<-].
       iCombine "Hsmall" "Hlarge" as "Hl". rewrite caretaker_split.
@@ -265,13 +266,13 @@ Section proof.
     {{{ is_caretaker γ ct R }}} wrap L ct f @ p; ⊤ {{{ v, RET v; low v }}}.
   Proof.
     iIntros "#Hf !#". iIntros (Φ) "#Hct HΦ". wp_lam. wp_lam.
-    iApply "HΦ". rewrite low_rec. iAlways. iNext. clear Φ.
+    iApply "HΦ". clear Φ. rewrite low_val. iAlways. iNext.
       iIntros (v Φ) "Hv HΦ". simpl_subst.
-    wp_bind (sync_with _ _). iApply (sync_with_spec with "[$Hct]").
-      iNext. iIntros (sync) "#Hsync".
-    rewrite/is_sync. iApply ("Hsync" with "[%]"). iIntros (Ψ) "Hr HΨ".
-    setoid_rewrite always_elim. iApply ("Hf" with "[$Hv $Hr]").
-      iNext. clear v. iIntros (v) "[Hv Hr]".
+    wp_apply (sync_with_spec with "[$Hct]"). iIntros (sync) "#Hsync".
+      rewrite/is_sync.
+    wp_apply ("Hsync" with "[%]"). iIntros (Ψ) "Hr HΨ".
+      setoid_rewrite always_elim.
+    wp_apply ("Hf" with "[$Hv $Hr]"). clear v. iIntros (v) "[Hv Hr]".
     iApply ("HΨ" with "Hr"). by iApply "HΦ".
   Qed.
 
@@ -280,8 +281,7 @@ Section proof.
     {{{ RET #(); enabled γ true }}}.
   Proof.
     iIntros (Φ) "(Hct & (Htok & Hlock) & Hr) HΦ". rewrite/enable.
-    iApply (release_spec with "[$Hct $Hlock $Hr]"). iNext.
-      rewrite wand_True.
+    wp_apply (release_spec with "[$Hct $Hlock $Hr]"). rewrite wand_True.
     by iApply ("HΦ" with "[$Htok]").
   Qed.
 
@@ -290,8 +290,8 @@ Section proof.
     {{{ RET #(); enabled γ false ∗ R }}}.
   Proof.
     iIntros (Φ) "(Hct & (Htok & Hlock)) HΦ". rewrite/disable.
-    iApply (acquire_spec with "[$Hct $Hlock]"). iNext.
-    iIntros "(Hlock & Hr)". by iApply ("HΦ" with "[$Htok $Hlock $Hr]").
+    wp_apply (acquire_spec with "[$Hct $Hlock]"). iIntros "(Hlock & Hr)".
+    by iApply ("HΦ" with "[$Htok $Hlock $Hr]").
   Qed.
 End proof.
 Typeclasses Opaque is_caretaker enabled.

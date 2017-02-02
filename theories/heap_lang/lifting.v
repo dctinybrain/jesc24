@@ -488,7 +488,7 @@ Proof.
   case: (decide (is_lit (of_val v)))=>Hlit;
     [>rewrite -wp_un_op //; first by auto..].
   - by destruct (is_lit_val _ Hlit) as (?&->).
-  - destruct v; try done. exfalso. apply: Hlit. by exists l.
+  - destruct v; try done. exfalso. apply: Hlit. by exists lit.
 Qed.
 
 Lemma wp_locof p E e v P Φ :
@@ -501,7 +501,7 @@ Proof.
   case: (decide (is_loc (of_val v)))=>Hloc;
     [>rewrite -wp_un_op //; first by auto..].
   - by destruct (is_loc_val _ Hloc) as (?&->).
-  - destruct v; try done. destruct l; try done.
+  - destruct v; try done. destruct lit; try done.
     exfalso. apply: Hloc. by exists l.
 Qed.
 

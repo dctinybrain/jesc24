@@ -27,7 +27,8 @@ Section ftlr.
   Implicit Types e : expr.
   Implicit Types v : val.
 
-  Global Instance env_low : LowIntegrity Σ env := Low (λ γ, [∗ map] v ∈ γ, low v)%I _.
+  Global Instance env_low : LowIntegrity Σ env :=
+    Low (λ γ, [∗ map] v ∈ γ, low v)%I _ _.
 
   Definition confined : expr → iProp Σ := λ e, (
     ∀ γ, heap_ctx -∗ low γ -∗ low e -∗ WP γ e ?{{ low }}
@@ -78,24 +79,25 @@ Section ftlr.
 
   Lemma confined_rec f x e : □ confined e -∗ confined (Rec f x e).
   Proof.
-    iIntros "#IHe". iIntros (γ) "#Hh #Hγ #He".
-    rewrite low_expr substitute_expr. set erec := substitute _ _.
+    rewrite 2!confined_alt.
+    iIntros "#IHe". iIntros (γ Φ) "#Hh #Hγ #He HΦ".
+    rewrite (low_expr (Rec _ _ _)) substitute_expr. set erec := substitute _ _.
     case: (decide (Closed (f :b: x :b: []) erec)) => ?;
       last by iApply wp_stuck_rec_open.
     iApply wp_value; first exact: to_val_rec.
-    rewrite/erec. set γ' := (delete _ _).
+    iApply "HΦ". clear Φ. rewrite/erec. set γ' := (delete _ _).
     iLöb as "Hvrec". rewrite {2}low_val. iAlways. iNext.
-    iIntros (v2) "#Hv2". case: (decide (x = f))=>?.
+    iIntros (v2 Φ) "#Hv2 HΦ". case: (decide (x = f))=>?.
     { subst. rewrite -> subst_subst'; last done.	(* ssr rewrite fails *)
       rewrite of_val_rec subst_substitute; last by rewrite lookup_delete.
-      iApply ("IHe" with "[$Hh] [] [$He]").
+      iApply ("IHe" with "[$Hh] [] [$He] [$HΦ]").
       rewrite insert_delete. iApply (low_env_insert with "[$Hvrec] []");
         first by rewrite lookup_delete.
       by iApply (low_env_delete with "[$Hγ]"). }
     rewrite of_val_rec subst_substitute; last by rewrite lookup_delete.
     rewrite subst_substitute; last by rewrite
       lookup_insert_ne // lookup_delete_ne // lookup_delete.
-    iApply ("IHe" with "[$Hh] [] [$He]").
+    iApply ("IHe" with "[$Hh] [] [$He] [$HΦ]").
     iApply (low_env_insert with "[$Hv2] []"); first by rewrite
       lookup_insert_ne // lookup_delete_ne // lookup_delete.
     iApply (low_env_insert with "[$Hvrec] []"); first by rewrite
@@ -114,7 +116,7 @@ Section ftlr.
     iApply ("IHe1" with "[$Hh] [$Hγ] [$He1]"). iIntros (v1) "Hv1".
     wp_bind (γ _). rewrite confined_alt.
     iApply ("IHe2" with "[$Hh] [$Hγ] [$He2]"). iIntros (v2) "Hv2".
-    by iApply (wp_low_val_app with "[$Hv1 $Hv2] [$HΦ]").
+    by iApply (wp_on_val_app with "[$Hv1 $Hv2] [$HΦ]").
   Qed.
   Hint Extern 1 (_ ⊢ confined (App _ _)) => rewrite -confined_app.
 
@@ -132,7 +134,7 @@ Section ftlr.
     rewrite low_expr substitute_expr.
     wp_bind (γ _). rewrite confined_alt.
     iApply ("IHe" with "[$Hh] [$Hγ] [$He]"). iIntros (v) "Hv".
-    by iApply (wp_low_val_un_op with "[$Hv] [$HΦ]").
+    by iApply (wp_on_val_un_op with "[$Hv] [$HΦ]").
   Qed.
   Hint Extern 1 (_ ⊢ confined (UnOp _ _)) => rewrite -confined_un_op.
 
@@ -146,7 +148,7 @@ Section ftlr.
     iApply ("IHe1" with "[$Hh] [$Hγ] [$He1]"). iIntros (v1) "Hv1".
     wp_bind (γ _). rewrite confined_alt.
     iApply ("IHe2" with "[$Hh] [$Hγ] [$He2]"). iIntros (v2) "Hv2".
-    by iApply (wp_low_val_bin_op with "[$Hv1 $Hv2] [$HΦ]").
+    by iApply (wp_on_val_bin_op with "[$Hv1 $Hv2] [$HΦ]").
   Qed.
   Hint Extern 1 (_ ⊢ confined (BinOp _ _ _)) => rewrite -confined_bin_op.
 
@@ -158,7 +160,7 @@ Section ftlr.
     rewrite low_expr substitute_expr. iDestruct "Hif" as "(He&He1&He2)".
     wp_bind (γ _). rewrite confined_alt.
     iApply ("IHe" with "[$Hh] [$Hγ] [$He]"). iIntros (v) "_".
-    iApply wp_low_val_if. iNext. iSplit.
+    iApply wp_on_val_if. iNext. iSplit.
     - rewrite confined_alt.
       by iApply ("IHe1" with "[$Hh] [$Hγ] [$He1] [$HΦ]").
     - rewrite (confined_alt e2).
@@ -188,7 +190,7 @@ Section ftlr.
     rewrite low_expr substitute_expr.
     wp_bind (γ _). rewrite confined_alt.
     iApply ("IHe" with "[$Hh] [$Hγ] [$He]"). iIntros (v) "Hv".
-    by iApply (wp_low_val_fst with "[$Hv] [$HΦ]").
+    by iApply (wp_on_val_fst with "[$Hv] [$HΦ]").
   Qed.
   Hint Extern 1 (_ ⊢ confined (Fst _)) => rewrite -confined_fst.
 
@@ -199,7 +201,7 @@ Section ftlr.
     rewrite low_expr substitute_expr.
     wp_bind (γ _). rewrite confined_alt.
     iApply ("IHe" with "[$Hh] [$Hγ] [$He]"). iIntros (v) "Hv".
-    by iApply (wp_low_val_snd with "[$Hv] [$HΦ]").
+    by iApply (wp_on_val_snd with "[$Hv] [$HΦ]").
   Qed.
   Hint Extern 1 (_ ⊢ confined (Snd _)) => rewrite -confined_snd.
 
@@ -235,13 +237,13 @@ Section ftlr.
     rewrite low_expr substitute_expr. iDestruct "Hc" as "(He&He1&He2)".
     wp_bind (γ _). rewrite confined_alt.
     iApply ("IHe" with "[$Hh] [$Hγ] [$He]"). iIntros (v) "Hv".
-    iApply (wp_low_val_case with "[$Hv]"). iNext. iIntros (v0) "#Hv0". iSplit.
+    iApply (wp_on_val_case with "[$Hv]"). iNext. iIntros (v0) "#Hv0". iSplit.
     - wp_bind (γ _). rewrite confined_alt.
       iApply ("IHe1" with "[$Hh] [$Hγ] [$He1]"). iIntros (v1) "Hv1".
-      by iApply (wp_low_val_app with "[$Hv1 $Hv0] [$HΦ]").
+      by iApply (wp_on_val_app with "[$Hv1 $Hv0] [$HΦ]").
     - wp_bind (γ _). rewrite (confined_alt e2).
       iApply ("IHe2" with "[$Hh] [$Hγ] [$He2]"). iIntros (v2) "Hv2".
-      by iApply (wp_low_val_app with "[$Hv2 $Hv0] [$HΦ]").
+      by iApply (wp_on_val_app with "[$Hv2 $Hv0] [$HΦ]").
   Qed.
   Hint Extern 1 (_ ⊢ confined (Case _ _ _)) => rewrite -confined_case.
 
@@ -436,7 +438,7 @@ Section low_ctx.
     end%I.
   Global Instance lowctx_persistent C : PersistentP (lowctx C).
   Proof. rewrite/lowctx; elim: C=>//; rewrite-/lowctx; by apply _. Qed.
-  Global Instance lowctx_low : LowIntegrity Σ ctx := Low lowctx _.
+  Global Instance lowctx_low : LowIntegrity Σ ctx := Low lowctx _ _.
   Global Instance lowctx_timeless (C : ctx) : TimelessP (low C).
   Proof. rewrite/lowctx; elim: C=>//; rewrite-/lowctx; by apply _. Qed.
 
@@ -733,24 +735,24 @@ Section robust_safety.
   Lemma safe_rec f x C : □ safe C -∗ safe (CRec f x C).
   Proof.
     (* PDS: Lots of duplication with confined_rec. *)
-    iIntros "#IH". iIntros (γ p e) "#Hh #HC #Hγ #He /=".
-    rewrite low_ctx substitute_expr. set erec := substitute _ _.
+    rewrite !safe_alt. iIntros "#IH". iIntros (γ p e Φ) "#Hh #HC #Hγ #He HΦ/=".
+    rewrite (low_ctx (CRec _ _ _)) substitute_expr. set erec := substitute _ _.
     case: (decide (Closed (f :b: x :b: []) erec)) => ?;
       last by iApply wp_stuck_rec_open.
     iApply wp_value; first exact: to_val_rec.
-    rewrite/erec. set γ' := (delete _ _).
+    iApply "HΦ". clear Φ. rewrite/erec. set γ' := (delete _ _).
     iLöb as "Hvrec". rewrite {2}low_val. iAlways. iNext.
-    iIntros (v2) "#Hv2". case: (decide (x = f))=>?.
+    iIntros (v2 Φ) "#Hv2 HΦ". case: (decide (x = f))=>?.
     { subst. rewrite -> subst_subst'; last done.	(* ssr rewrite fails *)
       rewrite of_val_rec subst_substitute; last by rewrite lookup_delete.
-      iApply ("IH" with "[$Hh] [$HC] [] [He]"); last iExact "He". (* iNext bug *)
+      iApply ("IH" with "[$Hh] [$HC] [] [He] [$HΦ]"); last iExact "He". (* iNext bug *)
       rewrite insert_delete. iApply (low_env_insert with "[$Hvrec] []");
         first by rewrite lookup_delete.
       by iApply (low_env_delete with "[$Hγ]"). }
     rewrite of_val_rec subst_substitute; last by rewrite lookup_delete.
     rewrite subst_substitute; last by rewrite
       lookup_insert_ne // lookup_delete_ne // lookup_delete.
-    iApply ("IH" with "[$Hh] [$HC] [] [He]"); last iExact "He". (* iNext bug *)
+    iApply ("IH" with "[$Hh] [$HC] [] [He] [$HΦ]"); last iExact "He". (* iNext bug *)
     iApply (low_env_insert with "[$Hv2] []"); first by rewrite
       lookup_insert_ne // lookup_delete_ne // lookup_delete.
     iApply (low_env_insert with "[$Hvrec] []"); first by rewrite
@@ -769,7 +771,7 @@ Section robust_safety.
     iApply ("IH" with "[$Hh] [$HC1] [$Hγ] [$He]"). iIntros (v1) "Hv1".
     wp_bind (γ _).
     iApply (ftlr with "[$Hh] [$Hγ] [$He2]"). iIntros (v2) "Hv2".
-    by iApply (wp_low_val_app with "[$Hv1 $Hv2] [$HΦ]").
+    by iApply (wp_on_val_app with "[$Hv1 $Hv2] [$HΦ]").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CAppL _ _)) => rewrite -safe_app_l.
 
@@ -782,7 +784,7 @@ Section robust_safety.
     iApply (ftlr with "[$Hh] [$Hγ] [$He1]"). iIntros (v1) "Hv1".
     wp_bind (γ _). rewrite safe_alt.
     iApply ("IH" with "[$Hh] [$HC2] [$Hγ] [$He]"). iIntros (v2) "Hv2".
-    by iApply (wp_low_val_app with "[$Hv1 $Hv2] [$HΦ]").
+    by iApply (wp_on_val_app with "[$Hv1 $Hv2] [$HΦ]").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CAppR _ _)) => rewrite -safe_app_r.
 
@@ -793,7 +795,7 @@ Section robust_safety.
     rewrite low_ctx substitute_expr.
     wp_bind (γ _). rewrite safe_alt.
     iApply ("IH" with "[$Hh] [$HC] [$Hγ] [$He]"). iIntros (v) "Hv".
-    by iApply (wp_low_val_un_op with "[$Hv] [$HΦ]").
+    by iApply (wp_on_val_un_op with "[$Hv] [$HΦ]").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CUnOp _ _)) => rewrite -safe_un_op.
 
@@ -806,7 +808,7 @@ Section robust_safety.
     iApply ("IH" with "[$Hh] [$HC1] [$Hγ] [$He]"). iIntros (?) "Hv1".
     wp_bind (γ _).
     iApply (ftlr with "[$Hh] [$Hγ] [$He2]"). iIntros (?) "Hv2".
-    by iApply (wp_low_val_bin_op with "[$Hv1 Hv2] [$HΦ]").
+    by iApply (wp_on_val_bin_op with "[$Hv1 Hv2] [$HΦ]").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CBinOpL _ _ _)) => rewrite -safe_bin_op_l.
 
@@ -819,7 +821,7 @@ Section robust_safety.
     iApply (ftlr with "[$Hh] [$Hγ] [$He1]"). iIntros (?) "Hv1".
     wp_bind (γ _). rewrite safe_alt.
     iApply ("IH" with "[$Hh] [$HC2] [$Hγ] [$He]"). iIntros (?) "Hv2".
-    by iApply (wp_low_val_bin_op with "[$Hv1 Hv2] [$HΦ]").
+    by iApply (wp_on_val_bin_op with "[$Hv1 Hv2] [$HΦ]").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CBinOpR _ _ _)) => rewrite -safe_bin_op_r.
 
@@ -830,7 +832,7 @@ Section robust_safety.
     rewrite low_ctx substitute_expr. iDestruct "Hif" as "(HC&He1&He2)".
     wp_bind (γ _). rewrite safe_alt.
     iApply ("IH" with "[$Hh] [$HC] [$Hγ] [$He]"). iIntros (?) "_".
-    iApply wp_low_val_if. iNext. iSplit.
+    iApply wp_on_val_if. iNext. iSplit.
     - by iApply (ftlr with "[$Hh] [$Hγ] [$He1] [$HΦ]").
     - by iApply (ftlr with "[$Hh] [$Hγ] [$He2] [$HΦ]").
   Qed.
@@ -843,7 +845,7 @@ Section robust_safety.
     rewrite low_ctx substitute_expr. iDestruct "Hif" as "(He0&HC1&He2)".
     wp_bind (γ _).
     iApply (ftlr with "[$Hh] [$Hγ] [$He0]"). iIntros (?) "_".
-    iApply wp_low_val_if. iNext. iSplit.
+    iApply wp_on_val_if. iNext. iSplit.
     - rewrite safe_alt. by iApply ("IH" with "[$Hh] [$HC1] [$Hγ] [$He]").
     - by iApply (ftlr with "[$Hh] [$Hγ] [$He2] [$HΦ]").
   Qed.
@@ -856,7 +858,7 @@ Section robust_safety.
     rewrite low_ctx substitute_expr. iDestruct "Hif" as "(He0&He1&HC2)".
     wp_bind (γ _).
     iApply (ftlr with "[$Hh] [$Hγ] [$He0]"). iIntros (?) "_".
-    iApply wp_low_val_if. iNext. iSplit.
+    iApply wp_on_val_if. iNext. iSplit.
     - by iApply (ftlr with "[$Hh] [$Hγ] [$He1] [$HΦ]").
     - rewrite safe_alt. by iApply ("IH" with "[$Hh] [$HC2] [$Hγ] [$He]").
   Qed.
@@ -897,7 +899,7 @@ Section robust_safety.
     rewrite low_ctx substitute_expr.
     wp_bind (γ _). rewrite safe_alt.
     iApply ("IH" with "[$Hh] [$HC] [$Hγ] [$He]"). iIntros (v) "Hv".
-    by iApply (wp_low_val_fst with "[$Hv] [$HΦ]").
+    by iApply (wp_on_val_fst with "[$Hv] [$HΦ]").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CFst _)) => rewrite -safe_fst.
 
@@ -908,7 +910,7 @@ Section robust_safety.
     rewrite low_ctx substitute_expr.
     wp_bind (γ _). rewrite safe_alt.
     iApply ("IH" with "[$Hh] [$HC] [$Hγ] [$He]"). iIntros (v) "Hv".
-    by iApply (wp_low_val_snd with "[$Hv] [$HΦ]").
+    by iApply (wp_on_val_snd with "[$Hv] [$HΦ]").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CSnd _)) => rewrite -safe_snd.
 
@@ -943,12 +945,12 @@ Section robust_safety.
     rewrite low_ctx substitute_expr. iDestruct "Hc" as "(HC&He1&He2)".
     wp_bind (γ _). rewrite safe_alt.
     iApply ("IH" with "[$Hh] [$HC] [$Hγ] [$He]"). iIntros (v) "Hv".
-    iApply (wp_low_val_case with "[$Hv]"). iNext. iIntros (v0) "#Hv0".
+    iApply (wp_on_val_case with "[$Hv]"). iNext. iIntros (v0) "#Hv0".
     iSplit; wp_bind (γ _).
     - iApply (ftlr with "[$Hh] [$Hγ] [$He1]"). iIntros (v1) "Hv1".
-      by iApply (wp_low_val_app with "[$Hv1 $Hv0] [$HΦ]").
+      by iApply (wp_on_val_app with "[$Hv1 $Hv0] [$HΦ]").
     - iApply (ftlr with "[$Hh] [$Hγ] [$He2]"). iIntros (v2) "Hv2".
-      by iApply (wp_low_val_app with "[$Hv2 $Hv0] [$HΦ]").
+      by iApply (wp_on_val_app with "[$Hv2 $Hv0] [$HΦ]").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CCase _ _ _)) => rewrite -safe_case.
 
@@ -959,13 +961,13 @@ Section robust_safety.
     rewrite low_ctx substitute_expr. iDestruct "Hc" as "(He0&HC1&He2)".
     wp_bind (γ _).
     iApply (ftlr with "[$Hh] [$Hγ] [$He0]"). iIntros (v) "Hv".
-    iApply (wp_low_val_case with "[$Hv]"). iNext. iIntros (v0) "#Hv0".
+    iApply (wp_on_val_case with "[$Hv]"). iNext. iIntros (v0) "#Hv0".
     iSplit; wp_bind (γ _).
     - rewrite safe_alt.
       iApply ("IH" with "[$Hh] [$HC1] [$Hγ] [$He]"). iIntros (v1) "Hv1".
-      by iApply (wp_low_val_app with "[$Hv1 $Hv0] [$HΦ]").
+      by iApply (wp_on_val_app with "[$Hv1 $Hv0] [$HΦ]").
     - iApply (ftlr with "[$Hh] [$Hγ] [$He2]"). iIntros (v2) "Hv2".
-      by iApply (wp_low_val_app with "[$Hv2 $Hv0] [$HΦ]").
+      by iApply (wp_on_val_app with "[$Hv2 $Hv0] [$HΦ]").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CCaseL _ _ _)) => rewrite -safe_case_l.
 
@@ -976,13 +978,13 @@ Section robust_safety.
     rewrite low_ctx substitute_expr. iDestruct "Hc" as "(He0&He1&HC2)".
     wp_bind (γ _).
     iApply (ftlr with "[$Hh] [$Hγ] [$He0]"). iIntros (v) "Hv".
-    iApply (wp_low_val_case with "[$Hv]"). iNext. iIntros (v0) "#Hv0".
+    iApply (wp_on_val_case with "[$Hv]"). iNext. iIntros (v0) "#Hv0".
     iSplit; wp_bind (γ _).
     - iApply (ftlr with "[$Hh] [$Hγ] [$He1]"). iIntros (v1) "Hv1".
-      by iApply (wp_low_val_app with "[$Hv1 $Hv0] [$HΦ]").
+      by iApply (wp_on_val_app with "[$Hv1 $Hv0] [$HΦ]").
     - rewrite safe_alt.
       iApply ("IH" with "[$Hh] [$HC2] [$Hγ] [$He]"). iIntros (v2) "Hv2".
-      by iApply (wp_low_val_app with "[$Hv2 $Hv0] [$HΦ]").
+      by iApply (wp_on_val_app with "[$Hv2 $Hv0] [$HΦ]").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CCaseR _ _ _)) => rewrite -safe_case_r.
 

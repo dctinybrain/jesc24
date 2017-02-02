@@ -14,7 +14,7 @@ Inductive expr :=
   | Rec (f x : binder) (e : expr)
   | App (e1 e2 : expr)
   (* Base types and their operations *)
-  | Lit (l : base_lit)
+  | Lit (lit : base_lit)
   | UnOp (op : un_op) (e : expr)
   | BinOp (op : bin_op) (e1 e2 : expr)
   | If (e0 e1 e2 : expr)
