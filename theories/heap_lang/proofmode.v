@@ -31,6 +31,7 @@ Ltac wp_seq_head :=
 
 Ltac wp_finish := intros_revert ltac:(
   rewrite /= ?to_of_val;
+  of_val_rec;	(* because simpl trashes of_val (RecV _ _ _) *)
   try iNext;
   repeat lazymatch goal with
   | |- _ ⊢ wp ?p ?E (Seq _ _) ?Q =>
@@ -100,6 +101,21 @@ Tactic Notation "wp_op" :=
   | _ => fail "wp_op: not a 'wp'"
   end.
 
+Tactic Notation "wp_typecast" simple_intropattern(H) :=
+  iStartProof;
+  lazymatch goal with
+  | |- _ ⊢ wp ?p ?E ?e ?Q => reshape_expr e ltac:(fun K e' =>
+    lazymatch eval hnf in e' with
+    | UnOp FunofOp _ => wp_bind_core K; eapply wp_funof; [wp_done| |]; intros H; wp_finish
+    | UnOp LitofOp _ => wp_bind_core K; eapply wp_litof; [wp_done| |]; intros H; wp_finish
+    | UnOp LocofOp _ => wp_bind_core K; eapply wp_locof; [wp_done| |]; intros H; wp_finish
+    | UnOp PairofOp _ => wp_bind_core K; eapply wp_pairof; [wp_done| |]; intros H; wp_finish
+    | UnOp InlofOp _ => wp_bind_core K; eapply wp_inlof; [wp_done|intros ?|]; intros H; wp_finish
+    | UnOp InrofOp _ => wp_bind_core K; eapply wp_inrof; [wp_done|intros ?|]; intros H; wp_finish
+    end) || fail "wp_typecast: not a type cast"
+  | _ => fail "wp_typecast: not a 'wp'"
+  end.
+
 Tactic Notation "wp_proj" :=
   iStartProof;
   lazymatch goal with
@@ -109,6 +125,17 @@ Tactic Notation "wp_proj" :=
     | Snd _ => wp_bind_core K; etrans; [|eapply wp_snd; wp_done]; wp_finish
     end) || fail "wp_proj: cannot find 'Fst' or 'Snd' in" e
   | _ => fail "wp_proj: not a 'wp'"
+  end.
+
+Tactic Notation "wp_typecast" simple_intropattern(x) simple_intropattern(H) :=
+  iStartProof;
+  lazymatch goal with
+  | |- _ ⊢ wp ?p ?E ?e ?Q => reshape_expr e ltac:(fun K e' =>
+    lazymatch eval hnf in e' with
+    | UnOp InlofOp _ => wp_bind_core K; eapply wp_inlof; [wp_done|intros x|]; intros H; wp_finish
+    | UnOp InrofOp _ => wp_bind_core K; eapply wp_inrof; [wp_done| intros x|]; intros H; wp_finish
+    end) || fail "wp_typecast: not a type cast"
+  | _ => fail "wp_typecast: not a 'wp'"
   end.
 
 Tactic Notation "wp_if" :=
@@ -231,7 +258,7 @@ Tactic Notation "wp_apply" open_constr(lem) :=
   iStartProof;
   lazymatch goal with
   | |- _ ⊢ wp ?p ?E ?e ?Q => reshape_expr e ltac:(fun K e' =>
-    wp_bind_core K; iApply lem; try iNext)
+    wp_bind_core K; iApply lem; wp_finish)
   | _ => fail "wp_apply: not a 'wp'"
   end.
 

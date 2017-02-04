@@ -207,6 +207,17 @@ Proof.
 Qed.
 End W.
 
+Ltac to_val_rec :=
+  repeat match goal with
+  | Hc : Closed (?f :b: ?x :b: []) ?e |- context [Rec ?f ?x ?e] =>
+    rewrite (@to_val_rec f x e Hc)
+  end.
+Ltac of_val_rec :=
+  repeat match goal with
+  | Hc : Closed (?f :b: ?x :b: []) ?e |- context [Rec ?f ?x ?e] =>
+    rewrite (@of_val_rec f x e Hc)
+  end.
+
 Ltac solve_closed :=
   match goal with
   | |- Closed ?X ?e =>
@@ -220,10 +231,12 @@ Ltac solve_to_val :=
   | |- context E [language.to_val ?e] =>
      let X := context E [to_val e] in change X
   end;
+  to_val_rec;	(* so W.of_expr doesn't stall on [Rec f x e] *)
   match goal with
   | |- to_val ?e = Some ?v =>
      let e' := W.of_expr e in change (to_val (W.to_expr e') = Some v);
      apply W.to_val_Some; simpl; unfold W.to_expr; reflexivity
+  | |- is_Some (Some ?v) => exists v; exact eq_refl
   | |- is_Some (to_val ?e) =>
      let e' := W.of_expr e in change (is_Some (to_val (W.to_expr e')));
      apply W.to_val_is_Some, (bool_decide_unpack _); vm_compute; exact I
@@ -242,6 +255,7 @@ Hint Extern 10 (language.strong_atomic _) => solve_atomic : typeclass_instances.
 (** Substitution *)
 Ltac simpl_subst :=
   simpl;
+  of_val_rec;	(* because simpl trashes of_val (RecV _ _ _) *)
   repeat match goal with
   | |- context [subst ?x ?er ?e] =>
       let er' := W.of_expr er in let e' := W.of_expr e in
@@ -265,7 +279,7 @@ Ltac reshape_val e tac :=
     let v1 := go e1 in let v2 := go e2 in constr:(PairV v1 v2)
   | InjL ?e => let v := go e in constr:(InjLV v)
   | InjR ?e => let v := go e in constr:(InjRV v)
-  end in let v := go e in first [tac v | fail 2].
+  end in let v := go e in tac v.
 
 Ltac reshape_expr e tac :=
   let rec go K e :=
