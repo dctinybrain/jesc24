@@ -24,22 +24,33 @@ Local Notation ext R := (pointwise_relation _ R).
 	[on_val Ψ] can be thought of as a semantic subtype of values
 	supporting introduction and elimination rules as follows.
 
-	_Introduction:_ Lifted values (i) include all locations
+	_Introduction_: Lifted values (i) include all locations
 	satisfying [Ψ] and all other base values and (ii) are closed
 	under function abstraction, pairing, and injections.
 
-	_Elimination:_ Heap resources (q.v.) for lifted locations are
+	_Elimination_: Heap resources (q.v.) for lifted locations are
 	determined by [Ψ]; otherwise, eliminating a lifted value
 	produces a lifted value.
 *)
-Section lift.
+Section on_val.
   Context `{irisG heap_lang Σ} (Ψ : loc → iProp Σ).
 
-  Definition on_lit : base_lit → iProp Σ := λ lit,
+  Definition on_lit_def : base_lit → iProp Σ := λ lit,
     match lit with
     | LitLoc l => Ψ l
     | LitInt _ | LitBool _ | LitUnit => True
     end%I.
+  Definition on_lit_aux : { x | x = @on_lit_def }. by eexists. Qed.
+  Definition on_lit := proj1_sig on_lit_aux.
+  Definition on_lit_eq : @on_lit = @on_lit_def := proj2_sig on_lit_aux.
+
+  Lemma on_lit_elim lit :
+    on_lit lit ⊣⊢
+    match lit with
+    | LitLoc l => Ψ l
+    | LitInt _ | LitBool _ | LitUnit => True
+    end%I.
+  Proof. rewrite on_lit_eq. by case: lit. Qed.
 
   (**
     When proving a function [on_val Ψ], one may use any invariant and
@@ -60,21 +71,41 @@ Section lift.
     repeat (f_contractive || f_equiv); apply Hrec.
   Qed.
 
-  Definition on_val : val → iProp Σ := fixpoint on_val_pre.
+  Definition on_val_def : val → iProp Σ := fixpoint on_val_pre.
+  Definition on_val_aux : { x | x = @on_val_def }. by eexists. Qed.
+  Definition on_val := proj1_sig on_val_aux.
+  Definition on_val_eq : @on_val = @on_val_def := proj2_sig on_val_aux.
 
-  Lemma on_val_unfold v : on_val v ≡ on_val_pre on_val v.
+  Lemma on_val_unfold v : on_val_def v ≡ on_val_pre on_val_def v.
   Proof. exact: (fixpoint_unfold on_val_pre). Qed.
+
+  Lemma on_val_elim v :
+    on_val v ⊣⊢
+    match v with
+    | RecV f x e _ => □ ▷ ∀ v Φ, on_val v -∗ (∀ v', on_val v' -∗ Φ v') -∗
+      WP subst' x (of_val v) (subst' f (Rec f x e) e) ?{{ Φ }}
+    | LitV lit => on_lit lit
+    | PairV v1 v2 => ▷(on_val v1 ∗ on_val v2)
+    | InjLV v | InjRV v => ▷(on_val v)
+    end%I.
+  Proof.
+    rewrite on_val_eq on_val_unfold. destruct v; try done. iSplit.
+    - iIntros "#Hv !#". iNext. iIntros (v2 Φ) "Hv2". rewrite -wp_wand.
+      by iApply ("Hv" with "[$Hv2]").
+    - iIntros "#Hv !#". iNext. iIntros (v2) "Hv2".
+      iApply ("Hv" with "[$Hv2] []"). by iIntros.
+  Qed.
 
   Section persistent.
     Context (HΨ : ∀ l, PersistentP (Ψ l)).
 
     Global Instance on_lit_persistent lit : PersistentP (on_lit lit).
-    Proof. destruct lit; apply _. Qed.
+    Proof. rewrite on_lit_eq. destruct lit; apply _. Qed.
 
     Global Instance on_val_persistent v : PersistentP (on_val v).
     Proof.
       iIntros "Hv". iLöb as "IH" forall (v).
-      rewrite on_val_unfold. destruct v.
+      rewrite on_val_eq on_val_unfold. destruct v.
       - by iDestruct "Hv" as "#Hv".
       - by iDestruct "Hv" as "#Hv".
       - rewrite always_later. iNext. iDestruct "Hv" as "(Hv1&Hv2)".
@@ -90,76 +121,133 @@ Section lift.
     Context (HΨ : ∀ l, TimelessP (Ψ l)).
 
     Global Instance on_lit_timeless lit : TimelessP (on_lit lit).
-    Proof. destruct lit; apply _. Qed.
+    Proof. rewrite on_lit_eq. destruct lit; apply _. Qed.
 
     Global Instance on_val_lit_timeless lit : TimelessP (on_val (LitV lit)).
-    Proof. by rewrite /TimelessP on_val_unfold on_lit_timeless. Qed.
+    Proof.
+      by rewrite /TimelessP on_val_eq on_val_unfold on_lit_timeless.
+    Qed.
   End timeless.
+End on_val.
 
-  Section loc_except_0.
-    Context (HΨ : ∀ l, IsExcept0 (Ψ l)).
-
-    Global Instance on_lit_loc_except_0 l : IsExcept0 (on_lit (LitLoc l)).
-    Proof. rewrite /IsExcept0 /=. by rewrite is_except_0. Qed.
-
-    Global Instance on_val_loc_except_0 l :
-      IsExcept0 (on_val (LitV (LitLoc l))).
-    Proof. rewrite /IsExcept0 on_val_unfold /=. by rewrite is_except_0. Qed.
-  End loc_except_0.
-
-  Global Instance on_val_rec_except_0 f x e `{!Closed (f :b: x :b: []) e} :
-    IsExcept0 (on_val (RecV f x e)).
-  Proof.
-    rewrite /IsExcept0 on_val_unfold /=.
-    by rewrite except_0_always except_0_later.
-  Qed.
-  Global Instance on_val_pair_except_0 v1 v2 : IsExcept0 (on_val (PairV v1 v2)).
-  Proof. rewrite /IsExcept0 on_val_unfold /=. by rewrite except_0_later. Qed.
-  Global Instance on_val_inl_except_0 v : IsExcept0 (on_val (InjLV v)).
-  Proof. rewrite /IsExcept0 on_val_unfold /=. by rewrite except_0_later. Qed.
-  Global Instance on_val_inr_except_0 v : IsExcept0 (on_val (InjRV v)).
-  Proof. rewrite /IsExcept0 on_val_unfold /=. by rewrite except_0_later. Qed.
-
-  Lemma on_val_elim v :
-    on_val v ⊣⊢
-    match v with
-    | RecV f x e _ => □ ▷ ∀ v Φ, on_val v -∗ (∀ v', on_val v' -∗ Φ v') -∗
-      WP subst' x (of_val v) (subst' f (Rec f x e) e) ?{{ Φ }}
-    | LitV lit => on_lit lit
-    | PairV v1 v2 => ▷(on_val v1 ∗ on_val v2)
-    | InjLV v | InjRV v => ▷(on_val v)
-    end%I.
-  Proof.
-    rewrite on_val_unfold. destruct v; try done. iSplit.
-    - iIntros "#Hv !#". iNext. iIntros (v2 Φ) "Hv2". rewrite -wp_wand.
-      by iApply ("Hv" with "[$Hv2]").
-    - iIntros "#Hv !#". iNext. iIntros (v2) "Hv2".
-      iApply ("Hv" with "[$Hv2] []"). by iIntros.
-  Qed.
-End lift.
-
-Section lift_ne.
+Section on_val_ne.
   Context `{irisG heap_lang Σ}.
 
   Global Instance on_lit_ne n :
     Proper (ext (dist n) ==> (=) ==> dist n) (@on_lit Σ).
-  Proof. solve_proper. Qed.
+  Proof. intros ???. rewrite 2!on_lit_eq. solve_proper. Qed.
+
   Global Instance on_lit_proper : Proper (ext (≡) ==> (=) ==> (≡)) (@on_lit Σ).
-  Proof. solve_proper. Qed.
+  Proof. intros ???. rewrite 2!on_lit_eq. solve_proper. Qed.
 
   Instance on_val_pre_ne n :
     Proper (ext (dist n) ==> (=) ==> ext (dist n)) on_val_pre.
   Proof. solve_proper. Qed.
+
   Global Instance on_val_ne n :
     Proper (ext (dist n) ==> (=) ==> dist n) on_val_pre.
   Proof. solve_proper. Qed.
+
   Global Instance on_val_proper : Proper (ext (≡) ==> (=) ==> (≡)) on_val_pre.
   Proof. solve_proper. Qed.
-End lift_ne.
+End on_val_ne.
+
+(**
+	We register no instances that unfold [on_val Ψ] functions.
+	Such reasoning is important and should be explicit.
+*)
+
+Section on_val_proofmode_classes.
+  Context `{irisG heap_lang Σ} (Ψ : loc → iProp Σ).
+
+  Global Instance into_and_on_val p v1 v2 :
+    IntoAnd p (on_val Ψ (PairV v1 v2)) (▷ on_val Ψ v1) (▷ on_val Ψ v2).
+  Proof. apply mk_into_and_sep. by rewrite on_val_elim later_sep. Qed.
+
+  Global Instance from_sep_on_val v1 v2 :
+    FromSep (on_val Ψ (PairV v1 v2)) (▷ on_val Ψ v1) (▷ on_val Ψ v2).
+  Proof. by rewrite/FromSep (on_val_elim _ (PairV _ _)) later_sep. Qed.
+
+  Global Instance from_assumption_on_lit_loc p l Q :
+    FromAssumption p (Ψ l) Q → FromAssumption p (on_lit Ψ (LitLoc l)) Q.
+  Proof. by rewrite on_lit_eq. Qed.
+  Global Instance from_assumption_on_val_lit p lit Q :
+    FromAssumption p (on_lit Ψ lit) Q →
+    FromAssumption p (on_val Ψ (LitV lit)) Q.
+  Proof. by rewrite /FromAssumption (on_val_elim _ (LitV _)). Qed.
+  Global Instance from_assumption_on_val_inl p v Q :
+    FromAssumption p (▷ on_val Ψ v) Q → FromAssumption p (on_val Ψ (InjLV v)) Q.
+  Proof. by rewrite /FromAssumption (on_val_elim _ (InjLV _)). Qed.
+  Global Instance from_assumption_on_val_inr p v Q :
+    FromAssumption p (▷ on_val Ψ v) Q → FromAssumption p (on_val Ψ (InjRV v)) Q.
+  Proof. by rewrite /FromAssumption (on_val_elim _ (InjRV _)). Qed.
+
+  Global Instance into_laterN_on_val_pair n v1 v2 Q1 Q2 :
+    IntoLaterN n (on_val Ψ v1) Q1 → IntoLaterN n (on_val Ψ v2) Q2 →
+    IntoLaterN (S n) (on_val Ψ (PairV v1 v2)) (Q1 ∗ Q2).
+  Proof.
+    rewrite /IntoLaterN (on_val_elim _ (PairV _ _))=>->->.
+    by rewrite -laterN_sep.
+  Qed.
+  Global Instance into_laterN_on_val_inl n v Q :
+    IntoLaterN n (on_val Ψ v) Q → IntoLaterN (S n) (on_val Ψ (InjLV v)) Q.
+  Proof. by rewrite /IntoLaterN (on_val_elim _ (InjLV _))=>->. Qed.
+  Global Instance into_laterN_on_val_inr n v Q :
+    IntoLaterN n (on_val Ψ v) Q → IntoLaterN (S n) (on_val Ψ (InjRV v)) Q.
+  Proof. by rewrite /IntoLaterN (on_val_elim _ (InjRV _))=>->. Qed.
+
+  Global Instance from_laterN_on_val_pair v1 v2 :
+    FromLaterN 1 (on_val Ψ (PairV v1 v2)) (on_val Ψ v1 ∗ on_val Ψ v2).
+  Proof. by rewrite /FromLaterN (on_val_elim _ (PairV _ _)). Qed.
+  Global Instance from_laterN_on_val_inl v :
+    FromLaterN 1 (on_val Ψ (InjLV v)) (on_val Ψ v).
+  Proof. by rewrite /FromLaterN (on_val_elim _ (InjLV _)). Qed.
+  Global Instance from_laterN_on_val_inr v :
+    FromLaterN 1 (on_val Ψ (InjRV v)) (on_val Ψ v).
+  Proof. by rewrite /FromLaterN (on_val_elim _ (InjRV _)). Qed.
+
+  Section loc_except_0.
+    Context (HΨ : ∀ l, IsExcept0 (Ψ l)).
+
+    Global Instance on_lit_loc_except_0 l : IsExcept0 (on_lit Ψ (LitLoc l)).
+    Proof. by rewrite /IsExcept0 on_lit_eq is_except_0. Qed.
+    Global Instance on_val_loc_except_0 l :
+      IsExcept0 (on_val Ψ (LitV (LitLoc l))).
+    Proof. by rewrite /IsExcept0 on_val_eq on_val_unfold is_except_0. Qed.
+  End loc_except_0.
+
+  Global Instance on_val_rec_except_0 f x e `{!Closed (f :b: x :b: []) e} :
+    IsExcept0 (on_val Ψ (RecV f x e)).
+  Proof.
+    by rewrite /IsExcept0 on_val_eq on_val_unfold except_0_always
+      except_0_later.
+  Qed.
+  Global Instance on_val_pair_except_0 v1 v2 :
+    IsExcept0 (on_val Ψ (PairV v1 v2)).
+  Proof. by rewrite /IsExcept0 on_val_eq on_val_unfold except_0_later. Qed.
+  Global Instance on_val_inl_except_0 v : IsExcept0 (on_val Ψ (InjLV v)).
+  Proof. by rewrite /IsExcept0 on_val_eq on_val_unfold except_0_later. Qed.
+  Global Instance on_val_inr_except_0 v : IsExcept0 (on_val Ψ (InjRV v)).
+  Proof. by rewrite /IsExcept0 on_val_eq on_val_unfold except_0_later. Qed.
+End on_val_proofmode_classes.
 
 Typeclasses Opaque on_lit on_val.
 Instance: Params (@on_lit) 1.
 Instance: Params (@on_val) 2.
+
+(** There are no ProofMode classes for "P ≡ True". *)
+Ltac simpl_on_val :=
+  repeat match goal with
+  | |- context [on_lit ?Ψ ?lit] => rewrite (on_lit_elim Ψ lit)
+  | |- context [on_val ?Ψ (LitV ?lit)] => rewrite (on_val_elim Ψ (LitV lit))
+  | |- context [on_val ?Ψ (PairV ?v1 ?v2)] => rewrite (on_val_elim Ψ (PairV v1 v2))
+  | |- context [on_val ?Ψ (InjLV ?v)] => rewrite (on_val_elim Ψ (InjLV v))
+  | |- context [on_val ?Ψ (InjRV ?v)] => rewrite (on_val_elim Ψ (InjRV v))
+  | |- context [(▷ True)%I] => rewrite later_True
+  end.
+(* Making these pervasive could be a bad idea. *)
+Hint Extern 2 => simpl_on_val.
+Hint Extern 1 (uPred_valid True) => unfold uPred_valid.
 
 (** The CMRA we need. *)
 Local Notation heap := (gmap loc val).
@@ -326,7 +414,7 @@ Section low.
     | LitInt _ | LitBool _ | LitUnit => True
     | LitLoc l => low l
     end.
-  Proof. by []. Qed.
+  Proof. by rewrite low_lit_eq on_lit_eq. Qed.
 
   (**
     A (syntactically) low expression contains neither assertions nor
@@ -397,6 +485,20 @@ Section low.
   Global Instance low_val_inr_except_0 v : IsExcept0 (low (InjRV v)).
   Proof. apply _. Qed.
 End low.
+
+Ltac simpl_low :=
+  repeat match goal with
+  | |- context [low (LitInt ?n)] => rewrite (low_lit (LitInt n))
+  | |- context [low (LitBool ?b)] => rewrite (low_lit (LitBool b))
+  | |- context [low LitUnit] => rewrite (low_lit LitUnit)
+  | |- context [low (LitLoc ?l)] => rewrite (low_lit (LitLoc l))
+  | |- context [low (LitV ?lit)] => rewrite (low_val (LitV lit))
+  | |- context [low (PairV ?v1 ?v2)] => rewrite (low_val (PairV v1 v2))
+  | |- context [low (InjLV ?v)] => rewrite (low_val (InjLV v))
+  | |- context [low (InjRV ?v)] => rewrite (low_val (InjRV v))
+  | |- context [(▷ True)%I] => rewrite later_True
+  end.
+Hint Extern 2 => simpl_low.
 
 (** * Bookkeeping lemmas *)
 Section bookkeeping.
@@ -822,13 +924,13 @@ Section wp_on_val.
     case: (decide (is_rec (of_val v1)))=>Hrec;
       last by iApply wp_stuck_app_nrec.
     destruct (is_rec_val _ Hrec) as (f&x&e&?&->).
-    rewrite (on_val_elim _ (RecV _ _ _)) always_elim.
+    rewrite on_val_elim always_elim.
     iApply wp_rec; [done|by exists v2|]. iNext.
     by iApply ("Hv1" with "[$Hv2]").
   Qed.
 
   Hint Extern 1 (_ -∗ on_val Ψ (LitV ?lit)) =>
-    rewrite (on_val_elim Ψ (LitV lit)) /=.
+    rewrite (on_val_elim Ψ (LitV lit)) on_lit_elim.
   Hint Extern 1 (on_val Ψ (InjLV ?v) -∗ on_val Ψ (InjRV ?v)) =>
     rewrite (on_val_elim Ψ (InjLV v)) (on_val_elim Ψ (InjRV v)).
   Hint Extern 2 (_ -∗ on_val Ψ (InjLV ?v)) =>
@@ -890,8 +992,7 @@ Section wp_on_val.
     iIntros (Φ) "Hv HΦ".
     case: (decide (is_pair (of_val v)))=>Hp; last by iApply wp_stuck_fst.
     destruct (is_pair_val _ Hp) as (v1&v2&->).
-    iApply wp_fst; [done|by exists v2|].
-    rewrite ->on_val_elim. iDestruct "Hv" as "(Hv1&_)". iNext.
+    iApply wp_fst; [done|by exists v2|]. iNext. iDestruct "Hv" as "(Hv1&_)".
     by iApply ("HΦ" with "[$Hv1]").
   Qed.
 
@@ -901,8 +1002,7 @@ Section wp_on_val.
     iIntros (Φ) "Hv HΦ".
     case: (decide (is_pair (of_val v)))=>Hp; last by iApply wp_stuck_snd.
     destruct (is_pair_val _ Hp) as (v1&v2&->).
-    iApply wp_snd; [by exists v1|done|].
-    rewrite ->on_val_elim. iDestruct "Hv" as "(_&Hv2)". iNext.
+    iApply wp_snd; [by exists v1|done|]. iNext. iDestruct "Hv" as "(_&Hv2)".
     by iApply ("HΦ" with "[$Hv2]").
   Qed.
 
@@ -918,13 +1018,11 @@ Section wp_on_val.
       last by iApply wp_stuck_case.
     case: Hc=>[Hinl | Hinr].
     - destruct (is_inl_val _ Hinl) as (v0&->).
-      iApply wp_case_inl; first by exists v0.
-      rewrite on_val_elim. iNext. setoid_rewrite and_elim_l.
-      by iApply ("Hk" with "[$Hv]").
+      iApply wp_case_inl; first by exists v0. iNext.
+      setoid_rewrite and_elim_l. by iApply ("Hk" with "[$Hv]").
     - destruct (is_inr_val _ Hinr) as (v0&->).
-      iApply wp_case_inr; first by exists v0.
-      rewrite on_val_elim. iNext. setoid_rewrite and_elim_r.
-      by iApply ("Hk" with "[$Hv]").
+      iApply wp_case_inr; first by exists v0. iNext.
+      setoid_rewrite and_elim_r. by iApply ("Hk" with "[$Hv]").
   Qed.
 
   (**
@@ -939,8 +1037,7 @@ Section wp_on_val.
     iIntros (? Φ) "(Hh&Hv) HΦ".
     case: (decide (is_loc (of_val v)))=>Hl; last by iApply wp_stuck_load.
     destruct (is_loc_val _ Hl) as (l&->).
-    iApply (wp_load_low with "[$Hh Hv] [$HΦ]"); first done.
-    rewrite low_val low_lit. by iFrame.
+    iApply (wp_load_low with "[$Hh Hv] [$HΦ]"); auto.
   Qed.
 
   Lemma wp_low_val_store E v1 v2 :
@@ -951,9 +1048,8 @@ Section wp_on_val.
     iIntros (? Φ) "(Hh&Hv1&Hv2) HΦ".
     case: (decide (is_loc (of_val v1)))=>Hl; last by iApply wp_stuck_store.
     destruct (is_loc_val _ Hl) as (l&->).
-    iApply (wp_store_low with "[$Hh Hv1 $Hv2] [HΦ]"); [done|done| |].
-    - rewrite low_val low_lit. by iFrame.
-    - iNext. iIntros "_". iApply "HΦ". by rewrite low_val low_lit.
+    iApply (wp_store_low with "[$Hh Hv1 $Hv2] [HΦ]"); try auto.
+    iNext. iIntros "_". iApply "HΦ"; auto.
   Qed.
 
   Lemma wp_low_val_cas E v1 v2 v3 :
@@ -965,8 +1061,7 @@ Section wp_on_val.
     iIntros (? Φ) "(Hh&Hv1&Hv3) HΦ".
     case: (decide (is_loc (of_val v1)))=>Hl; last by iApply wp_stuck_cas.
     destruct (is_loc_val _ Hl) as (l&->).
-    iApply (wp_cas_low with "[$Hh Hv1 $Hv3] [HΦ]"); [done|done|done| |].
-    - rewrite low_val low_lit. by iFrame.
-    - iNext. iIntros (b) "_". iApply "HΦ". by rewrite low_val low_lit.
+    iApply (wp_cas_low with "[$Hh Hv1 $Hv3] [HΦ]"); try auto.
+    iNext. iIntros (b) "_". iApply "HΦ"; auto.
   Qed.
 End wp_on_val.

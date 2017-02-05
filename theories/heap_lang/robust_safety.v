@@ -598,7 +598,7 @@ Section adversary.
   Implicit Types e : expr.
 
   Lemma adv_lit_low lit : adv_lit lit → low lit.
-  Proof. by case: lit. Qed.
+  Proof. rewrite low_lit. by case: lit. Qed.
 
   Lemma adv_expr_low e : adv_expr e → low e.
   Proof.	(* PDS: Automate. *)

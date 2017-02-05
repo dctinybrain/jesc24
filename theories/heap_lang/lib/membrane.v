@@ -147,7 +147,7 @@ Section proof.
         (* Wrapping locations. *)
         wp_typecast Hloc; wp_match.
         * destruct (is_loc_val _ Hloc) as (l&->).
-            rewrite on_val_elim /= /is_mon.
+            rewrite on_val_elim on_lit_elim /is_mon.
           wp_apply ("Hlocout" with "* [$Hv]"). iIntros (v1) "Hv1".
           iApply "HΦ". by rewrite low_val low_lit.
 
@@ -161,8 +161,7 @@ Section proof.
       wp_typecast Hp.
       + (* Unfold Hv early, to eat the later. *)
         destruct (is_pair_val _ Hp) as (v1&v2&->).
-          rewrite on_val_elim. iDestruct "Hv" as "#(Hv1 & Hv2)".
-          wp_match. wp_proj.
+          iDestruct "Hv" as "#(Hv1 & Hv2)". wp_match. wp_proj.
         wp_apply ("Hwrap" with "* [$Hv1]"). iIntros (v'1) "Hv'1". wp_let.
           wp_proj.
         wp_apply ("Hwrap" with "* [$Hv2]"). iIntros (v'2) "Hv'2". wp_let.
@@ -172,7 +171,7 @@ Section proof.
       (* Wrapping left injections. *)
       wp_typecast v0 Hinl.
       + (* Unfold Hv early, to eat the later. *)
-        rewrite Hinl on_val_elim /=. wp_match.
+        rewrite Hinl. wp_match.
         wp_apply ("Hwrap" with "* [$Hv]"). iIntros (v1) "Hv1". wp_value.
         iApply "HΦ". rewrite (low_val (InjLV _)). by iFrame.
       wp_match.
@@ -180,7 +179,7 @@ Section proof.
       (* Wrapping right injections. *)
       wp_typecast v0 Hinr.
       + (* Unfold Hv early, to eat the later. *)
-        rewrite Hinr on_val_elim /=. wp_match.
+        rewrite Hinr. wp_match.
         wp_apply ("Hwrap" with "* [$Hv]"). iIntros (v1) "Hv1". wp_value.
         iApply "HΦ". rewrite (low_val (InjRV _)). by iFrame.
       wp_match.
@@ -216,11 +215,12 @@ Section proof.
         * destruct (is_loc_val _ Hloc) as (l1&->).
             rewrite low_val low_lit /is_mon.
           wp_apply ("Hlocin" with "* [$Hv]"). iIntros (l2) "Hl2".
-          iApply "HΦ". by rewrite on_val_elim /=.
+          iApply "HΦ". rewrite on_val_elim on_lit_elim. by iFrame.
 
         (* Unwrapping other literals. *)
         iApply "HΦ". destruct (is_lit_val _ Hlit) as (lit&HV).
-          rewrite HV low_val on_val_elim. rewrite HV /is_loc in Hloc.
+          rewrite HV low_val on_val_elim on_lit_elim.
+          rewrite HV /is_loc in Hloc.
         case: lit Hloc {Hlit HV} => //= l Hloc. by exfalso; eauto.
       iClear "Hlocin".
 
@@ -228,8 +228,7 @@ Section proof.
       wp_typecast Hp.
       + (* Unfold Hv early, to eat the later. *)
         destruct (is_pair_val _ Hp) as (v1&v2&->).
-          rewrite (low_val (PairV _ _)). iDestruct "Hv" as "#(Hv1 & Hv2)".
-          wp_match. wp_proj.
+          iDestruct "Hv" as "#(Hv1 & Hv2)". wp_match. wp_proj.
         wp_apply ("Hunwrap" with "* [$Hv1]"). iIntros (v'1) "Hv'1". wp_let.
           wp_proj.
         wp_apply ("Hunwrap" with "* [$Hv2]"). iIntros (v'2) "Hv'2". wp_let.
@@ -239,7 +238,7 @@ Section proof.
       (* Unwrapping left injections. *)
       wp_typecast v0 Hinl.
       + (* Unfold Hv early, to eat the later. *)
-        rewrite Hinl (low_val (InjLV _)). wp_match.
+        rewrite Hinl. wp_match.
         wp_apply ("Hunwrap" with "* [$Hv]"). iIntros (v1) "Hv1". wp_value.
         iApply "HΦ". rewrite (on_val_elim _ (InjLV _)). by iFrame.
       wp_match.
@@ -247,7 +246,7 @@ Section proof.
       (* Unwrapping right injections. *)
       wp_typecast v0 Hinr.
       + (* Unfold Hv early, to eat the later. *)
-        rewrite Hinr (low_val (InjRV _)). wp_match.
+        rewrite Hinr. wp_match.
         wp_apply ("Hunwrap" with "* [$Hv]"). iIntros (v1) "Hv1". wp_value.
         iApply "HΦ". rewrite (on_val_elim _ (InjRV _)). by iFrame.
       wp_match.
