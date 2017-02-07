@@ -6,6 +6,10 @@ From iris.heap_lang Require Import proofmode notation.
 Import uPred.
 
 (** * Caretaker interface *)
+(**
+	This is essentially a special case of [lock], the iCAP-style
+	lock interface.
+*)
 Module Import caretaker.
 Structure caretaker `{heapG Σ} := Caretaker {
   (** -- operations -- *)
