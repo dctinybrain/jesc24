@@ -246,8 +246,8 @@ Ltac simpl_on_val :=
   | |- context [(▷ True)%I] => rewrite later_True
   end.
 (* Making these pervasive could be a bad idea. *)
-Hint Extern 2 => simpl_on_val.
-Hint Extern 1 (uPred_valid True) => unfold uPred_valid.
+Local Hint Extern 5 => simpl_on_val.
+Local Hint Extern 1 (uPred_valid True) => unfold uPred_valid.
 
 (** The CMRA we need. *)
 Local Notation heap := (gmap loc val).
@@ -498,7 +498,7 @@ Ltac simpl_low :=
   | |- context [low (InjRV ?v)] => rewrite (low_val (InjRV v))
   | |- context [(▷ True)%I] => rewrite later_True
   end.
-Hint Extern 2 => simpl_low.
+Local Hint Extern 5 => simpl_low.
 
 (** * Bookkeeping lemmas *)
 Section bookkeeping.
