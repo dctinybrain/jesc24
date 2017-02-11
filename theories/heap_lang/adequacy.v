@@ -1,8 +1,8 @@
 From iris.algebra Require Import auth.
 From iris.base_logic.lib Require Import auth.
 From iris.program_logic Require Export adequacy.
-From iris.heap_lang Require Export heap.
-From iris.heap_lang Require Import addenda robust_safety.
+From iris.heap_lang Require Export heap robust_safety.
+From iris.heap_lang Require Import addenda.
 From iris.proofmode Require Import tactics.
 Import addenda.ownp.
 

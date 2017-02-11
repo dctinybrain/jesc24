@@ -118,6 +118,7 @@ theories/heap_lang/lib/barrier/proof.v
 theories/heap_lang/lib/caretaker.v
 theories/heap_lang/lib/membrane.v
 theories/heap_lang/adequacy.v
+theories/tests/readonly.v
 theories/tests/on_val.v
 theories/tests/heap_lang.v
 theories/tests/one_shot.v
