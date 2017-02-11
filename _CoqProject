@@ -98,6 +98,8 @@ theories/heap_lang/lang.v
 theories/heap_lang/tactics.v
 theories/heap_lang/lifting.v
 theories/heap_lang/heap.v
+theories/heap_lang/proofmode.v
+theories/heap_lang/on_val.v
 theories/heap_lang/substitution.v
 theories/heap_lang/robust_safety.v
 theories/heap_lang/notation.v
@@ -115,7 +117,6 @@ theories/heap_lang/lib/barrier/protocol.v
 theories/heap_lang/lib/barrier/proof.v
 theories/heap_lang/lib/caretaker.v
 theories/heap_lang/lib/membrane.v
-theories/heap_lang/proofmode.v
 theories/heap_lang/adequacy.v
 theories/tests/on_val.v
 theories/tests/heap_lang.v

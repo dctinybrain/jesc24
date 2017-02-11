@@ -1,5 +1,5 @@
 From iris.base_logic Require Import big_op.
-From iris.heap_lang Require Export heap substitution.
+From iris.heap_lang Require Export heap on_val substitution.
 From iris.heap_lang Require Import addenda proofmode.
 From iris.proofmode Require Import tactics.
 Import addenda.list addenda.fin_maps.
@@ -57,18 +57,6 @@ Section ftlr.
     rewrite low_env. apply big_sepM_mono. exact: delete_subseteq. done.
   Qed.
 
-  Lemma confined_alt e :
-    confined e ⊣⊢
-    ∀ γ Φ, heap_ctx -∗ low γ -∗ low e -∗ (∀ v, low v -∗ Φ v) -∗
-    WP γ e ?{{ Φ }}.
-  Proof.
-    iSplit.
-    - iIntros "Hc". iIntros (γ Φ) "Hh Hγ He". rewrite -wp_wand.
-      by iApply ("Hc" with "[$Hh] [$Hγ] [$He]").
-    - iIntros "Halt". iIntros (γ) "Hh Hγ He".
-      iApply ("Halt" with "[$Hh] [$Hγ] [$He] []"). by iIntros.
-  Qed.
-
   Lemma confined_var x : confined (Var x).
   Proof.
     iIntros (γ) "_ #Hγ _". rewrite substitute_expr.
@@ -79,28 +67,27 @@ Section ftlr.
 
   Lemma confined_rec f x e : □ confined e -∗ confined (Rec f x e).
   Proof.
-    rewrite 2!confined_alt.
-    iIntros "#IHe". iIntros (γ Φ) "#Hh #Hγ #He HΦ".
+    iIntros "#IHe". iIntros (γ) "#Hh #Hγ #He".
     rewrite (low_expr (Rec _ _ _)) substitute_expr. set erec := substitute _ _.
     case: (decide (Closed (f :b: x :b: []) erec)) => ?;
       last by iApply wp_stuck_rec_open.
     iApply wp_value; first exact: to_val_rec.
-    iApply "HΦ". clear Φ. rewrite/erec. set γ' := (delete _ _).
+    rewrite/erec. set γ' := (delete _ _).
     iLöb as "Hvrec". rewrite {2}low_val. iAlways. iNext.
-    iIntros (v2 Φ) "#Hv2 HΦ". case: (decide (x = f))=>?.
+    iIntros (v2) "#Hv2". case: (decide (x = f))=>?.
     { subst. rewrite -> subst_subst'; last done.	(* ssr rewrite fails *)
       rewrite of_val_rec subst_substitute; last by rewrite lookup_delete.
-      iApply ("IHe" with "[$Hh] [] [$He] [$HΦ]").
-      rewrite insert_delete. iApply (low_env_insert with "[$Hvrec] []");
+      iApply ("IHe" with "Hh [] He").
+      rewrite insert_delete. iApply (low_env_insert with "Hvrec");
         first by rewrite lookup_delete.
-      by iApply (low_env_delete with "[$Hγ]"). }
+      by iApply (low_env_delete with "Hγ"). }
     rewrite of_val_rec subst_substitute; last by rewrite lookup_delete.
     rewrite subst_substitute; last by rewrite
       lookup_insert_ne // lookup_delete_ne // lookup_delete.
-    iApply ("IHe" with "[$Hh] [] [$He] [$HΦ]").
-    iApply (low_env_insert with "[$Hv2] []"); first by rewrite
+    iApply ("IHe" with "Hh [] He").
+    iApply (low_env_insert with "Hv2"); first by rewrite
       lookup_insert_ne // lookup_delete_ne // lookup_delete.
-    iApply (low_env_insert with "[$Hvrec] []"); first by rewrite
+    iApply (low_env_insert with "Hvrec"); first by rewrite
       lookup_delete.
     do 2!iApply low_env_delete. iExact "Hγ".
   Qed.
@@ -109,14 +96,11 @@ Section ftlr.
 
   Lemma confined_app e1 e2 : confined e1 ∗ confined e2 -∗ confined (App e1 e2).
   Proof.
-    rewrite (confined_alt (App _ _)).
-    iIntros "[IHe1 IHe2]". iIntros (γ Φ) "#Hh #Hγ Happ HΦ".
+    iIntros "[IHe1 IHe2]". iIntros (γ) "#Hh #Hγ Happ".
     rewrite low_expr substitute_expr. iDestruct "Happ" as "(He1&He2)".
-    wp_bind (γ _). rewrite confined_alt.
-    iApply ("IHe1" with "[$Hh] [$Hγ] [$He1]"). iIntros (v1) "Hv1".
-    wp_bind (γ _). rewrite confined_alt.
-    iApply ("IHe2" with "[$Hh] [$Hγ] [$He2]"). iIntros (v2) "Hv2".
-    by iApply (wp_on_val_app with "[$Hv1 $Hv2] [$HΦ]").
+    iApply (wp_on_val_app with "[IHe1 He1] [IHe2 He2]").
+    - by iApply ("IHe1" with "Hh Hγ He1").
+    - by iApply ("IHe2" with "Hh Hγ He2").
   Qed.
   Hint Extern 1 (_ ⊢ confined (App _ _)) => rewrite -confined_app.
 
@@ -129,121 +113,84 @@ Section ftlr.
 
   Lemma confined_un_op op e : confined e -∗ confined (UnOp op e).
   Proof.
-    rewrite (confined_alt (UnOp _ _)).
-    iIntros "IHe". iIntros (γ Φ) "Hh Hγ He HΦ".
-    rewrite low_expr substitute_expr.
-    wp_bind (γ _). rewrite confined_alt.
-    iApply ("IHe" with "[$Hh] [$Hγ] [$He]"). iIntros (v) "Hv".
-    by iApply (wp_on_val_un_op with "[$Hv] [$HΦ]").
+    iIntros "IHe". iIntros (γ) "Hh Hγ He". rewrite low_expr substitute_expr.
+    iApply wp_on_val_un_op. by iApply ("IHe" with "Hh Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ confined (UnOp _ _)) => rewrite -confined_un_op.
 
   Lemma confined_bin_op op e1 e2 :
     confined e1 ∗ confined e2 -∗ confined (BinOp op e1 e2).
   Proof.
-    rewrite (confined_alt (BinOp _ _ _)).
-    iIntros "[IHe1 IHe2]". iIntros (γ Φ) "#Hh #Hγ Hop HΦ".
+    iIntros "[IHe1 IHe2]". iIntros (γ) "#Hh #Hγ Hop".
     rewrite low_expr substitute_expr. iDestruct "Hop" as "(He1&He2)".
-    wp_bind (γ _). rewrite confined_alt.
-    iApply ("IHe1" with "[$Hh] [$Hγ] [$He1]"). iIntros (v1) "Hv1".
-    wp_bind (γ _). rewrite confined_alt.
-    iApply ("IHe2" with "[$Hh] [$Hγ] [$He2]"). iIntros (v2) "Hv2".
-    by iApply (wp_on_val_bin_op with "[$Hv1 $Hv2] [$HΦ]").
+    iApply (wp_on_val_bin_op with "[IHe1 He1]").
+    - by iApply ("IHe1" with "Hh Hγ He1").
+    - by iApply ("IHe2" with "Hh Hγ He2").
   Qed.
   Hint Extern 1 (_ ⊢ confined (BinOp _ _ _)) => rewrite -confined_bin_op.
 
   Lemma confined_if e e1 e2 :
     confined e ∗ confined e1 ∗ confined e2 -∗ confined (If e e1 e2).
   Proof.
-    rewrite (confined_alt (If _ _ _)).
-    iIntros "(IHe&IHe1&IHe2)". iIntros (γ Φ) "#Hh #Hγ Hif HΦ".
+    iIntros "(IHe&IHe1&IHe2)". iIntros (γ) "#Hh #Hγ Hif".
     rewrite low_expr substitute_expr. iDestruct "Hif" as "(He&He1&He2)".
-    wp_bind (γ _). rewrite confined_alt.
-    iApply ("IHe" with "[$Hh] [$Hγ] [$He]"). iIntros (v) "_".
-    iApply wp_on_val_if. iNext. iSplit.
-    - rewrite confined_alt.
-      by iApply ("IHe1" with "[$Hh] [$Hγ] [$He1] [$HΦ]").
-    - rewrite (confined_alt e2).
-      by iApply ("IHe2" with "[$Hh] [$Hγ] [$He2] [$HΦ]").
+    wp_apply (wp_on_val_if with "[IHe He]"); last iSplit.
+    - by iApply ("IHe" with "Hh Hγ He").
+    - by iApply ("IHe1" with "Hh Hγ He1").
+    - by iApply ("IHe2" with "Hh Hγ He2").
   Qed.
   Hint Extern 1 (_ ⊢ confined (If _ _ _)) => rewrite -confined_if.
 
   Lemma confined_pair e1 e2 :
     confined e1 ∗ confined e2 -∗ confined (Pair e1 e2).
   Proof.
-    rewrite (confined_alt (Pair _ _)).
-    iIntros "[IHe1 IHe2]". iIntros (γ Φ) "#Hh #Hγ Hp HΦ".
+    iIntros "[IHe1 IHe2]". iIntros (γ) "#Hh #Hγ Hp".
     rewrite low_expr substitute_expr. iDestruct "Hp" as "(He1&He2)".
-    wp_bind (γ _). rewrite confined_alt.
-    iApply ("IHe1" with "[$Hh] [$Hγ] [$He1]"). iIntros (v1) "Hv1".
-    wp_bind (γ _). rewrite confined_alt.
-    iApply ("IHe2" with "[$Hh] [$Hγ] [$He2]"). iIntros (v2) "Hv2".
-    iApply wp_value; first by rewrite /= (to_of_val v1) (to_of_val v2).
-    iApply "HΦ". rewrite (low_val (PairV _ _)). by iFrame.
+    iApply (wp_on_val_pair with "[IHe1 He1]").
+    - by iApply ("IHe1" with "Hh Hγ He1").
+    - by iApply ("IHe2" with "Hh Hγ He2").
   Qed.
   Hint Extern 1 (_ ⊢ confined (Pair _ _)) => rewrite -confined_pair.
 
   Lemma confined_fst e : confined e -∗ confined (Fst e).
   Proof.
-    rewrite (confined_alt (Fst _)).
-    iIntros "IHe". iIntros (γ Φ) "#Hh #Hγ He HΦ".
-    rewrite low_expr substitute_expr.
-    wp_bind (γ _). rewrite confined_alt.
-    iApply ("IHe" with "[$Hh] [$Hγ] [$He]"). iIntros (v) "Hv".
-    by iApply (wp_on_val_fst with "[$Hv] [$HΦ]").
+    iIntros "IHe". iIntros (γ) "Hh Hγ He". rewrite low_expr substitute_expr.
+    iApply wp_on_val_fst. by iApply ("IHe" with "Hh Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ confined (Fst _)) => rewrite -confined_fst.
 
   Lemma confined_snd e : confined e -∗ confined (Snd e).
   Proof.
-    rewrite (confined_alt (Snd _)).
-    iIntros "IHe". iIntros (γ Φ) "#Hh #Hγ He HΦ".
-    rewrite low_expr substitute_expr.
-    wp_bind (γ _). rewrite confined_alt.
-    iApply ("IHe" with "[$Hh] [$Hγ] [$He]"). iIntros (v) "Hv".
-    by iApply (wp_on_val_snd with "[$Hv] [$HΦ]").
+    iIntros "IHe". iIntros (γ) "Hh Hγ He". rewrite low_expr substitute_expr.
+    iApply wp_on_val_snd. by iApply ("IHe" with "Hh Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ confined (Snd _)) => rewrite -confined_snd.
 
   Lemma confined_inl e : confined e -∗ confined (InjL e).
   Proof.
-    rewrite (confined_alt (InjL _)).
-    iIntros "IHe". iIntros (γ Φ) "#Hh #Hγ He HΦ".
-    rewrite low_expr substitute_expr.
-    wp_bind (γ _). rewrite confined_alt.
-    iApply ("IHe" with "[$Hh] [$Hγ] [$He]"). iIntros (v) "Hv".
-    iApply wp_value; first by rewrite /= (to_of_val v).
-    iApply "HΦ". rewrite (low_val (InjLV _)). by iFrame.
+    iIntros "IHe". iIntros (γ) "Hh Hγ He". rewrite low_expr substitute_expr.
+    iApply wp_on_val_inl. by iApply ("IHe" with "Hh Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ confined (InjL _)) => rewrite -confined_inl.
 
   Lemma confined_inr e : confined e -∗ confined (InjR e).
   Proof.
-    rewrite (confined_alt (InjR _)).
-    iIntros "IHe". iIntros (γ Φ) "#Hh #Hγ He HΦ".
-    rewrite low_expr substitute_expr.
-    wp_bind (γ _). rewrite confined_alt.
-    iApply ("IHe" with "[$Hh] [$Hγ] [$He]"). iIntros (v) "Hv".
-    iApply wp_value; first by rewrite /= (to_of_val v).
-    iApply "HΦ". rewrite (low_val (InjRV _)). by iFrame.
+    iIntros "IHe". iIntros (γ) "Hh Hγ He". rewrite low_expr substitute_expr.
+    iApply wp_on_val_inr. by iApply ("IHe" with "Hh Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ confined (InjR _)) => rewrite -confined_inr.
 
   Lemma confined_case e e1 e2 :
     confined e ∗ confined e1 ∗ confined e2 -∗ confined (Case e e1 e2).
   Proof.
-    rewrite (confined_alt (Case _ _ _)).
-    iIntros "(IHe&IHe1&IHe2)". iIntros (γ Φ) "#Hh #Hγ Hc HΦ".
+    iIntros "(IHe&IHe1&IHe2)". iIntros (γ) "#Hh #Hγ Hc".
     rewrite low_expr substitute_expr. iDestruct "Hc" as "(He&He1&He2)".
-    wp_bind (γ _). rewrite confined_alt.
-    iApply ("IHe" with "[$Hh] [$Hγ] [$He]"). iIntros (v) "Hv".
-    iApply (wp_on_val_case with "[$Hv]"). iNext. iIntros (v0) "#Hv0". iSplit.
-    - wp_bind (γ _). rewrite confined_alt.
-      iApply ("IHe1" with "[$Hh] [$Hγ] [$He1]"). iIntros (v1) "Hv1".
-      by iApply (wp_on_val_app with "[$Hv1 $Hv0] [$HΦ]").
-    - wp_bind (γ _). rewrite (confined_alt e2).
-      iApply ("IHe2" with "[$Hh] [$Hγ] [$He2]"). iIntros (v2) "Hv2".
-      by iApply (wp_on_val_app with "[$Hv2 $Hv0] [$HΦ]").
+    wp_apply (wp_on_val_case with "[IHe He]"); last (iIntros (v) "Hv"; iSplit).
+    - by iApply ("IHe" with "Hh Hγ He").
+    - iApply (wp_on_val_app with "[-Hv] [Hv]").
+      by iApply ("IHe1" with "Hh Hγ He1"). by wp_value.
+    - iApply (wp_on_val_app with "[-Hv] [Hv]").
+      by iApply ("IHe2" with "Hh Hγ He2"). by wp_value.
   Qed.
   Hint Extern 1 (_ ⊢ confined (Case _ _ _)) => rewrite -confined_case.
 
@@ -253,64 +200,45 @@ Section ftlr.
 
   Lemma confined_fork e : confined e -∗ confined (Fork e).
   Proof.
-    iIntros "IHe". iIntros (γ) "#Hh #Hγ He".
-    rewrite low_expr substitute_expr. iApply wp_fork. iNext. iSplit.
-    - by rewrite low_val low_lit.
-    - rewrite confined_alt.
-      iApply ("IHe" with "[$Hh] [$Hγ] [$He] []"). by iIntros.
+    iIntros "IHe". iIntros (γ) "Hh Hγ He". rewrite low_expr substitute_expr.
+    iApply wp_on_val_fork. by iApply ("IHe" with "Hh Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ confined (Fork _)) => rewrite -confined_fork.
 
   Lemma confined_alloc e : confined e -∗ confined (Alloc e).
   Proof.
-    rewrite (confined_alt (Alloc _)).
-    iIntros "IHe". iIntros (γ Φ) "#Hh #Hγ He HΦ".
-    rewrite low_expr substitute_expr.
-    wp_bind (γ _). rewrite confined_alt.
-    iApply ("IHe" with "[$Hh] [$Hγ] [$He]"). iIntros (v) "Hv".
-    iApply (wp_alloc_low with "[$Hh $Hv]"); [by rewrite to_of_val|done|].
-    iNext. iIntros (l) "#Hl". iApply "HΦ". by rewrite low_val low_lit.
+    iIntros "IHe". iIntros (γ) "#Hh Hγ He". rewrite low_expr substitute_expr.
+    iApply (wp_low_alloc with "Hh"). done. by iApply ("IHe" with "Hh Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ confined (Alloc _)) => rewrite -confined_alloc.
 
   Lemma confined_load e : confined e -∗ confined (Load e).
   Proof.
-    rewrite (confined_alt (Load _)).
-    iIntros "IHe". iIntros (γ Φ) "#Hh #Hγ He HΦ".
-    rewrite low_expr substitute_expr.
-    wp_bind (γ _). rewrite confined_alt.
-    iApply ("IHe" with "[$Hh] [$Hγ] [$He]"). iIntros (v) "Hv".
-    by iApply (wp_low_val_load with "[$Hh $Hv] [$HΦ]").
+    iIntros "IHe". iIntros (γ) "#Hh Hγ He". rewrite low_expr substitute_expr.
+    iApply (wp_low_load with "Hh"). done. by iApply ("IHe" with "Hh Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ confined (Load _)) => rewrite -confined_load.
 
   Lemma confined_store e1 e2 :
     confined e1 ∗ confined e2 -∗ confined (Store e1 e2).
   Proof.
-    rewrite (confined_alt (Store _ _)).
-    iIntros "[IHe1 IHe2]". iIntros (γ Φ) "#Hh #Hγ Hstore HΦ".
+    iIntros "[IHe1 IHe2]". iIntros (γ) "#Hh #Hγ Hstore".
     rewrite low_expr substitute_expr. iDestruct "Hstore" as "(He1&He2)".
-    wp_bind (γ _). rewrite confined_alt.
-    iApply ("IHe1" with "[$Hh] [$Hγ] [$He1]"). iIntros (v1) "Hv1".
-    wp_bind (γ _). rewrite confined_alt.
-    iApply ("IHe2" with "[$Hh] [$Hγ] [$He2]"). iIntros (v2) "Hv2".
-    by iApply (wp_low_val_store with "[$Hh $Hv1 $Hv2] [$HΦ]").
+    iApply (wp_low_store with "Hh [IHe1 He1]"); first done.
+    - by iApply ("IHe1" with "Hh Hγ He1").
+    - by iApply ("IHe2" with "Hh Hγ He2").
   Qed.
   Hint Extern 1 (_ ⊢ confined (Store _ _)) => rewrite -confined_store.
 
   Lemma confined_cas e0 e1 e2 :
     confined e0 ∗ confined e1 ∗ confined e2 -∗ confined (CAS e0 e1 e2).
   Proof.
-    rewrite (confined_alt (CAS _ _ _)).
-    iIntros "(IHe0&IHe1&IHe2)". iIntros (γ Φ) "#Hh #Hγ Hcas HΦ".
+    iIntros "(IHe0&IHe1&IHe2)". iIntros (γ) "#Hh #Hγ Hcas".
     rewrite low_expr substitute_expr. iDestruct "Hcas" as "(He0&He1&He2)".
-    wp_bind (γ _). rewrite confined_alt.
-    iApply ("IHe0" with "[$Hh] [$Hγ] [$He0]"). iIntros (v0) "Hv0".
-    wp_bind (γ _). rewrite confined_alt.
-    iApply ("IHe1" with "[$Hh] [$Hγ] [$He1]"). iIntros (v1) "_".
-    wp_bind (γ _). rewrite confined_alt.
-    iApply ("IHe2" with "[$Hh] [$Hγ] [$He2]"). iIntros (v2) "Hv2".
-    by iApply (wp_low_val_cas with "[$Hh $Hv0 $Hv2] [$HΦ]").
+    iApply (wp_low_cas with "Hh [IHe0 He0] [IHe1 He1]"); first done.
+    - by iApply ("IHe0" with "Hh Hγ He0").
+    - by iApply ("IHe1" with "Hh Hγ He1").
+    - by iApply ("IHe2" with "Hh Hγ He2").
   Qed.
   Hint Extern 1 (_ ⊢ confined (CAS _ _ _)) => rewrite -confined_cas.
 
@@ -331,14 +259,13 @@ Section ftlr.
       => rewrite (True_sep_1 True) {2}(True_sep_1 True) {1}IH1 {1}IH2 IH3
     end.
 
-  Theorem ftlr' e : confined e.
+  Theorem ftlr e : confined e.
   Proof. rewrite/uPred_valid. by induction e; auto. Qed.
 
-  Corollary ftlr γ e Φ :
+  Corollary ftlr_alt γ e Φ :
     heap_ctx -∗ low γ -∗ low e -∗ (∀ v, low v -∗ Φ v) -∗ WP γ e ?{{ Φ }}.
   Proof.
-    iIntros "Hh Hγ He". rewrite -wp_wand.
-    by iApply (ftlr' with "[$Hh] [$Hγ] [$He]").
+    iIntros "Hh Hγ He". rewrite -wp_wand. by iApply (ftlr with "Hh Hγ He").
   Qed.
 End ftlr.
 
@@ -704,15 +631,6 @@ Section robust_safety.
     WP γ (ctx_fill C e) ?{{ low }}
   )%I.
 
-  Lemma verified_alt p e :
-    verified p e ⊣⊢
-    ⌜Closed [] e⌝ ∗ ∀ Φ, (∀ v, low v -∗ Φ v) -∗ WP e @ p; ⊤ {{ Φ }}.
-  Proof.
-    iSplit.
-    - iIntros "(%&He)". iSplit; first done. iIntros (Φ). by rewrite -wp_wand.
-    - iIntros "(%&He)". iSplit; first done. iApply "He". by iIntros.
-  Qed.
-
   Lemma safe_alt C :
     safe C ⊣⊢
     ∀ γ p e Φ, heap_ctx -∗ low C -∗ low γ -∗ □ verified p e -∗
@@ -720,9 +638,9 @@ Section robust_safety.
   Proof.
     iSplit.
     - iIntros "Hsafe". iIntros (γ p e Φ) "Hh HC Hγ He".
-      rewrite -wp_wand. by iApply ("Hsafe" with "[$Hh] [$HC] [$Hγ] [$He]").
+      rewrite -wp_wand. by iApply ("Hsafe" with "Hh HC Hγ He").
     - iIntros "Halt". iIntros (γ p e) "Hh HC Hγ He".
-      iApply ("Halt" with "[$Hh] [$HC] [$Hγ] [$He] []"). by iIntros.
+      iApply ("Halt" with "Hh HC Hγ He []"). by iIntros.
   Qed.
 
   Lemma safe_hole : safe CHole.
@@ -735,27 +653,27 @@ Section robust_safety.
   Lemma safe_rec f x C : □ safe C -∗ safe (CRec f x C).
   Proof.
     (* PDS: Lots of duplication with confined_rec. *)
-    rewrite !safe_alt. iIntros "#IH". iIntros (γ p e Φ) "#Hh #HC #Hγ #He HΦ/=".
+    iIntros "#IH". iIntros (γ p e) "#Hh #HC #Hγ #He /=".
     rewrite (low_ctx (CRec _ _ _)) substitute_expr. set erec := substitute _ _.
     case: (decide (Closed (f :b: x :b: []) erec)) => ?;
       last by iApply wp_stuck_rec_open.
     iApply wp_value; first exact: to_val_rec.
-    iApply "HΦ". clear Φ. rewrite/erec. set γ' := (delete _ _).
+    rewrite/erec. set γ' := (delete _ _).
     iLöb as "Hvrec". rewrite {2}low_val. iAlways. iNext.
-    iIntros (v2 Φ) "#Hv2 HΦ". case: (decide (x = f))=>?.
+    iIntros (v2) "#Hv2". case: (decide (x = f))=>?.
     { subst. rewrite -> subst_subst'; last done.	(* ssr rewrite fails *)
       rewrite of_val_rec subst_substitute; last by rewrite lookup_delete.
-      iApply ("IH" with "[$Hh] [$HC] [] [He] [$HΦ]"); last iExact "He". (* iNext bug *)
-      rewrite insert_delete. iApply (low_env_insert with "[$Hvrec] []");
+      iApply ("IH" with "Hh HC [] [He]"); last iExact "He".	(* iNext bug *)
+      rewrite insert_delete. iApply (low_env_insert with "Hvrec");
         first by rewrite lookup_delete.
-      by iApply (low_env_delete with "[$Hγ]"). }
+      by iApply (low_env_delete with "Hγ"). }
     rewrite of_val_rec subst_substitute; last by rewrite lookup_delete.
     rewrite subst_substitute; last by rewrite
       lookup_insert_ne // lookup_delete_ne // lookup_delete.
-    iApply ("IH" with "[$Hh] [$HC] [] [He] [$HΦ]"); last iExact "He". (* iNext bug *)
-    iApply (low_env_insert with "[$Hv2] []"); first by rewrite
+    iApply ("IH" with "Hh HC [] [He]"); last iExact "He".	(* iNext bug *)
+    iApply (low_env_insert with "Hv2"); first by rewrite
       lookup_insert_ne // lookup_delete_ne // lookup_delete.
-    iApply (low_env_insert with "[$Hvrec] []"); first by rewrite
+    iApply (low_env_insert with "Hvrec"); first by rewrite
       lookup_delete.
     do 2!iApply low_env_delete. iExact "Hγ".
   Qed.
@@ -764,227 +682,176 @@ Section robust_safety.
 
   Lemma safe_app_l C1 e2 : safe C1 -∗ safe (CAppL C1 e2).
   Proof.
-    rewrite (safe_alt (CAppL _ _)).
-    iIntros "IH". iIntros (γ p e Φ) "#Hh Happ #Hγ He HΦ /=".
+    iIntros "IH". iIntros (γ p e) "#Hh Happ #Hγ He /=".
     rewrite low_ctx substitute_expr. iDestruct "Happ" as "(HC1&He2)".
-    wp_bind (γ _). rewrite safe_alt.
-    iApply ("IH" with "[$Hh] [$HC1] [$Hγ] [$He]"). iIntros (v1) "Hv1".
-    wp_bind (γ _).
-    iApply (ftlr with "[$Hh] [$Hγ] [$He2]"). iIntros (v2) "Hv2".
-    by iApply (wp_on_val_app with "[$Hv1 $Hv2] [$HΦ]").
+    iApply (wp_on_val_app with "[-He2] [He2]").
+    - by iApply ("IH" with "Hh HC1 Hγ He").
+    - by iApply (ftlr with "Hh Hγ He2").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CAppL _ _)) => rewrite -safe_app_l.
 
   Lemma safe_app_r e1 C2 : safe C2 -∗ safe (CAppR e1 C2).
   Proof.
-    rewrite (safe_alt (CAppR _ _)).
-    iIntros "IH". iIntros (γ p e Φ) "#Hh Happ #Hγ He HΦ /=".
+    iIntros "IH". iIntros (γ p e) "#Hh Happ #Hγ He /=".
     rewrite low_ctx substitute_expr. iDestruct "Happ" as "(He1&HC2)".
-    wp_bind (γ _).
-    iApply (ftlr with "[$Hh] [$Hγ] [$He1]"). iIntros (v1) "Hv1".
-    wp_bind (γ _). rewrite safe_alt.
-    iApply ("IH" with "[$Hh] [$HC2] [$Hγ] [$He]"). iIntros (v2) "Hv2".
-    by iApply (wp_on_val_app with "[$Hv1 $Hv2] [$HΦ]").
+    wp_apply (wp_on_val_app with "[He1]").
+    - by iApply (ftlr with "Hh Hγ He1").
+    - by iApply ("IH" with "Hh HC2 Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CAppR _ _)) => rewrite -safe_app_r.
 
   Lemma safe_un_op op C : safe C -∗ safe (CUnOp op C).
   Proof.
-    rewrite (safe_alt (CUnOp _ _)).
-    iIntros "IH". iIntros (γ p e Φ) "#Hh HC #Hγ He HΦ /=".
+    iIntros "IH". iIntros (γ p e) "Hh HC Hγ He /=".
     rewrite low_ctx substitute_expr.
-    wp_bind (γ _). rewrite safe_alt.
-    iApply ("IH" with "[$Hh] [$HC] [$Hγ] [$He]"). iIntros (v) "Hv".
-    by iApply (wp_on_val_un_op with "[$Hv] [$HΦ]").
+    iApply wp_on_val_un_op. by iApply ("IH" with "Hh HC Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CUnOp _ _)) => rewrite -safe_un_op.
 
   Lemma safe_bin_op_l op C1 e2 : safe C1 -∗ safe (CBinOpL op C1 e2).
   Proof.
-    rewrite (safe_alt (CBinOpL _ _ _)).
-    iIntros "IH". iIntros (γ p e Φ) "#Hh Hop #Hγ He HΦ /=".
+    iIntros "IH". iIntros (γ p e) "#Hh Hop #Hγ He /=".
     rewrite low_ctx substitute_expr. iDestruct "Hop" as "(HC1&He2)".
-    wp_bind (γ _). rewrite safe_alt.
-    iApply ("IH" with "[$Hh] [$HC1] [$Hγ] [$He]"). iIntros (?) "Hv1".
-    wp_bind (γ _).
-    iApply (ftlr with "[$Hh] [$Hγ] [$He2]"). iIntros (?) "Hv2".
-    by iApply (wp_on_val_bin_op with "[$Hv1 Hv2] [$HΦ]").
+    iApply (wp_on_val_bin_op with "[-He2]").
+    - by iApply ("IH" with "Hh HC1 Hγ He").
+    - by iApply (ftlr with "Hh Hγ He2").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CBinOpL _ _ _)) => rewrite -safe_bin_op_l.
 
   Lemma safe_bin_op_r op e1 C2 : safe C2 -∗ safe (CBinOpR op e1 C2).
   Proof.
-    rewrite (safe_alt (CBinOpR _ _ _)).
-    iIntros "IH". iIntros (γ p e Φ) "#Hh Hop #Hγ He HΦ /=".
+    iIntros "IH". iIntros (γ p e) "#Hh Hop #Hγ He /=".
     rewrite low_ctx substitute_expr. iDestruct "Hop" as "(He1&HC2)".
-    wp_bind (γ _).
-    iApply (ftlr with "[$Hh] [$Hγ] [$He1]"). iIntros (?) "Hv1".
-    wp_bind (γ _). rewrite safe_alt.
-    iApply ("IH" with "[$Hh] [$HC2] [$Hγ] [$He]"). iIntros (?) "Hv2".
-    by iApply (wp_on_val_bin_op with "[$Hv1 Hv2] [$HΦ]").
+    iApply (wp_on_val_bin_op with "[He1]").
+    - by iApply (ftlr with "Hh Hγ He1").
+    - by iApply ("IH" with "Hh HC2 Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CBinOpR _ _ _)) => rewrite -safe_bin_op_r.
 
   Lemma safe_if C e1 e2 : safe C -∗ safe (CIf C e1 e2).
   Proof.
-    rewrite (safe_alt (CIf _ _ _)).
-    iIntros "IH". iIntros (γ p e Φ) "#Hh Hif #Hγ He HΦ /=".
+    iIntros "IH". iIntros (γ p e) "#Hh Hif #Hγ He /=".
     rewrite low_ctx substitute_expr. iDestruct "Hif" as "(HC&He1&He2)".
-    wp_bind (γ _). rewrite safe_alt.
-    iApply ("IH" with "[$Hh] [$HC] [$Hγ] [$He]"). iIntros (?) "_".
-    iApply wp_on_val_if. iNext. iSplit.
-    - by iApply (ftlr with "[$Hh] [$Hγ] [$He1] [$HΦ]").
-    - by iApply (ftlr with "[$Hh] [$Hγ] [$He2] [$HΦ]").
+    wp_apply (wp_on_val_if with "[-He1 He2]"); last iSplit.
+    - by iApply ("IH" with "Hh HC Hγ He").
+    - by iApply (ftlr with "Hh Hγ He1").
+    - by iApply (ftlr with "Hh Hγ He2").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CIf _ _ _)) => rewrite -safe_if.
 
   Lemma safe_if_l e0 C1 e2 : safe C1 -∗ safe (CIfL e0 C1 e2).
   Proof.
-    rewrite (safe_alt (CIfL _ _ _)).
-    iIntros "IH". iIntros (γ p e Φ) "#Hh Hif #Hγ He HΦ /=".
-    rewrite low_ctx substitute_expr. iDestruct "Hif" as "(He0&HC1&He2)".
-    wp_bind (γ _).
-    iApply (ftlr with "[$Hh] [$Hγ] [$He0]"). iIntros (?) "_".
-    iApply wp_on_val_if. iNext. iSplit.
-    - rewrite safe_alt. by iApply ("IH" with "[$Hh] [$HC1] [$Hγ] [$He]").
-    - by iApply (ftlr with "[$Hh] [$Hγ] [$He2] [$HΦ]").
+    iIntros "IH". iIntros (γ p e) "#Hh Hif #Hγ He /=".
+    rewrite low_ctx substitute_expr. iDestruct "Hif" as "(He0&HC&He2)".
+    wp_apply (wp_on_val_if with "[He0]"); last iSplit.
+    - by iApply (ftlr with "Hh Hγ He0").
+    - by iApply ("IH" with "Hh HC Hγ He").
+    - by iApply (ftlr with "Hh Hγ He2").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CIfL _ _ _)) => rewrite -safe_if_l.
 
   Lemma safe_if_r e0 e1 C2 : safe C2 -∗ safe (CIfR e0 e1 C2).
   Proof.
-    rewrite (safe_alt (CIfR _ _ _)).
-    iIntros "IH". iIntros (γ p e Φ) "#Hh Hif #Hγ He HΦ /=".
-    rewrite low_ctx substitute_expr. iDestruct "Hif" as "(He0&He1&HC2)".
-    wp_bind (γ _).
-    iApply (ftlr with "[$Hh] [$Hγ] [$He0]"). iIntros (?) "_".
-    iApply wp_on_val_if. iNext. iSplit.
-    - by iApply (ftlr with "[$Hh] [$Hγ] [$He1] [$HΦ]").
-    - rewrite safe_alt. by iApply ("IH" with "[$Hh] [$HC2] [$Hγ] [$He]").
+    iIntros "IH". iIntros (γ p e) "#Hh Hif #Hγ He /=".
+    rewrite low_ctx substitute_expr. iDestruct "Hif" as "(He0&He1&HC)".
+    wp_apply (wp_on_val_if with "[He0]"); last iSplit.
+    - by iApply (ftlr with "Hh Hγ He0").
+    - by iApply (ftlr with "Hh Hγ He1").
+    - by iApply ("IH" with "Hh HC Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CIfR _ _ _)) => rewrite -safe_if_r.
 
   Lemma safe_pair_l C1 e2 : safe C1 -∗ safe (CPairL C1 e2).
   Proof.
-    rewrite (safe_alt (CPairL _ _)).
-    iIntros "IH". iIntros (γ p e Φ) "#Hh Hp #Hγ He HΦ /=".
+    iIntros "IH". iIntros (γ p e) "#Hh Hp #Hγ He /=".
     rewrite low_ctx substitute_expr. iDestruct "Hp" as "(HC1&He2)".
-    wp_bind (γ _). rewrite safe_alt.
-    iApply ("IH" with "[$Hh] [$HC1] [$Hγ] [$He]"). iIntros (v1) "Hv1".
-    wp_bind (γ _).
-    iApply (ftlr with "[$Hh] [$Hγ] [$He2]"). iIntros (v2) "Hv2".
-    iApply wp_value; first by rewrite /= (to_of_val v1) (to_of_val v2).
-    iApply "HΦ". rewrite (low_val (PairV _ _)). by iFrame.
+    wp_apply (wp_on_val_pair with "[-He2]").
+    - by iApply ("IH" with "Hh HC1 Hγ He").
+    - by iApply (ftlr with "Hh Hγ He2").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CPairL _ _)) => rewrite -safe_pair_l.
 
   Lemma safe_pair_r e1 C2 : safe C2 -∗ safe (CPairR e1 C2).
   Proof.
-    rewrite (safe_alt (CPairR _ _)).
-    iIntros "IH". iIntros (γ p e Φ) "#Hh Hp #Hγ He HΦ /=".
+    iIntros "IH". iIntros (γ p e) "#Hh Hp #Hγ He /=".
     rewrite low_ctx substitute_expr. iDestruct "Hp" as "(He1&HC2)".
-    wp_bind (γ _).
-    iApply (ftlr with "[$Hh] [$Hγ] [$He1]"). iIntros (v1) "Hv1".
-    wp_bind (γ _). rewrite safe_alt.
-    iApply ("IH" with "[$Hh] [$HC2] [$Hγ] [$He]"). iIntros (v2) "Hv2".
-    iApply wp_value; first by rewrite /= (to_of_val v1) (to_of_val v2).
-    iApply "HΦ". rewrite (low_val (PairV _ _)). by iFrame.
+    wp_apply (wp_on_val_pair with "[He1]").
+    - by iApply (ftlr with "Hh Hγ He1").
+    - by iApply ("IH" with "Hh HC2 Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CPairR _ _)) => rewrite -safe_pair_r.
 
   Lemma safe_fst C : safe C -∗ safe (CFst C).
   Proof.
-    rewrite (safe_alt (CFst _)).
-    iIntros "IH". iIntros (γ p e Φ) "#Hh HC #Hγ He HΦ /=".
+    iIntros "IH". iIntros (γ p e) "Hh HC Hγ He /=".
     rewrite low_ctx substitute_expr.
-    wp_bind (γ _). rewrite safe_alt.
-    iApply ("IH" with "[$Hh] [$HC] [$Hγ] [$He]"). iIntros (v) "Hv".
-    by iApply (wp_on_val_fst with "[$Hv] [$HΦ]").
+    wp_apply wp_on_val_fst. by iApply ("IH" with "Hh HC Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CFst _)) => rewrite -safe_fst.
 
   Lemma safe_snd C : safe C -∗ safe (CSnd C).
   Proof.
-    rewrite (safe_alt (CSnd _)).
-    iIntros "IH". iIntros (γ p e Φ) "#Hh HC #Hγ He HΦ /=".
+    iIntros "IH". iIntros (γ p e) "Hh HC Hγ He /=".
     rewrite low_ctx substitute_expr.
-    wp_bind (γ _). rewrite safe_alt.
-    iApply ("IH" with "[$Hh] [$HC] [$Hγ] [$He]"). iIntros (v) "Hv".
-    by iApply (wp_on_val_snd with "[$Hv] [$HΦ]").
+    wp_apply wp_on_val_snd. by iApply ("IH" with "Hh HC Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CSnd _)) => rewrite -safe_snd.
 
   Lemma safe_inl C : safe C -∗ safe (CInjL C).
   Proof.
-    rewrite (safe_alt (CInjL _)).
-    iIntros "IH". iIntros (γ p e Φ) "#Hh HC #Hγ He HΦ /=".
+    iIntros "IH". iIntros (γ p e) "Hh HC Hγ He /=".
     rewrite low_ctx substitute_expr.
-    wp_bind (γ _). rewrite safe_alt.
-    iApply ("IH" with "[$Hh] [$HC] [$Hγ] [$He]"). iIntros (v) "Hv".
-    iApply wp_value; first by rewrite /= (to_of_val v).
-    iApply "HΦ". rewrite (low_val (InjLV _)). by iFrame.
+    wp_apply wp_on_val_inl. by iApply ("IH" with "Hh HC Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CInjL _)) => rewrite -safe_inl.
 
   Lemma safe_inr C : safe C -∗ safe (CInjR C).
   Proof.
-    rewrite (safe_alt (CInjR _)).
-    iIntros "IH". iIntros (γ p e Φ) "#Hh HC #Hγ He HΦ /=".
+    iIntros "IH". iIntros (γ p e) "Hh HC Hγ He /=".
     rewrite low_ctx substitute_expr.
-    wp_bind (γ _). rewrite safe_alt.
-    iApply ("IH" with "[$Hh] [$HC] [$Hγ] [$He]"). iIntros (v) "Hv".
-    iApply wp_value; first by rewrite /= (to_of_val v).
-    iApply "HΦ". rewrite (low_val (InjRV _)). by iFrame.
+    wp_apply wp_on_val_inr. by iApply ("IH" with "Hh HC Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CInjR _)) => rewrite -safe_inr.
 
   Lemma safe_case C e1 e2 : safe C -∗ safe (CCase C e1 e2).
   Proof.
-    rewrite (safe_alt (CCase _ _ _)).
-    iIntros "IH". iIntros (γ p e Φ) "#Hh Hc #Hγ He HΦ /=".
+    iIntros "IH". iIntros (γ p e) "#Hh Hc #Hγ He /=".
     rewrite low_ctx substitute_expr. iDestruct "Hc" as "(HC&He1&He2)".
-    wp_bind (γ _). rewrite safe_alt.
-    iApply ("IH" with "[$Hh] [$HC] [$Hγ] [$He]"). iIntros (v) "Hv".
-    iApply (wp_on_val_case with "[$Hv]"). iNext. iIntros (v0) "#Hv0".
-    iSplit; wp_bind (γ _).
-    - iApply (ftlr with "[$Hh] [$Hγ] [$He1]"). iIntros (v1) "Hv1".
-      by iApply (wp_on_val_app with "[$Hv1 $Hv0] [$HΦ]").
-    - iApply (ftlr with "[$Hh] [$Hγ] [$He2]"). iIntros (v2) "Hv2".
-      by iApply (wp_on_val_app with "[$Hv2 $Hv0] [$HΦ]").
+    wp_apply (wp_on_val_case with "[-He1 He2]");
+      last (iIntros (v0) "Hv0"; iSplit; wp_bind (γ _)).
+    - by iApply ("IH" with "Hh HC Hγ He").
+    - iApply (ftlr_alt with "Hh Hγ He1"). iIntros (f) "Hf".
+      by iApply (wp_on_val_app with "[Hf] [Hv0]"); wp_value.
+    - iApply (ftlr_alt with "Hh Hγ He2"). iIntros (f) "Hf".
+      by iApply (wp_on_val_app with "[Hf] [Hv0]"); wp_value.
   Qed.
   Hint Extern 1 (_ ⊢ safe (CCase _ _ _)) => rewrite -safe_case.
 
   Lemma safe_case_l e0 C1 e2 : safe C1 -∗ safe (CCaseL e0 C1 e2).
   Proof.
-    rewrite (safe_alt (CCaseL _ _ _)).
-    iIntros "IH". iIntros (γ p e Φ) "#Hh Hc #Hγ He HΦ /=".
-    rewrite low_ctx substitute_expr. iDestruct "Hc" as "(He0&HC1&He2)".
-    wp_bind (γ _).
-    iApply (ftlr with "[$Hh] [$Hγ] [$He0]"). iIntros (v) "Hv".
-    iApply (wp_on_val_case with "[$Hv]"). iNext. iIntros (v0) "#Hv0".
-    iSplit; wp_bind (γ _).
-    - rewrite safe_alt.
-      iApply ("IH" with "[$Hh] [$HC1] [$Hγ] [$He]"). iIntros (v1) "Hv1".
-      by iApply (wp_on_val_app with "[$Hv1 $Hv0] [$HΦ]").
-    - iApply (ftlr with "[$Hh] [$Hγ] [$He2]"). iIntros (v2) "Hv2".
-      by iApply (wp_on_val_app with "[$Hv2 $Hv0] [$HΦ]").
+    iIntros "IH". iIntros (γ p e) "#Hh Hc #Hγ He /=".
+    rewrite low_ctx substitute_expr. iDestruct "Hc" as "(He0&HC&He2)".
+    wp_apply (wp_on_val_case with "[He0]");
+      last (iIntros (v0) "Hv0"; iSplit; wp_bind (γ _)).
+    - by iApply (ftlr with "Hh Hγ He0").
+    - rewrite safe_alt. iApply ("IH" with "Hh HC Hγ He"). iIntros (f) "Hf".
+      by iApply (wp_on_val_app with "[Hf] [Hv0]"); wp_value.
+    - iApply (ftlr_alt with "Hh Hγ He2"). iIntros (f) "Hf".
+      by iApply (wp_on_val_app with "[Hf] [Hv0]"); wp_value.
   Qed.
   Hint Extern 1 (_ ⊢ safe (CCaseL _ _ _)) => rewrite -safe_case_l.
 
   Lemma safe_case_r e0 e1 C2 : safe C2 -∗ safe (CCaseR e0 e1 C2).
   Proof.
-    rewrite (safe_alt (CCaseR _ _ _)).
-    iIntros "IH". iIntros (γ p e Φ) "#Hh Hc #Hγ He HΦ /=".
-    rewrite low_ctx substitute_expr. iDestruct "Hc" as "(He0&He1&HC2)".
-    wp_bind (γ _).
-    iApply (ftlr with "[$Hh] [$Hγ] [$He0]"). iIntros (v) "Hv".
-    iApply (wp_on_val_case with "[$Hv]"). iNext. iIntros (v0) "#Hv0".
-    iSplit; wp_bind (γ _).
-    - iApply (ftlr with "[$Hh] [$Hγ] [$He1]"). iIntros (v1) "Hv1".
-      by iApply (wp_on_val_app with "[$Hv1 $Hv0] [$HΦ]").
-    - rewrite safe_alt.
-      iApply ("IH" with "[$Hh] [$HC2] [$Hγ] [$He]"). iIntros (v2) "Hv2".
-      by iApply (wp_on_val_app with "[$Hv2 $Hv0] [$HΦ]").
+    iIntros "IH". iIntros (γ p e) "#Hh Hc #Hγ He /=".
+    rewrite low_ctx substitute_expr. iDestruct "Hc" as "(He0&He1&HC)".
+    wp_apply (wp_on_val_case with "[He0]");
+      last (iIntros (v0) "Hv0"; iSplit; wp_bind (γ _)).
+    - by iApply (ftlr with "Hh Hγ He0").
+    - iApply (ftlr_alt with "Hh Hγ He1"). iIntros (f) "Hf".
+      by iApply (wp_on_val_app with "[Hf] [Hv0]"); wp_value.
+    - rewrite safe_alt. iApply ("IH" with "Hh HC Hγ He"). iIntros (f) "Hf".
+      by iApply (wp_on_val_app with "[Hf] [Hv0]"); wp_value.
   Qed.
   Hint Extern 1 (_ ⊢ safe (CCaseR _ _ _)) => rewrite -safe_case_r.
 
@@ -994,106 +861,80 @@ Section robust_safety.
 
   Lemma safe_fork C : safe C -∗ safe (CFork C).
   Proof.
-    rewrite (safe_alt (CFork _)).
-    iIntros "IH". iIntros (γ p e Φ) "#Hh HC #Hγ He HΦ /=".
-    rewrite low_ctx substitute_expr. iApply wp_fork. iNext. iSplitL "HΦ".
-    - iApply "HΦ". by rewrite low_val low_lit.
-    - rewrite safe_alt. iApply ("IH" with "[$Hh] [$HC] [$Hγ] [$He]").
-      by iIntros.
+    iIntros "IH". iIntros (γ p e) "Hh HC Hγ He /=".
+    rewrite low_ctx substitute_expr. iApply wp_on_val_fork.
+    by iApply ("IH" with "Hh HC Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CFork _)) => rewrite -safe_fork.
 
   Lemma safe_alloc C : safe C -∗ safe (CAlloc C).
   Proof.
-    rewrite (safe_alt (CAlloc _)).
-    iIntros "IH". iIntros (γ p e Φ) "#Hh HC #Hγ He HΦ /=".
+    iIntros "IH". iIntros (γ p e) "#Hh HC Hγ He /=".
     rewrite low_ctx substitute_expr.
-    wp_bind (γ _). rewrite safe_alt.
-    iApply ("IH" with "[$Hh] [$HC] [$Hγ] [$He]"). iIntros (v) "Hv".
-    iApply (wp_alloc_low with "[$Hh $Hv]"); [by rewrite to_of_val|done|].
-    iNext. iIntros (l) "#Hl". iApply "HΦ". by rewrite low_val low_lit.
+    iApply (wp_low_alloc with "Hh"); first done.
+    by iApply ("IH" with "Hh HC Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CAlloc _)) => rewrite -safe_alloc.
 
   Lemma safe_load C : safe C -∗ safe (CLoad C).
   Proof.
-    rewrite (safe_alt (CLoad _)).
-    iIntros "IH". iIntros (γ p e Φ) "#Hh HC #Hγ He HΦ /=".
+    iIntros "IH". iIntros (γ p e) "#Hh HC Hγ He /=".
     rewrite low_ctx substitute_expr.
-    wp_bind (γ _). rewrite safe_alt.
-    iApply ("IH" with "[$Hh] [$HC] [$Hγ] [$He]"). iIntros (v) "Hv".
-    by iApply (wp_low_val_load with "[$Hh $Hv] [$HΦ]").
+    iApply (wp_low_load with "Hh"); first done.
+    by iApply ("IH" with "Hh HC Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CLoad _)) => rewrite -safe_load.
 
   Lemma safe_store_l C1 e2 : safe C1 -∗ safe (CStoreL C1 e2).
   Proof.
-    rewrite (safe_alt (CStoreL _ _)).
-    iIntros "IH". iIntros (γ p e Φ) "#Hh Hp #Hγ He HΦ /=".
+    iIntros "IH". iIntros (γ p e) "#Hh Hp #Hγ He /=".
     rewrite low_ctx substitute_expr. iDestruct "Hp" as "(HC1&He2)".
-    wp_bind (γ _). rewrite safe_alt.
-    iApply ("IH" with "[$Hh] [$HC1] [$Hγ] [$He]"). iIntros (v1) "Hv1".
-    wp_bind (γ _).
-    iApply (ftlr with "[$Hh] [$Hγ] [$He2]"). iIntros (v2) "Hv2".
-    by iApply (wp_low_val_store with "[$Hh $Hv1 $Hv2] [$HΦ]").
+    iApply (wp_low_store with "Hh [-He2]"); first done.
+    - by iApply ("IH" with "Hh HC1 Hγ He").
+    - by iApply (ftlr with "Hh Hγ He2").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CStoreL _ _)) => rewrite -safe_store_l.
 
   Lemma safe_store_r e1 C2 : safe C2 -∗ safe (CStoreR e1 C2).
   Proof.
-    rewrite (safe_alt (CStoreR _ _)).
-    iIntros "IH". iIntros (γ p e Φ) "#Hh Hp #Hγ He HΦ /=".
+    iIntros "IH". iIntros (γ p e) "#Hh Hp #Hγ He /=".
     rewrite low_ctx substitute_expr. iDestruct "Hp" as "(He1&HC2)".
-    wp_bind (γ _).
-    iApply (ftlr with "[$Hh] [$Hγ] [$He1]"). iIntros (v1) "Hv1".
-    wp_bind (γ _). rewrite safe_alt.
-    iApply ("IH" with "[$Hh] [$HC2] [$Hγ] [$He]"). iIntros (v2) "Hv2".
-    by iApply (wp_low_val_store with "[$Hh $Hv1 $Hv2] [$HΦ]").
+    iApply (wp_low_store with "Hh [He1]"); first done.
+    - by iApply (ftlr with "Hh Hγ He1").
+    - by iApply ("IH" with "Hh HC2 Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CStoreR _ _)) => rewrite -safe_store_r.
 
   Lemma safe_cas_l C e1 e2 : safe C -∗ safe (CCASL C e1 e2).
   Proof.
-    rewrite (safe_alt (CCASL _ _ _)).
-    iIntros "IH". iIntros (γ p e Φ) "#Hh Hc #Hγ He HΦ /=".
+    iIntros "IH". iIntros (γ p e) "#Hh Hc #Hγ He /=".
     rewrite low_ctx substitute_expr. iDestruct "Hc" as "(HC&He1&He2)".
-    wp_bind (γ _). rewrite safe_alt.
-    iApply ("IH" with "[$Hh] [$HC] [$Hγ] [$He]"). iIntros (v0) "Hv0".
-    wp_bind (γ _).
-    iApply (ftlr with "[$Hh] [$Hγ] [$He1]"). iIntros (v1) "_".
-    wp_bind (γ _).
-    iApply (ftlr with "[$Hh] [$Hγ] [$He2]"). iIntros (v2) "Hv2".
-    by iApply (wp_low_val_cas with "[$Hh $Hv0 $Hv2] [$HΦ]").
+    wp_apply (wp_low_cas with "Hh [-He1 He2] [He1]"); first done.
+    - by iApply ("IH" with "Hh HC Hγ He").
+    - by iApply (ftlr with "Hh Hγ He1").
+    - by iApply (ftlr with "Hh Hγ He2").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CCASL _ _ _)) => rewrite -safe_cas_l.
 
   Lemma safe_cas_m e0 C1 e2 : safe C1 -∗ safe (CCASM e0 C1 e2).
   Proof.
-    rewrite (safe_alt (CCASM _ _ _)).
-    iIntros "IH". iIntros (γ p e Φ) "#Hh Hc #Hγ He HΦ /=".
-    rewrite low_ctx substitute_expr. iDestruct "Hc" as "(He0&HC1&He2)".
-    wp_bind (γ _).
-    iApply (ftlr with "[$Hh] [$Hγ] [$He0]"). iIntros (v0) "Hv0".
-    wp_bind (γ _). rewrite safe_alt.
-    iApply ("IH" with "[$Hh] [$HC1] [$Hγ] [$He]"). iIntros (v1) "Hv1".
-    wp_bind (γ _).
-    iApply (ftlr with "[$Hh] [$Hγ] [$He2]"). iIntros (v2) "Hv2".
-    by iApply (wp_low_val_cas with "[$Hh $Hv0 $Hv2] [$HΦ]").
+    iIntros "IH". iIntros (γ p e) "#Hh Hc #Hγ He /=".
+    rewrite low_ctx substitute_expr. iDestruct "Hc" as "(He0&HC&He2)".
+    wp_apply (wp_low_cas with "Hh [He0] [-He2]"); first done.
+    - by iApply (ftlr with "Hh Hγ He0").
+    - by iApply ("IH" with "Hh HC Hγ He").
+    - by iApply (ftlr with "Hh Hγ He2").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CCASM _ _ _)) => rewrite -safe_cas_m.
 
   Lemma safe_cas_r e0 e1 C2 : safe C2 -∗ safe (CCASR e0 e1 C2).
   Proof.
-    rewrite (safe_alt (CCASR _ _ _)).
-    iIntros "IH". iIntros (γ p e Φ) "#Hh Hc #Hγ He HΦ /=".
-    rewrite low_ctx substitute_expr. iDestruct "Hc" as "(He0&He1&HC2)".
-    wp_bind (γ _).
-    iApply (ftlr with "[$Hh] [$Hγ] [$He0]"). iIntros (v0) "Hv0".
-    wp_bind (γ _).
-    iApply (ftlr with "[$Hh] [$Hγ] [$He1]"). iIntros (v1) "_".
-    wp_bind (γ _). rewrite safe_alt.
-    iApply ("IH" with "[$Hh] [$HC2] [$Hγ] [$He]"). iIntros (v2) "Hv2".
-    by iApply (wp_low_val_cas with "[$Hh $Hv0 $Hv2] [$HΦ]").
+    iIntros "IH". iIntros (γ p e) "#Hh Hc #Hγ He /=".
+    rewrite low_ctx substitute_expr. iDestruct "Hc" as "(He0&He1&HC)".
+    wp_apply (wp_low_cas with "Hh [He0] [He1]"); first done.
+    - by iApply (ftlr with "Hh Hγ He0").
+    - by iApply (ftlr with "Hh Hγ He1").
+    - by iApply ("IH" with "Hh HC Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CCASR _ _ _)) => rewrite -safe_cas_r.
 

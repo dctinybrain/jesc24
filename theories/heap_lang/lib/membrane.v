@@ -129,15 +129,15 @@ Section proof.
       + iClear "Hlocout Hlocin".
         (* Unfold Hv early, to eat the later. *)
         destruct (is_rec_val _ Hrec) as (f&x&erec&?&->).
-          rewrite on_val_elim always_elim. wp_match.
+          rewrite on_val_rec always_elim. wp_match.
         wp_apply "IHmku". iIntros (unwrap) "#Hunwrap". iClear "IHmku".
           rewrite/is_mon. wp_let.
         iApply "HΦ". clear Φ.
-        rewrite low_val. iAlways. iNext. iIntros (v1 Φ) "Hv1 HΦ".
+        rewrite low_val. iAlways. iNext. iIntros (v1) "Hv1".
           simpl_subst.
-        wp_apply ("Hunwrap" with "* [$Hv1]"). iIntros (v2) "Hv2". wp_rec.
-        wp_apply ("Hv" with "[$Hv2]"). iIntros (v3) "Hv3".
-        by wp_apply ("Hwrap" with "* [$Hv3]").
+        wp_apply ("Hunwrap" with "* Hv1"). iIntros (v2) "Hv2". wp_rec.
+        wp_apply ("Hv" with "Hv2"). iIntros (v3) "Hv3".
+        wp_apply ("Hwrap" with "* Hv3"). by iIntros.
       wp_match. iClear "IHmku Hlocin".
 
       (* Wrapping literals. *)
@@ -148,7 +148,7 @@ Section proof.
         wp_typecast Hloc; wp_match.
         * destruct (is_loc_val _ Hloc) as (l&->).
             rewrite on_val_elim on_lit_elim /is_mon.
-          wp_apply ("Hlocout" with "* [$Hv]"). iIntros (v1) "Hv1".
+          wp_apply ("Hlocout" with "* Hv"). iIntros (v1) "Hv1".
           iApply "HΦ". by rewrite low_val low_lit.
 
         (* Wrapping other literals. *)
@@ -162,9 +162,9 @@ Section proof.
       + (* Unfold Hv early, to eat the later. *)
         destruct (is_pair_val _ Hp) as (v1&v2&->).
           iDestruct "Hv" as "#(Hv1 & Hv2)". wp_match. wp_proj.
-        wp_apply ("Hwrap" with "* [$Hv1]"). iIntros (v'1) "Hv'1". wp_let.
+        wp_apply ("Hwrap" with "* Hv1"). iIntros (v'1) "Hv'1". wp_let.
           wp_proj.
-        wp_apply ("Hwrap" with "* [$Hv2]"). iIntros (v'2) "Hv'2". wp_let.
+        wp_apply ("Hwrap" with "* Hv2"). iIntros (v'2) "Hv'2". wp_let.
         iApply "HΦ". rewrite (low_val (PairV _ _)). by iFrame.
       wp_match.
 
@@ -172,7 +172,7 @@ Section proof.
       wp_typecast v0 Hinl.
       + (* Unfold Hv early, to eat the later. *)
         rewrite Hinl. wp_match.
-        wp_apply ("Hwrap" with "* [$Hv]"). iIntros (v1) "Hv1". wp_value.
+        wp_apply ("Hwrap" with "* Hv"). iIntros (v1) "Hv1". wp_value.
         iApply "HΦ". rewrite (low_val (InjLV _)). by iFrame.
       wp_match.
 
@@ -180,7 +180,7 @@ Section proof.
       wp_typecast v0 Hinr.
       + (* Unfold Hv early, to eat the later. *)
         rewrite Hinr. wp_match.
-        wp_apply ("Hwrap" with "* [$Hv]"). iIntros (v1) "Hv1". wp_value.
+        wp_apply ("Hwrap" with "* Hv"). iIntros (v1) "Hv1". wp_value.
         iApply "HΦ". rewrite (low_val (InjRV _)). by iFrame.
       wp_match.
       iExFalso. iPureIntro. exact: is_val_exhaustive.
@@ -195,15 +195,15 @@ Section proof.
       + iClear "Hlocout Hlocin".
         (* Unfold Hv early, to eat the later. *)
         destruct (is_rec_val v Hrec) as (f&x&erec&?&->).
-          rewrite low_val always_elim. wp_match.
+          rewrite low_rec always_elim. wp_match.
         wp_apply "IHmkw". iIntros (wrap) "#Hwrap". iClear "IHmkw".
           rewrite/is_mon. wp_let.
         iApply "HΦ". clear Φ.
-        rewrite on_val_elim. iAlways. iNext. iIntros (v1 Φ) "Hv1 HΦ".
+        rewrite on_val_elim. iAlways. iNext. iIntros (v1) "Hv1".
           simpl_subst.
-        wp_apply ("Hwrap" with "* [$Hv1]"). iIntros (v2) "Hv2". wp_rec.
-        wp_apply ("Hv" with "[$Hv2]"). iIntros (v3) "Hv3".
-        by wp_apply ("Hunwrap" with "* [$Hv3]").
+        wp_apply ("Hwrap" with "* Hv1"). iIntros (v2) "Hv2". wp_rec.
+        wp_apply ("Hv" with "Hv2"). iIntros (v3) "Hv3".
+        wp_apply ("Hunwrap" with "* Hv3"). by iIntros.
       wp_match. iClear "IHmkw Hlocout".
 
       (* Unwrapping literals. *)
@@ -214,7 +214,7 @@ Section proof.
         wp_typecast Hloc; wp_match.
         * destruct (is_loc_val _ Hloc) as (l1&->).
             rewrite low_val low_lit /is_mon.
-          wp_apply ("Hlocin" with "* [$Hv]"). iIntros (l2) "Hl2".
+          wp_apply ("Hlocin" with "* Hv"). iIntros (l2) "Hl2".
           iApply "HΦ". rewrite on_val_elim on_lit_elim. by iFrame.
 
         (* Unwrapping other literals. *)
@@ -229,9 +229,9 @@ Section proof.
       + (* Unfold Hv early, to eat the later. *)
         destruct (is_pair_val _ Hp) as (v1&v2&->).
           iDestruct "Hv" as "#(Hv1 & Hv2)". wp_match. wp_proj.
-        wp_apply ("Hunwrap" with "* [$Hv1]"). iIntros (v'1) "Hv'1". wp_let.
+        wp_apply ("Hunwrap" with "* Hv1"). iIntros (v'1) "Hv'1". wp_let.
           wp_proj.
-        wp_apply ("Hunwrap" with "* [$Hv2]"). iIntros (v'2) "Hv'2". wp_let.
+        wp_apply ("Hunwrap" with "* Hv2"). iIntros (v'2) "Hv'2". wp_let.
         iApply "HΦ". rewrite (on_val_elim _ (PairV _ _)). by iFrame.
       wp_match.
 
@@ -239,7 +239,7 @@ Section proof.
       wp_typecast v0 Hinl.
       + (* Unfold Hv early, to eat the later. *)
         rewrite Hinl. wp_match.
-        wp_apply ("Hunwrap" with "* [$Hv]"). iIntros (v1) "Hv1". wp_value.
+        wp_apply ("Hunwrap" with "* Hv"). iIntros (v1) "Hv1". wp_value.
         iApply "HΦ". rewrite (on_val_elim _ (InjLV _)). by iFrame.
       wp_match.
 
@@ -247,7 +247,7 @@ Section proof.
       wp_typecast v0 Hinr.
       + (* Unfold Hv early, to eat the later. *)
         rewrite Hinr. wp_match.
-        wp_apply ("Hunwrap" with "* [$Hv]"). iIntros (v1) "Hv1". wp_value.
+        wp_apply ("Hunwrap" with "* Hv"). iIntros (v1) "Hv1". wp_value.
         iApply "HΦ". rewrite (on_val_elim _ (InjRV _)). by iFrame.
       wp_match.
       iExFalso. iPureIntro. exact: is_val_exhaustive.
@@ -264,7 +264,7 @@ Section proof.
     {{{ wrap, RET wrap; is_mon id wrap (on_val Ψ) low }}}.
   Proof.
     iIntros (Φ) "[Hout Hin] HΦ".
-    iDestruct (wrap_unwrap with "[$Hout] [$Hin]") as "(Hw & _)".
+    iDestruct (wrap_unwrap with "Hout Hin") as "(Hw & _)".
     by iApply "Hw".
   Qed.
 End proof.
@@ -311,8 +311,8 @@ Section inert.
   Proof.
     iIntros (Φ) "#(Hout & Hin)". rewrite -membrane_spec. clear Φ. iSplit.
     - iIntros (l) "!#". iIntros (Φ) "_ HΦ".
-      by iApply ("Hout" $! l with "[] [$HΦ]").
+      by iApply ("Hout" $! l with "[] HΦ").
     - iIntros (l) "!#". iIntros (Φ) "Hl HΦ".
-      by iApply ("Hin" $! l with "[$Hl] [$HΦ]").
+      by iApply ("Hin" $! l with "Hl HΦ").
   Qed.
 End inert.

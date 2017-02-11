@@ -140,7 +140,7 @@ Section nonblocking.
     iIntros "#Hf !#". iIntros (Φ) "Hct HΦ".
       iDestruct "Hct" as (sync) "(%&#Hh&%&#Hsync)". subst.
       wp_lam. wp_let. iApply "HΦ". clear Φ.
-    rewrite low_val. iAlways. iNext. iIntros (v Φ) "#Hv HΦ". simpl_subst.
+    rewrite low_val. iAlways. iNext. iIntros (v) "#Hv". simpl_subst.
       wp_proj. rewrite/is_sync.
     wp_apply ("Hsync" with "[%]"). iClear "Hsync".
       iIntros (Ψ) "HR HΨ". iDestruct "HR" as (b) "(Hl&Hr)".
@@ -149,7 +149,7 @@ Section nonblocking.
       setoid_rewrite always_elim.
     wp_apply ("Hf" with "[$Hv $Hr]").
       iClear (v) "Hf Hv". iIntros (v) "(Hv&Hr)".
-    iApply ("HΨ" with "[Hl Hr]"). by iExists true; iFrame. by iApply "HΦ".
+    iApply ("HΨ" with "[Hl Hr] Hv"). by iExists true; iFrame.
   Qed.
 
   Lemma enable_spec l ct (R : iProp Σ) :
@@ -259,7 +259,7 @@ Section proof.
     {{{ ct γ, RET ct; is_caretaker γ ct R ∗ enabled γ false }}}.
   Proof.
     iIntros (? Φ) "#Hh HΦ". rewrite -wp_fupd /make_caretaker.
-    iApply (newlock'_spec _ _ _ _ R with "[$Hh]"); first done.
+    iApply (newlock'_spec _ _ _ _ R with "Hh"); first done.
       iNext. iIntros (lk γlk) "(#Hlk & Hlocked)".
     iMod (own_alloc (Excl ())) as (γ) "Hγ"; first done. iModIntro.
     iApply ("HΦ" $! lk (γ, γlk)). iSplitR. done. by iFrame.
@@ -271,13 +271,13 @@ Section proof.
   Proof.
     iIntros "#Hf !#". iIntros (Φ) "#Hct HΦ". wp_lam. wp_lam.
     iApply "HΦ". clear Φ. rewrite low_val. iAlways. iNext.
-      iIntros (v Φ) "Hv HΦ". simpl_subst.
-    wp_apply (sync_with_spec with "[$Hct]"). iIntros (sync) "#Hsync".
+      iIntros (v) "Hv". simpl_subst.
+    wp_apply (sync_with_spec with "Hct"). iIntros (sync) "#Hsync".
       rewrite/is_sync.
     wp_apply ("Hsync" with "[%]"). iIntros (Ψ) "Hr HΨ".
       setoid_rewrite always_elim.
     wp_apply ("Hf" with "[$Hv $Hr]"). clear v. iIntros (v) "[Hv Hr]".
-    iApply ("HΨ" with "Hr"). by iApply "HΦ".
+    by iApply ("HΨ" with "Hr Hv").
   Qed.
 
   Lemma enable_spec γ ct (R : iProp Σ) :

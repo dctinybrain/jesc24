@@ -26,11 +26,12 @@ Local Notation ext R := (pointwise_relation _ R).
 
 	_Introduction_: Lifted values (i) include all locations
 	satisfying [Ψ] and all other base values and (ii) are closed
-	under function abstraction, pairing, and injections.
+	under function abstraction, pairing, and injections. See
+	[on_val_elim], [on_val_rec].
 
 	_Elimination_: Heap resources (q.v.) for lifted locations are
 	determined by [Ψ]; otherwise, eliminating a lifted value
-	produces a lifted value.
+	produces a lifted value. See [on_val_app] and friends.
 *)
 Section on_val.
   Context `{irisG heap_lang Σ} (Ψ : loc → iProp Σ).
@@ -82,14 +83,21 @@ Section on_val.
   Lemma on_val_elim v :
     on_val v ⊣⊢
     match v with
-    | RecV f x e _ => □ ▷ ∀ v Φ, on_val v -∗ (∀ v', on_val v' -∗ Φ v') -∗
-      WP subst' x (of_val v) (subst' f (Rec f x e) e) ?{{ Φ }}
+    | RecV f x e _ => □ ▷ ∀ v, on_val v -∗
+      WP subst' x (of_val v) (subst' f (Rec f x e) e) ?{{ on_val }}
     | LitV lit => on_lit lit
     | PairV v1 v2 => ▷(on_val v1 ∗ on_val v2)
     | InjLV v | InjRV v => ▷(on_val v)
     end%I.
+  Proof. rewrite on_val_eq on_val_unfold. by destruct v. Qed.
+
+  (* PDS: Perhaps tweak to avoid rewrite always_later. *)
+  Lemma on_val_rec f x e `{!Closed (f :b: x :b: []) e} :
+    on_val (RecV f x e) ⊣⊢
+    □ ▷ ∀ v Φ, on_val v -∗ (∀ v', on_val v' -∗ Φ v') -∗
+    WP subst' x (of_val v) (subst' f (Rec f x e) e) ?{{ Φ }}.
   Proof.
-    rewrite on_val_eq on_val_unfold. destruct v; try done. iSplit.
+    rewrite on_val_elim. iSplit.
     - iIntros "#Hv !#". iNext. iIntros (v2 Φ) "Hv2". rewrite -wp_wand.
       by iApply ("Hv" with "[$Hv2]").
     - iIntros "#Hv !#". iNext. iIntros (v2) "Hv2".
@@ -465,13 +473,19 @@ Section low.
   Lemma low_val v :
     low v ⊣⊢
     match v with
-    | RecV f x e _ => □ ▷ ∀ v Φ, low v -∗ (∀ v', low v' -∗ Φ v') -∗
-      WP subst' x (of_val v) (subst' f (Rec f x e) e) ?{{ Φ }}
+    | RecV f x e _ => □ ▷ ∀ v, low v -∗
+      WP subst' x (of_val v) (subst' f (Rec f x e) e) ?{{ low }}
     | LitV lit => low lit
     | PairV v1 v2 => ▷ (low v1 ∗ low v2)
     | InjLV v | InjRV v => ▷ low v
     end.
   Proof. by rewrite low_val_eq on_val_elim. Qed.
+
+  Lemma low_rec f x e `{!Closed (f :b: x :b: []) e} :
+    low (RecV f x e) ⊣⊢
+    □ ▷ ∀ v Φ, low v -∗ (∀ v', low v' -∗ Φ v') -∗
+    WP subst' x (of_val v) (subst' f (Rec f x e) e) ?{{ Φ }}.
+  Proof. by rewrite low_val_eq on_val_rec. Qed.
 
   Global Instance low_val_lit_timeless lit : TimelessP (low (LitV lit)).
   Proof. apply _. Qed.
@@ -905,163 +919,3 @@ Section heap.
       iMod ("Hcl" with "* [Hh]") as "Ha"; first by eauto. by iApply "HΦ".
   Qed.
 End heap.
-
-(** * Eliminating lifted/low values *)
-(**
-  These lemmas are useful at the boundary between verified and
-  adversarial code.
-*)
-Section wp_on_val.
-  Context `{heapG Σ} (Ψ : loc → iProp Σ).
-  Implicit Types e : expr.
-  Implicit Types v : val.
-
-  Lemma wp_on_val_app v1 v2 :
-    {{{ on_val Ψ v1 ∗ on_val Ψ v2 }}} App (of_val v1) (of_val v2)
-    ?{{{ v, RET v; on_val Ψ v }}}.
-  Proof.
-    iIntros (Φ) "[Hv1 Hv2] HΦ".
-    case: (decide (is_rec (of_val v1)))=>Hrec;
-      last by iApply wp_stuck_app_nrec.
-    destruct (is_rec_val _ Hrec) as (f&x&e&?&->).
-    rewrite on_val_elim always_elim.
-    iApply wp_rec; [done|by exists v2|]. iNext.
-    by iApply ("Hv1" with "[$Hv2]").
-  Qed.
-
-  Hint Extern 1 (_ -∗ on_val Ψ (LitV ?lit)) =>
-    rewrite (on_val_elim Ψ (LitV lit)) on_lit_elim.
-  Hint Extern 1 (on_val Ψ (InjLV ?v) -∗ on_val Ψ (InjRV ?v)) =>
-    rewrite (on_val_elim Ψ (InjLV v)) (on_val_elim Ψ (InjRV v)).
-  Hint Extern 2 (_ -∗ on_val Ψ (InjLV ?v)) =>
-    rewrite (on_val_elim Ψ (InjLV v)) -later_intro.
-  Hint Extern 2 (_ -∗ on_val Ψ (InjRV ?v)) =>
-    rewrite (on_val_elim Ψ (InjRV v)) -later_intro.
-
-  Lemma on_val_un_op_eval op v1 v2 :
-    un_op_eval op v1 = Some v2 →
-    on_val Ψ v1 -∗ on_val Ψ v2.
-  Proof.
-    case: op; destruct v1 as [|lit| | |];
-    repeat (discriminate 1 || injection 1 as <- || destruct lit); auto.
-  Qed.
-
-  Lemma wp_on_val_un_op E op v :
-    {{{ on_val Ψ v }}} UnOp op (of_val v) @ E ?{{{ v', RET v'; on_val Ψ v' }}}.
-  Proof.
-    iIntros (Φ) "Hv HΦ".
-    case EV: (un_op_eval op v)=>[v'|]; last by iApply wp_stuck_un_op.
-    iApply wp_un_op; eauto. iNext.
-    iApply "HΦ". by iApply on_val_un_op_eval.
-  Qed.
-
-  Lemma on_val_bin_op_eval op v1 v2 v3 :
-    bin_op_eval op v1 v2 = Some v3 →
-    on_val Ψ v1 ∗ on_val Ψ v2 -∗ on_val Ψ v3.
-  Proof.
-    case: op; destruct v1 as [|lit1| | |]; destruct v2 as [|lit2| | |];
-    repeat (discriminate 1 || injection 1 as <- || destruct lit1
-      || destruct lit2); auto.
-  Qed.
-
-  Lemma wp_on_val_bin_op E op v1 v2 :
-    {{{ on_val Ψ v1 ∗ on_val Ψ v2 }}} BinOp op (of_val v1) (of_val v2) @ E
-    ?{{{ v', RET v'; on_val Ψ v' }}}.
-  Proof.
-    iIntros (Φ) "Hvi HΦ".
-    case EV: (bin_op_eval op v1 v2)=>[v'|]; last by iApply wp_stuck_bin_op.
-    iApply wp_bin_op; eauto. iNext.
-    iApply "HΦ". by iApply on_val_bin_op_eval.
-  Qed.
-
-  (* Misnamed. *)
-  Lemma wp_on_val_if E v e1 e2 Φ :
-    ▷ (WP e1 @ E ?{{ Φ }} ∧ WP e2 @ E ?{{ Φ }}) -∗
-    WP If (of_val v) e1 e2 @ E ?{{ Φ }}.
-  Proof.
-    iIntros "Hes".
-    case: (decide (is_bool (of_val v)))=>Hbool; last by iApply wp_stuck_if.
-    case: Hbool=>-[]->.
-    - iApply wp_if_true. iNext. by iDestruct "Hes" as "[? _]".
-    - iApply wp_if_false. iNext. by iDestruct "Hes" as "[_ ?]".
-  Qed.
-
-  Lemma wp_on_val_fst E v :
-    {{{ on_val Ψ v }}} Fst (of_val v) @ E ?{{{ v', RET v'; on_val Ψ v' }}}.
-  Proof.
-    iIntros (Φ) "Hv HΦ".
-    case: (decide (is_pair (of_val v)))=>Hp; last by iApply wp_stuck_fst.
-    destruct (is_pair_val _ Hp) as (v1&v2&->).
-    iApply wp_fst; [done|by exists v2|]. iNext. iDestruct "Hv" as "(Hv1&_)".
-    by iApply ("HΦ" with "[$Hv1]").
-  Qed.
-
-  Lemma wp_on_val_snd E v :
-    {{{ on_val Ψ v }}} Snd (of_val v) @ E ?{{{ v', RET v'; on_val Ψ v' }}}.
-  Proof.
-    iIntros (Φ) "Hv HΦ".
-    case: (decide (is_pair (of_val v)))=>Hp; last by iApply wp_stuck_snd.
-    destruct (is_pair_val _ Hp) as (v1&v2&->).
-    iApply wp_snd; [by exists v1|done|]. iNext. iDestruct "Hv" as "(_&Hv2)".
-    by iApply ("HΦ" with "[$Hv2]").
-  Qed.
-
-  Lemma wp_on_val_case E v e1 e2 Φ :
-    on_val Ψ v -∗
-    ▷ (∀ v0, on_val Ψ v0 -∗
-      WP App e1 (of_val v0) @ E ?{{ Φ }} ∧
-      WP App e2 (of_val v0) @ E ?{{ Φ }}) -∗
-    WP Case (of_val v) e1 e2 @ E ?{{ Φ }}.
-  Proof.
-    iIntros "Hv Hk".
-    case: (decide (is_inl (of_val v) ∨ is_inr (of_val v)))=>Hc;
-      last by iApply wp_stuck_case.
-    case: Hc=>[Hinl | Hinr].
-    - destruct (is_inl_val _ Hinl) as (v0&->).
-      iApply wp_case_inl; first by exists v0. iNext.
-      setoid_rewrite and_elim_l. by iApply ("Hk" with "[$Hv]").
-    - destruct (is_inr_val _ Hinr) as (v0&->).
-      iApply wp_case_inr; first by exists v0. iNext.
-      setoid_rewrite and_elim_r. by iApply ("Hk" with "[$Hv]").
-  Qed.
-
-  (**
-    The following are fundamental. By the heap invariant, one can
-    always eliminate low values.
-  *)
-
-  Lemma wp_low_val_load E v :
-    ↑heapN ⊆ E →
-    {{{ heap_ctx ∗ ▷ low v }}} Load (of_val v) @ E ?{{{ v', RET v'; low v' }}}.
-  Proof.
-    iIntros (? Φ) "(Hh&Hv) HΦ".
-    case: (decide (is_loc (of_val v)))=>Hl; last by iApply wp_stuck_load.
-    destruct (is_loc_val _ Hl) as (l&->).
-    iApply (wp_load_low with "[$Hh Hv] [$HΦ]"); auto.
-  Qed.
-
-  Lemma wp_low_val_store E v1 v2 :
-    ↑heapN ⊆ E →
-    {{{ heap_ctx ∗ ▷ low v1 ∗ ▷ low v2 }}} Store (of_val v1) (of_val v2) @ E
-    ?{{{ v', RET v'; low v' }}}.
-  Proof.
-    iIntros (? Φ) "(Hh&Hv1&Hv2) HΦ".
-    case: (decide (is_loc (of_val v1)))=>Hl; last by iApply wp_stuck_store.
-    destruct (is_loc_val _ Hl) as (l&->).
-    iApply (wp_store_low with "[$Hh Hv1 $Hv2] [HΦ]"); try auto.
-    iNext. iIntros "_". iApply "HΦ"; auto.
-  Qed.
-
-  Lemma wp_low_val_cas E v1 v2 v3 :
-    ↑heapN ⊆ E →
-    {{{ heap_ctx ∗ ▷ low v1 ∗ ▷ low v3 }}}
-      CAS (of_val v1) (of_val v2) (of_val v3) @ E
-    ?{{{ v', RET v'; low v' }}}.
-  Proof.
-    iIntros (? Φ) "(Hh&Hv1&Hv3) HΦ".
-    case: (decide (is_loc (of_val v1)))=>Hl; last by iApply wp_stuck_cas.
-    destruct (is_loc_val _ Hl) as (l&->).
-    iApply (wp_cas_low with "[$Hh Hv1 $Hv3] [HΦ]"); try auto.
-    iNext. iIntros (b) "_". iApply "HΦ"; auto.
-  Qed.
-End wp_on_val.
