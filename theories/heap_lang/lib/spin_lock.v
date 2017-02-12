@@ -5,11 +5,18 @@ From iris.heap_lang Require Import proofmode notation.
 From iris.algebra Require Import excl.
 From iris.heap_lang.lib Require Import lock.
 
+Module impl.
 Definition newlock' : val := λ: <>, ref #true.
 Definition try_acquire : val := λ: "l", CAS "l" #false #true.
 Definition acquire : val :=
   rec: "acquire" "l" := if: try_acquire "l" then #() else "acquire" "l".
 Definition release : val := λ: "l", "l" <- #false.
+End impl.
+
+Definition spin : LockImpl := {|
+  newlock' := impl.newlock'; acquire := impl.acquire;
+  release := impl.release
+|}.
 
 (** The CMRA we need. *)
 (* Not bundling heapG, as it may be shared with other users. *)
@@ -46,10 +53,10 @@ Section proof.
 
   Lemma newlock'_spec (R : iProp Σ):
     heapN ⊥ N →
-    {{{ heap_ctx }}} newlock' #() @ p; ⊤
+    {{{ heap_ctx }}} newlock' spin #() @ p; ⊤
     {{{ lk γ, RET lk; is_lock γ lk R ∗ locked γ }}}.
   Proof.
-    iIntros (? Φ) "#Hh HΦ". rewrite -wp_fupd /newlock /=.
+    iIntros (? Φ) "#Hh HΦ". rewrite -wp_fupd.
     wp_seq. wp_alloc l as "Hl".
     iMod (own_alloc (Excl ())) as (γ) "Hγ"; first done.
     iMod (inv_alloc N _ (lock_inv γ l R) with "[Hl]") as "#?".
@@ -58,7 +65,7 @@ Section proof.
   Qed.
 
   Lemma try_acquire_spec γ lk R :
-    {{{ is_lock γ lk R }}} try_acquire lk @ p; ⊤
+    {{{ is_lock γ lk R }}} impl.try_acquire lk @ p; ⊤
     {{{ b, RET #b; if b is true then locked γ ∗ R else True }}}.
   Proof.
     iIntros (Φ) "#Hl HΦ". iDestruct "Hl" as (l) "(% & #? & % & #?)"; subst.
@@ -67,11 +74,11 @@ Section proof.
       iModIntro. iApply ("HΦ" $! false). done.
     - wp_cas_suc. iDestruct "HR" as "[Hγ HR]".
       iMod ("Hclose" with "[Hl]"); first (iNext; iExists true; eauto).
-      iModIntro. rewrite /locked. by iApply ("HΦ" $! true with "[$Hγ $HR]").
+      iModIntro. by iApply ("HΦ" $! true with "[$Hγ $HR]").
   Qed.
 
   Lemma acquire_spec γ lk R :
-    {{{ is_lock γ lk R }}} acquire lk @ p; ⊤ {{{ RET #(); locked γ ∗ R }}}.
+    {{{ is_lock γ lk R }}} acquire spin lk @ p; ⊤ {{{ RET #(); locked γ ∗ R }}}.
   Proof.
     iIntros (Φ) "#Hl HΦ". iLöb as "IH". wp_rec.
     wp_apply (try_acquire_spec with "Hl"). iIntros ([]).
@@ -80,11 +87,12 @@ Section proof.
   Qed.
 
   Lemma release_spec γ lk R :
-    {{{ is_lock γ lk R ∗ locked γ ∗ R }}} release lk @ p; ⊤ {{{ RET #(); True }}}.
+    {{{ is_lock γ lk R ∗ locked γ ∗ R }}} release spin lk @ p; ⊤
+    {{{ RET #(); True }}}.
   Proof.
     iIntros (Φ) "(Hlock & Hlocked & HR) HΦ".
     iDestruct "Hlock" as (l) "(% & #? & % & #?)"; subst.
-    rewrite /release /=. wp_let. iInv N as (b) "[Hl _]" "Hclose".
+    wp_let. iInv N as (b) "[Hl _]" "Hclose".
     wp_store. iApply "HΦ". iApply "Hclose". iNext. iExists false. by iFrame.
   Qed.
 End proof.

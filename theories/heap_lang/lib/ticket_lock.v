@@ -6,6 +6,7 @@ From iris.algebra Require Import auth gset.
 From iris.heap_lang.lib Require Export lock.
 Import uPred.
 
+Module impl.
 Definition wait_loop: val :=
   rec: "wait_loop" "x" "lk" :=
     let: "o" := !(Fst "lk") in
@@ -25,6 +26,12 @@ Definition acquire : val :=
 
 Definition release : val :=
   λ: "lk", (Fst "lk") <- !(Fst "lk") + #1.
+End impl.
+
+Definition ticket : LockImpl := {|
+  newlock' := impl.newlock'; acquire := impl.acquire;
+  release := impl.release
+|}.
 
 (** The CMRAs we need. *)
 Class tlockG Σ :=
@@ -75,10 +82,10 @@ Section proof.
 
   Lemma newlock'_spec (R : iProp Σ) :
     heapN ⊥ N →
-    {{{ heap_ctx }}} newlock' #() @ p; ⊤
+    {{{ heap_ctx }}} newlock' ticket #() @ p; ⊤
     {{{ lk γ, RET lk; is_lock γ lk R ∗ locked γ }}}.
   Proof.
-    iIntros (? Φ) "#Hh HΦ". rewrite -wp_fupd /newlock /=.
+    iIntros (? Φ) "#Hh HΦ". rewrite -wp_fupd.
     wp_seq. wp_alloc lo as "Hlo". wp_alloc ln as "Hln".
     iMod (own_alloc (● (Excl' 0%nat, GSet (seq_set 0 1)) ⋅
       ◯ (∅, GSet {[0%nat]}) ⋅ ◯ (Excl' 0%nat, ∅))) as (γ) "((Hγ1 & Hγ2) & Hγ3)".
@@ -91,7 +98,8 @@ Section proof.
   Qed.
 
   Lemma wait_loop_spec γ lk x R :
-    {{{ issued γ lk x R }}} wait_loop #x lk @ p; ⊤ {{{ RET #(); locked γ ∗ R }}}.
+    {{{ issued γ lk x R }}} impl.wait_loop #x lk @ p; ⊤
+    {{{ RET #(); locked γ ∗ R }}}.
   Proof.
     iIntros (Φ) "Hl HΦ". iDestruct "Hl" as (lo ln) "(% & #? & % & #? & Ht)".
     iLöb as "IH". wp_rec. subst. wp_let. wp_proj. wp_bind (! _)%E.
@@ -112,7 +120,7 @@ Section proof.
   Qed.
 
   Lemma acquire_spec γ lk R :
-    {{{ is_lock γ lk R }}} acquire lk @ p; ⊤ {{{ RET #(); locked γ ∗ R }}}.
+    {{{ is_lock γ lk R }}} acquire ticket lk @ p; ⊤ {{{ RET #(); locked γ ∗ R }}}.
   Proof.
     iIntros (ϕ) "Hl HΦ". iDestruct "Hl" as (lo ln) "(% & #? & % & #?)".
     iLöb as "IH". wp_rec. wp_bind (! _)%E. subst. wp_proj.
@@ -143,7 +151,8 @@ Section proof.
   Qed.
 
   Lemma release_spec γ lk R :
-    {{{ is_lock γ lk R ∗ locked γ ∗ R }}} release lk @ p; ⊤ {{{ RET #(); True }}}.
+    {{{ is_lock γ lk R ∗ locked γ ∗ R }}} release ticket lk @ p; ⊤
+    {{{ RET #(); True }}}.
   Proof.
     iIntros (Φ) "(Hl & Hγ & HR) HΦ". iDestruct "Hl" as (lo ln) "(% & #? & % & #?)"; subst.
     iDestruct "Hγ" as (o) "Hγo".

@@ -94,6 +94,7 @@ Tactic Notation "wp_op" :=
     | BinOp _ _ _ =>
        wp_bind_core K; etrans;
          [|eapply wp_bin_op; [wp_done|wp_done|try fast_done]]; wp_finish
+    | UnOp EvenOp _ => wp_bind_core K; eapply wp_even; [wp_done| |]; wp_finish
     | UnOp _ _ =>
        wp_bind_core K; etrans;
          [|eapply wp_un_op; [wp_done|try fast_done]]; wp_finish

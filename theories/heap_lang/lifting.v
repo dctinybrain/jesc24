@@ -67,11 +67,11 @@ Proof.
   by left; eexists.
 Defined.
 
-Definition is_loc e : Prop := ∃ l, e = Lit (LitLoc l).
-Global Instance is_loc_dec e : Decision (is_loc e).
+Definition is_int e : Prop := ∃ n, e = Lit (LitInt n).
+Global Instance is_int_dec e : Decision (is_int e).
 Proof.
-  rewrite /is_loc. case: e; try by intros; right; naive_solver.
-  case; try by intros; right; naive_solver. move=>l. left. by exists l.
+  rewrite /is_int. case: e; try by intros; right; naive_solver.
+  case; try by intros; right; naive_solver. move=>n. left. by exists n.
 Defined.
 
 Definition is_bool e : Prop := ∃ b, e = Lit (LitBool b).
@@ -79,6 +79,13 @@ Global Instance is_bool_dec e : Decision (is_bool e).
 Proof.
   rewrite /is_bool. case: e; try by intros; right; naive_solver.
   case; try by intros; right; naive_solver. move=>b. left. by exists b.
+Defined.
+
+Definition is_loc e : Prop := ∃ l, e = Lit (LitLoc l).
+Global Instance is_loc_dec e : Decision (is_loc e).
+Proof.
+  rewrite /is_loc. case: e; try by intros; right; naive_solver.
+  case; try by intros; right; naive_solver. move=>l. left. by exists l.
 Defined.
 
 Definition is_pair e : Prop := ∃ e1 e2, e = Pair e1 e2.
@@ -117,6 +124,12 @@ Lemma is_rec_val v : is_rec (of_val v) → ∃ f x e C, v = @RecV f x e C.
 Proof.
   case=>f [] x [] e. case: v=>// ??? C [] ???; subst. by exists f, x, e, C.
 Qed.
+
+Lemma is_int_val v : is_int (of_val v) → ∃ n, v = LitV (LitInt n).
+Proof. case=>n. case: v=>// ? [] ?; subst. by exists n. Qed.
+
+Lemma is_bool_val v : is_bool (of_val v) → ∃ b, v = LitV (LitBool b).
+Proof. case=>b. case: v=>// ? [] ?; subst. by exists b. Qed.
 
 Lemma is_loc_val v : is_loc (of_val v) → ∃ l, v = LitV (LitLoc l).
 Proof. case=>l. case: v=>// ? [] ?; subst. by exists l. Qed.
@@ -406,7 +419,7 @@ Proof.
   intros; inv_head_step; eauto.
 Qed.
 
-(** Proof rules for derived constructs *)
+(** Proof rules for operators and derived constructs *)
 Lemma wp_lam p E x elam e1 e2 Φ :
   e1 = Lam x elam →
   is_Some (to_val e2) →
@@ -436,6 +449,26 @@ Lemma wp_match_inr p E e0 x1 e1 x2 e2 Φ :
   is_Some (to_val e0) → Closed (x2 :b: []) e2 →
   ▷ WP subst' x2 e0 e2 @ p; E {{ Φ }} ⊢ WP Match (InjR e0) x1 e1 x2 e2 @ p; E {{ Φ }}.
 Proof. intros. by rewrite -wp_case_inr // -[X in _ ⊢ X]later_intro -wp_let. Qed.
+
+Lemma wp_stuck_even E e v Φ :
+  to_val e = Some v → ¬ is_int e → WP UnOp EvenOp e @ E ?{{ Φ }}%I.
+Proof.
+  rewrite/is_int=>HE HV. rewrite -wp_stuck_un_op //.
+  case: v HE HV => // -[] // n /of_to_val=><- HV.
+  exfalso. apply: HV. by exists n.
+Qed.
+
+Lemma wp_even p E e n P Φ :
+  to_val e = Some (LitV (LitInt n)) →
+  (Z.Even n → P ⊢ ▷ Φ (LitV (LitBool true))) →
+  (Z.Odd n → P ⊢ ▷ Φ (LitV (LitBool false))) →
+  P ⊢ WP UnOp EvenOp e @ p; E {{ Φ }}.
+Proof.
+  intros ? Hpe Hpo. rewrite -wp_un_op //; []. case EV: (Z.even n).
+  - rewrite -Hpe //. by apply Z.even_spec.
+  - rewrite -Hpo //. case: (Z.Even_or_Odd n) => // He. exfalso.
+    by move: He EV => /Z.even_spec->.
+Qed.
 
 Lemma wp_le p E (n1 n2 : Z) P Φ :
   (n1 ≤ n2 → P ⊢ ▷ Φ (LitV (LitBool true))) →

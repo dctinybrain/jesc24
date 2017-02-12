@@ -9,11 +9,15 @@ Open Scope Z_scope.
 (** Expressions and vals. *)
 Definition loc := positive. (* Really, any countable type. *)
 
+(*
+	PDS: It would be nice to move LitUnit and LItLoc into expr and
+	use constraints for base values and operations (like we do for
+	CMRAs).
+*)
 Inductive base_lit : Set :=
   | LitInt (n : Z) | LitBool (b : bool) | LitUnit | LitLoc (l : loc).
 Inductive un_op : Set :=
-  | NegOp | MinusUnOp
-  (* PDS: Hack. *)
+  | NegOp | MinusUnOp | EvenOp
   | FunofOp | LitofOp | LocofOp | PairofOp | InlofOp | InrofOp.
 Inductive bin_op : Set :=
   | PlusOp | MinusOp | LeOp | LtOp | EqOp.
@@ -242,7 +246,7 @@ Definition un_op_eval (op : un_op) (v : val) : option val :=
   match op, v with
   | NegOp, LitV (LitBool b) => Some $ LitV $ LitBool (negb b)
   | MinusUnOp, LitV (LitInt n) => Some $ LitV $ LitInt (- n)
-  (* PDS: Hack. *)
+  | EvenOp, LitV (LitInt n) => Some $ LitV $ LitBool (Z.even n)
   | FunofOp, RecV _ _ _ _ => Some $ SOMEV v
   | FunofOp, _ => Some $ NONEV
   | LitofOp, LitV _ => Some $ SOMEV v
