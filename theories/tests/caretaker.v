@@ -15,7 +15,7 @@ Section loc_ct_code.
   Context (CI : CaretakerImpl).
 
   Definition make_loc_ct : val := λ: "f" "l",
-    let: "ct" := make_caretaker CI #() in
+    let: "ct" := make_caretaker CI () in
     let: "read" := wrap CI "ct" (λ: <>, ! "l") in
     let: "write" := wrap CI "ct" (λ: "v", "l" <- "f" "v") in
     ("ct", ("read", "write")).
@@ -30,7 +30,7 @@ Section loc_ct_proof.
   Lemma make_loc_ct_spec N f l Ψ :
     let R : iProp Σ := (∃ v, l ↦ v ∗ low v ∗ Ψ v)%I in
     heapN ⊥ N →
-    {{{ heap_ctx ∗ is_refmon f Ψ }}} make_loc_ct CI f #l
+    {{{ heap_ctx ∗ is_refmon f Ψ }}} make_loc_ct CI f l
     {{{ ct γ v, RET (ct, v);
       is_caretaker C N γ ct R ∗ enabled C γ false ∗ low v }}}.
   Proof.
@@ -90,7 +90,7 @@ Section example_code.
     let: "loc" := Snd "ct" in
     let: "ct" := Fst "ct" in
     enable CI "ct" ;;
-    let: "sync" := make_sync LI #() in
+    let: "sync" := make_sync LI () in
     let: "use" := "sync" (λ: <>,
       disable CI "ct" ;;
       assert: (even: (! "l")) ;;
@@ -124,7 +124,7 @@ Section example_proof.
     (** We need to turn the caretaker on with [l ↦ #0] twice. *)
     iAssert (
       {{{ enabled C γ false ∗ l ↦ #0 }}} enable CI ct
-      {{{ RET #(); enabled C γ true }}}
+      {{{ RET (); enabled C γ true }}}
     )%I as "#Hzero".
     { iAlways. clear Φ. iIntros (Φ) "[Hoff Hl] HΦ".
       wp_apply (enable_spec with "[$Hct $Hoff Hl] HΦ").

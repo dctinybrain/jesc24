@@ -28,12 +28,12 @@ Structure lock Σ `{!heapG Σ} {LI : LockImpl} := Lock {
   (* -- operation specs -- *)
   newlock'_spec p N (R : iProp Σ) :
     heapN ⊥ N →
-    {{{ heap_ctx }}} newlock' LI #() @ p; ⊤
+    {{{ heap_ctx }}} newlock' LI () @ p; ⊤
     {{{ lk γ, RET lk;  is_lock N γ lk R ∗ locked γ }}};
   acquire_spec p N γ lk R :
-    {{{ is_lock N γ lk R }}} acquire LI lk @ p; ⊤ {{{ RET #(); locked γ ∗ R }}};
+    {{{ is_lock N γ lk R }}} acquire LI lk @ p; ⊤ {{{ RET (); locked γ ∗ R }}};
   release_spec p N γ lk R :
-    {{{ is_lock N γ lk R ∗ locked γ ∗ R }}} release LI lk @ p; ⊤ {{{ RET #(); True }}}
+    {{{ is_lock N γ lk R ∗ locked γ ∗ R }}} release LI lk @ p; ⊤ {{{ RET (); True }}}
 }.
 
 Arguments name {_ _ _} _.
@@ -47,14 +47,14 @@ Instance is_lock_proper Σ `{!heapG Σ, LockImpl} (L: lock Σ) N lk R:
 
 (** * The [newlock] function *)
 Definition newlock (LI : LockImpl) : val := λ: <>,
-  let: "lk" := newlock' LI #() in release LI "lk" ;; "lk".
+  let: "lk" := newlock' LI () in release LI "lk" ;; "lk".
 
 Section newlock.
   Context `{heapG Σ, LI : LockImpl} (L : lock Σ).
 
   Lemma newlock_spec p N (R : iProp Σ) :
     heapN ⊥ N →
-    {{{ heap_ctx ∗ R }}} newlock LI #() @ p; ⊤
+    {{{ heap_ctx ∗ R }}} newlock LI () @ p; ⊤
     {{{ lk γ, RET lk; is_lock L N γ lk R }}}.
   Proof.
     iIntros (? Φ) "[#Hh Hr] HΦ"; wp_lam.
@@ -71,9 +71,9 @@ Section sync_code.
   Context (LI : LockImpl).
 
   Definition sync_with : val := λ: "lk" "f",
-    acquire LI "lk" ;; let: "r" := "f" #() in release LI "lk" ;; "r".
+    acquire LI "lk" ;; let: "r" := "f" () in release LI "lk" ;; "r".
   Definition make_sync : val := λ: <>,
-    let: "lk" := newlock LI #() in sync_with "lk".
+    let: "lk" := newlock LI () in sync_with "lk".
 End sync_code.
 
 Section sync_proof.
@@ -106,7 +106,7 @@ Section sync_proof.
 
   Lemma make_sync_spec p N (R : iProp Σ) :
     heapN ⊥ N →
-    {{{ heap_ctx ∗ R }}} make_sync LI #() @ p; ⊤
+    {{{ heap_ctx ∗ R }}} make_sync LI () @ p; ⊤
     {{{ sync, RET sync; is_sync sync R }}}.
   Proof.
     iIntros (? Φ) "[#Hh HR] HΦ"; wp_lam.

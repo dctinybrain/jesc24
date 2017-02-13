@@ -19,6 +19,7 @@ Inductive expr :=
   | BinOp (op : bin_op) (e1 e2 : expr)
   | If (e0 e1 e2 : expr)
   (* Products *)
+  | Unit
   | Pair (e1 e2 : expr)
   | Fst (e : expr)
   | Snd (e : expr)
@@ -31,6 +32,7 @@ Inductive expr :=
   (* Concurrency *)
   | Fork (e : expr)
   (* Heap *)
+  | Loc (l : loc)
   | Alloc (e : expr)
   | Load (e : expr)
   | Store (e1 : expr) (e2 : expr)
@@ -43,10 +45,11 @@ Fixpoint to_expr (e : expr) : heap_lang.expr :=
   | Var x => heap_lang.Var x
   | Rec f x e => heap_lang.Rec f x (to_expr e)
   | App e1 e2 => heap_lang.App (to_expr e1) (to_expr e2)
-  | Lit l => heap_lang.Lit l
+  | Lit lit => heap_lang.Lit lit
   | UnOp op e => heap_lang.UnOp op (to_expr e)
   | BinOp op e1 e2 => heap_lang.BinOp op (to_expr e1) (to_expr e2)
   | If e0 e1 e2 => heap_lang.If (to_expr e0) (to_expr e1) (to_expr e2)
+  | Unit => heap_lang.Unit
   | Pair e1 e2 => heap_lang.Pair (to_expr e1) (to_expr e2)
   | Fst e => heap_lang.Fst (to_expr e)
   | Snd e => heap_lang.Snd (to_expr e)
@@ -55,6 +58,7 @@ Fixpoint to_expr (e : expr) : heap_lang.expr :=
   | Case e0 e1 e2 => heap_lang.Case (to_expr e0) (to_expr e1) (to_expr e2)
   | Assert e => heap_lang.Assert (to_expr e)
   | Fork e => heap_lang.Fork (to_expr e)
+  | Loc l => heap_lang.Loc l
   | Alloc e => heap_lang.Alloc (to_expr e)
   | Load e => heap_lang.Load (to_expr e)
   | Store e1 e2 => heap_lang.Store (to_expr e1) (to_expr e2)
@@ -67,13 +71,14 @@ Ltac of_expr e :=
   | heap_lang.Rec ?f ?x ?e => let e := of_expr e in constr:(Rec f x e)
   | heap_lang.App ?e1 ?e2 =>
      let e1 := of_expr e1 in let e2 := of_expr e2 in constr:(App e1 e2)
-  | heap_lang.Lit ?l => constr:(Lit l)
+  | heap_lang.Lit ?lit => constr:(Lit lit)
   | heap_lang.UnOp ?op ?e => let e := of_expr e in constr:(UnOp op e)
   | heap_lang.BinOp ?op ?e1 ?e2 =>
      let e1 := of_expr e1 in let e2 := of_expr e2 in constr:(BinOp op e1 e2)
   | heap_lang.If ?e0 ?e1 ?e2 =>
      let e0 := of_expr e0 in let e1 := of_expr e1 in let e2 := of_expr e2 in
      constr:(If e0 e1 e2)
+  | heap_lang.Unit => constr:(Unit)
   | heap_lang.Pair ?e1 ?e2 =>
      let e1 := of_expr e1 in let e2 := of_expr e2 in constr:(Pair e1 e2)
   | heap_lang.Fst ?e => let e := of_expr e in constr:(Fst e)
@@ -85,6 +90,7 @@ Ltac of_expr e :=
      constr:(Case e0 e1 e2)
   | heap_lang.Assert ?e => let e := of_expr e in constr:(Assert e)
   | heap_lang.Fork ?e => let e := of_expr e in constr:(Fork e)
+  | heap_lang.Loc ?l => constr:(Loc l)
   | heap_lang.Alloc ?e => let e := of_expr e in constr:(Alloc e)
   | heap_lang.Load ?e => let e := of_expr e in constr:(Load e)
   | heap_lang.Store ?e1 ?e2 =>
@@ -103,7 +109,7 @@ Fixpoint is_closed (X : list string) (e : expr) : bool :=
   | Val _ | ClosedExpr _ _ => true
   | Var x => bool_decide (x ∈ X)
   | Rec f x e => is_closed (f :b: x :b: X) e
-  | Lit _ => true
+  | Lit _ | Unit | Loc _ => true
   | UnOp _ e | Fst e | Snd e | InjL e | InjR e | Assert e | Fork e
   | Alloc e | Load e =>
      is_closed X e
@@ -128,10 +134,12 @@ Fixpoint to_val (e : expr) : option val :=
   | Rec f x e =>
      if decide (is_closed (f :b: x :b: []) e) is left H
      then Some (@RecV f x (to_expr e) (is_closed_correct _ _ H)) else None
-  | Lit l => Some (LitV l)
+  | Lit lit => Some (LitV lit)
+  | Unit => Some UnitV
   | Pair e1 e2 => v1 ← to_val e1; v2 ← to_val e2; Some (PairV v1 v2)
   | InjL e => InjLV <$> to_val e
   | InjR e => InjRV <$> to_val e
+  | Loc l => Some (LocV l)
   | _ => None
   end.
 Lemma to_val_Some e v :
@@ -153,10 +161,11 @@ Fixpoint subst (x : string) (es : expr) (e : expr)  : expr :=
   | Rec f y e =>
      Rec f y $ if decide (BNamed x ≠ f ∧ BNamed x ≠ y) then subst x es e else e
   | App e1 e2 => App (subst x es e1) (subst x es e2)
-  | Lit l => Lit l
+  | Lit lit => Lit lit
   | UnOp op e => UnOp op (subst x es e)
   | BinOp op e1 e2 => BinOp op (subst x es e1) (subst x es e2)
   | If e0 e1 e2 => If (subst x es e0) (subst x es e1) (subst x es e2)
+  | Unit => Unit
   | Pair e1 e2 => Pair (subst x es e1) (subst x es e2)
   | Fst e => Fst (subst x es e)
   | Snd e => Snd (subst x es e)
@@ -165,6 +174,7 @@ Fixpoint subst (x : string) (es : expr) (e : expr)  : expr :=
   | Case e0 e1 e2 => Case (subst x es e0) (subst x es e1) (subst x es e2)
   | Assert e => Assert (subst x es e)
   | Fork e => Fork (subst x es e)
+  | Loc l => Loc l
   | Alloc e => Alloc (subst x es e)
   | Load e => Load (subst x es e)
   | Store e1 e2 => Store (subst x es e1) (subst x es e2)
@@ -187,7 +197,7 @@ Definition atomic (e : expr) :=
      bool_decide (is_Some (to_val e0) ∧ is_Some (to_val e1) ∧ is_Some (to_val e2))
   | Fork _ => true
   (* Make "skip" atomic *)
-  | App (Rec _ _ (Lit _)) (Lit _) => true
+  | App (Rec _ _ Unit) Unit => true
   | _ => false
   end.
 Lemma atomic_correct e : atomic e → language.strong_atomic (to_expr e).
@@ -274,11 +284,13 @@ Ltac reshape_val e tac :=
   match e with
   | of_val ?v => v
   | Rec ?f ?x ?e => constr:(RecV f x e)
-  | Lit ?l => constr:(LitV l)
+  | Lit ?lit => constr:(LitV lit)
+  | Unit => constr:(UnitV)
   | Pair ?e1 ?e2 =>
     let v1 := go e1 in let v2 := go e2 in constr:(PairV v1 v2)
   | InjL ?e => let v := go e in constr:(InjLV v)
   | InjR ?e => let v := go e in constr:(InjRV v)
+  | Loc ?l => constr:(LocV l)
   end in let v := go e in tac v.
 
 Ltac reshape_expr e tac :=

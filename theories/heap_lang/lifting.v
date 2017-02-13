@@ -81,13 +81,6 @@ Proof.
   case; try by intros; right; naive_solver. move=>b. left. by exists b.
 Defined.
 
-Definition is_loc e : Prop := ∃ l, e = Lit (LitLoc l).
-Global Instance is_loc_dec e : Decision (is_loc e).
-Proof.
-  rewrite /is_loc. case: e; try by intros; right; naive_solver.
-  case; try by intros; right; naive_solver. move=>l. left. by exists l.
-Defined.
-
 Definition is_pair e : Prop := ∃ e1 e2, e = Pair e1 e2.
 Global Instance is_pair_dec e : Decision (is_pair e).
 Proof.
@@ -109,15 +102,25 @@ Proof.
   by left; eexists.
 Defined.
 
-Lemma is_val v :
-  let e := of_val v in is_rec e ∨ is_lit e ∨ is_pair e ∨ is_inl e ∨ is_inr e.
+Definition is_loc e : Prop := ∃ l, e = Loc l.
+Global Instance is_loc_dec e : Decision (is_loc e).
 Proof.
-  unfold is_rec, is_lit, is_pair, is_inl, is_inr. destruct v; naive_solver.
+  rewrite /is_loc. case: e; try by intros; right; naive_solver.
+  move=>l. left. by exists l.
+Defined.
+
+Lemma is_val v :
+  let e := of_val v in
+  is_rec e ∨ is_lit e ∨ e = Unit ∨ is_pair e ∨ is_inl e ∨ is_inr e ∨ is_loc e.
+Proof.
+  unfold is_rec, is_lit, is_pair, is_inl, is_inr, is_loc.
+  destruct v; naive_solver.
 Qed.
 
 Lemma is_val_exhaustive v :
   let e := of_val v in
-  ¬ is_rec e → ¬ is_lit e → ¬ is_pair e → ¬ is_inl e → ¬ is_inr e → False.
+  ¬ is_rec e → ¬ is_lit e → e ≠ Unit → ¬ is_pair e →
+  ¬ is_inl e → ¬ is_inr e → ¬ is_loc e → False.
 Proof. intros. move: (is_val v)=>?. naive_solver. Qed.
 
 Lemma is_rec_val v : is_rec (of_val v) → ∃ f x e C, v = @RecV f x e C.
@@ -131,9 +134,6 @@ Proof. case=>n. case: v=>// ? [] ?; subst. by exists n. Qed.
 Lemma is_bool_val v : is_bool (of_val v) → ∃ b, v = LitV (LitBool b).
 Proof. case=>b. case: v=>// ? [] ?; subst. by exists b. Qed.
 
-Lemma is_loc_val v : is_loc (of_val v) → ∃ l, v = LitV (LitLoc l).
-Proof. case=>l. case: v=>// ? [] ?; subst. by exists l. Qed.
-
 Lemma is_lit_val v : is_lit (of_val v) → ∃ lit, v = LitV lit.
 Proof. case=>lit. case: v=>// ? [] ?; subst. by exists lit. Qed.
 
@@ -145,6 +145,9 @@ Proof. case=>? []. case: v=>// v1 [] ?; subst. by exists v1. Qed.
 
 Lemma is_inr_val v : is_inr (of_val v) → ∃ v1, v = InjRV v1.
 Proof. case=>? []. case: v=>// v1 [] ?; subst. by exists v1. Qed.
+
+Lemma is_loc_val v : is_loc (of_val v) → ∃ l, v = LocV l.
+Proof. case=>l. case: v=>// ? [] ?; subst. by exists l. Qed.
 
 (** Base axioms for core primitives of the language: Stateless reductions *)
 Lemma wp_stuck_var x E Φ : True ⊢ WP Var x @ E ?{{ Φ }}.
@@ -323,7 +326,7 @@ Proof.
 Qed.
 
 Lemma wp_assert p E e Φ :
-  WP e @ p; E {{ v, ⌜v = LitV (LitBool true)⌝ ∧ ▷ Φ (LitV LitUnit) }} -∗
+  WP e @ p; E {{ v, ⌜v = LitV (LitBool true)⌝ ∧ ▷ Φ UnitV }} -∗
   WP Assert e @ p; E {{ Φ }}.
 Proof.
   change (Assert e) with (fill [AssertCtx] e). rewrite -wp_bind.
@@ -335,10 +338,10 @@ Proof.
 Qed.
 
 Lemma wp_fork p E e Φ :
-  ▷ Φ (LitV LitUnit) ∗ ▷ WP e @ p; ⊤ {{ _, True }} ⊢ WP Fork e @ p; E {{ Φ }}.
+  ▷ Φ UnitV ∗ ▷ WP e @ p; ⊤ {{ _, True }} ⊢ WP Fork e @ p; E {{ Φ }}.
 Proof.
-  rewrite -(wp_lift_pure_det_head_step (Fork e) (Lit LitUnit) [e]) //=; eauto.
-  - by rewrite later_sep -(wp_value _ _ _ (Lit _)) // big_sepL_singleton.
+  rewrite -(wp_lift_pure_det_head_step (Fork e) Unit [e]) //=; eauto.
+  - by rewrite later_sep -(wp_value _ _ _ Unit) // big_sepL_singleton.
   - intros; inv_head_step; eauto.
 Qed.
 
@@ -346,14 +349,13 @@ Qed.
 Lemma wp_alloc_pst p E σ h v :
   heap_of σ = h →
   {{{ ▷ ownP σ }}} Alloc (of_val v) @ p; E
-  {{{ l, RET LitV (LitLoc l); ⌜h !! l = None⌝ ∧ ownP (hupd σ (<[l:=v]>h)) }}}.
+  {{{ l, RET LocV l; ⌜h !! l = None⌝ ∧ ownP (hupd σ (<[l:=v]>h)) }}}.
 Proof.
   iIntros (? Φ) "HP HΦ".
   iApply (ownP_lift_atomic_head_step (Alloc (of_val v)) σ); eauto.
   iFrame "HP". iNext. iIntros (e2 σ2 ef) "% HP". inv_head_step.
   iSplitL; last by iApply big_sepL_nil. iApply "HΦ". by iSplit.
 Qed.
-
 
 Lemma wp_stuck_load E e v Φ :
   to_val e = Some v → ¬ is_loc e → WP Load e @ E ?{{ Φ }}%I.
@@ -366,7 +368,7 @@ Qed.
 
 Lemma wp_load_pst p E σ h l v :
   heap_of σ = h → h !! l = Some v →
-  {{{ ▷ ownP σ }}} Load (Lit (LitLoc l)) @ p; E {{{ RET v; ownP σ }}}.
+  {{{ ▷ ownP σ }}} Load (Loc l) @ p; E {{{ RET v; ownP σ }}}.
 Proof.
   intros ?? Φ. apply ownP_lift_atomic_det_head_step_no_fork; eauto.
   intros; inv_head_step; eauto.
@@ -384,8 +386,8 @@ Qed.
 
 Lemma wp_store_pst p E σ h l v v' :
   heap_of σ = h → h !! l = Some v' →
-  {{{ ▷ ownP σ }}} Store (Lit (LitLoc l)) (of_val v) @ p; E
-  {{{ RET LitV LitUnit; ownP (hupd σ (<[l:=v]>h)) }}}.
+  {{{ ▷ ownP σ }}} Store (Loc l) (of_val v) @ p; E
+  {{{ RET UnitV; ownP (hupd σ (<[l:=v]>h)) }}}.
 Proof.
   intros. apply ownP_lift_atomic_det_head_step_no_fork; eauto.
   intros; inv_head_step; eauto.
@@ -403,7 +405,7 @@ Qed.
 
 Lemma wp_cas_fail_pst p E σ h l v1 v2 v' :
   heap_of σ = h → h !! l = Some v' → v' ≠ v1 →
-  {{{ ▷ ownP σ }}} CAS (Lit (LitLoc l)) (of_val v1) (of_val v2) @ p; E
+  {{{ ▷ ownP σ }}} CAS (Loc l) (of_val v1) (of_val v2) @ p; E
   {{{ RET LitV $ LitBool false; ownP σ }}}.
 Proof.
   intros. apply ownP_lift_atomic_det_head_step_no_fork; eauto.
@@ -412,7 +414,7 @@ Qed.
 
 Lemma wp_cas_suc_pst p E σ h l v1 v2 :
   heap_of σ = h → h !! l = Some v1 →
-  {{{ ▷ ownP σ }}} CAS (Lit (LitLoc l)) (of_val v1) (of_val v2) @ p; E
+  {{{ ▷ ownP σ }}} CAS (Loc l) (of_val v1) (of_val v2) @ p; E
   {{{ RET LitV $ LitBool true; ownP (hupd σ (<[l:=v2]>h)) }}}.
 Proof.
   intros. apply ownP_lift_atomic_det_head_step_no_fork; eauto.
@@ -437,7 +439,7 @@ Lemma wp_seq p E e1 e2 Φ :
   ▷ WP e2 @ p; E {{ Φ }} ⊢ WP Seq e1 e2 @ p; E {{ Φ }}.
 Proof. intros ??. by rewrite -wp_let. Qed.
 
-Lemma wp_skip p E Φ : ▷ Φ (LitV LitUnit) ⊢ WP Skip @ p; E {{ Φ }}.
+Lemma wp_skip p E Φ : ▷ Φ UnitV ⊢ WP Skip @ p; E {{ Φ }}.
 Proof. rewrite -wp_seq; last eauto. by rewrite -wp_value. Qed.
 
 Lemma wp_match_inl p E e0 x1 e1 x2 e2 Φ :
@@ -524,20 +526,6 @@ Proof.
   - destruct v; try done. exfalso. apply: Hlit. by exists lit.
 Qed.
 
-Lemma wp_locof p E e v P Φ :
-  to_val e = Some v →
-  (is_loc e → P ⊢ ▷ Φ (SOMEV v)) →
-  (¬ is_loc e → P ⊢ ▷ Φ NONEV) →
-  P ⊢ WP UnOp LocofOp e @ p; E {{ Φ }}.
-Proof.
-  move=>?. rewrite -(of_to_val e v) // => ??.
-  case: (decide (is_loc (of_val v)))=>Hloc;
-    [>rewrite -wp_un_op //; first by auto..].
-  - by destruct (is_loc_val _ Hloc) as (?&->).
-  - destruct v; try done. destruct lit; try done.
-    exfalso. apply: Hloc. by exists l.
-Qed.
-
 Lemma wp_pairof p E e v P Φ :
   to_val e = Some v →
   (is_pair e → P ⊢ ▷ Φ (SOMEV v)) →
@@ -578,5 +566,18 @@ Proof.
     rewrite -wp_un_op //; first exact: HP. by rewrite HV.
   - rewrite -wp_un_op //; first exact: HP'. destruct v1; try done.
     exfalso. apply: Hinr. by exists (of_val v1).
+Qed.
+
+Lemma wp_locof p E e v P Φ :
+  to_val e = Some v →
+  (is_loc e → P ⊢ ▷ Φ (SOMEV v)) →
+  (¬ is_loc e → P ⊢ ▷ Φ NONEV) →
+  P ⊢ WP UnOp LocofOp e @ p; E {{ Φ }}.
+Proof.
+  move=>?. rewrite -(of_to_val e v) // => ??.
+  case: (decide (is_loc (of_val v)))=>Hloc;
+    [>rewrite -wp_un_op //; first by auto..].
+  - by destruct (is_loc_val _ Hloc) as (?&->).
+  - destruct v; try done. exfalso. apply: Hloc. by exists l.
 Qed.
 End lifting.

@@ -106,7 +106,7 @@ Section ftlr.
 
   Lemma confined_lit lit : confined (Lit lit).
   Proof.
-    iIntros (γ) "_ _ #?". rewrite low_expr substitute_expr.
+    iIntros (γ) "_ _ _". rewrite substitute_expr.
     iApply wp_value; first done. by rewrite low_val.
   Qed.
   Hint Extern 1 (_ ⊢ confined (Lit _)) => rewrite -confined_lit.
@@ -140,6 +140,13 @@ Section ftlr.
     - by iApply ("IHe2" with "Hh Hγ He2").
   Qed.
   Hint Extern 1 (_ ⊢ confined (If _ _ _)) => rewrite -confined_if.
+
+  Lemma confined_unit : confined Unit.
+  Proof.
+    iIntros (γ) "_ _ _". rewrite substitute_expr.
+    iApply wp_value; first done. by rewrite low_val.
+  Qed.
+  Hint Extern 1 (_ ⊢ confined Unit) => rewrite -confined_unit.
 
   Lemma confined_pair e1 e2 :
     confined e1 ∗ confined e2 -∗ confined (Pair e1 e2).
@@ -204,6 +211,13 @@ Section ftlr.
     iApply wp_on_val_fork. by iApply ("IHe" with "Hh Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ confined (Fork _)) => rewrite -confined_fork.
+
+  Lemma confined_loc l : confined (Loc l).
+  Proof.
+    iIntros (γ) "_ _ ?". rewrite low_expr substitute_expr.
+    iApply wp_value; first done. by rewrite low_val.
+  Qed.
+  Hint Extern 1 (_ ⊢ confined (Loc _)) => rewrite -confined_loc.
 
   Lemma confined_alloc e : confined e -∗ confined (Alloc e).
   Proof.
@@ -481,17 +495,10 @@ Qed.
 	heap language context containing neither locations nor
 	assertions.
 *)
-Definition adv_lit : base_lit → Prop :=
-  λ lit, match lit with
-  | LitInt _ | LitBool _ | LitUnit => True
-  | LitLoc _ => False
-  end.
-
 Definition adv_expr : expr → Prop :=
   fix rec e := match e with
-  | Var _ => True
-  | Assert _ => False
-  | Lit lit => adv_lit lit
+  | Var _ | Lit _ | Unit => True
+  | Assert _ | Loc _ => False
   | Rec _ _ e | UnOp _ e | Fst e | Snd e | InjL e | InjR e
   | Fork e | Alloc e | Load e
     => rec e
@@ -524,15 +531,11 @@ Section adversary.
   Implicit Types C : ctx.
   Implicit Types e : expr.
 
-  Lemma adv_lit_low lit : adv_lit lit → low lit.
-  Proof. rewrite low_lit. by case: lit. Qed.
-
   Lemma adv_expr_low e : adv_expr e → low e.
   Proof.	(* PDS: Automate. *)
     elim: e => //.
     - move=>e1 IH1 e2 IH2 [] ??. rewrite low_expr /=.
       iIntros. iSplit. by iApply IH1. by iApply IH2.
-    - exact: adv_lit_low.
     - move=>op e1 IH1 e2 IH2 [] ??. rewrite low_expr /=.
       iIntros. iSplit. by iApply IH1. by iApply IH2.
     - move=>e0 IH0 e1 IH1 e2 IH2 [] ? [] ?. rewrite low_expr /=.

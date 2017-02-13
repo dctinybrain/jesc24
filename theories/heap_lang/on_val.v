@@ -35,13 +35,13 @@ Section wp_on_val.
     iApply ("Hv1" with "[$Hv2]"). by iIntros.
   Qed.
 
-  Lemma wp_on_val_lit p E lit :
-    on_lit Ψ lit -∗
-    WP (Lit lit) @ p; E {{ on_val Ψ }}.
-  Proof. iIntros "Hlit". wp_value. by simpl_on_val. Qed.
+  Lemma wp_on_val_lit p E lit : WP (Lit lit) @ p; E {{ on_val Ψ }}%I.
+  Proof. wp_value. by simpl_on_val. Qed.
 
   Hint Extern 1 (_ -∗ on_val Ψ (LitV ?lit)) =>
-    rewrite (on_val_elim Ψ (LitV lit)) on_lit_elim.
+    rewrite (on_val_elim Ψ (LitV lit)).
+  Hint Extern 1 (_ -∗ on_val Ψ UnitV) =>
+    rewrite (on_val_elim Ψ UnitV).
   Hint Extern 1 (on_val Ψ (InjLV ?v) -∗ on_val Ψ (InjRV ?v)) =>
     rewrite (on_val_elim Ψ (InjLV v)) (on_val_elim Ψ (InjRV v)).
   Hint Extern 2 (_ -∗ on_val Ψ (InjLV ?v)) =>
@@ -53,7 +53,7 @@ Section wp_on_val.
     un_op_eval op v1 = Some v2 →
     on_val Ψ v1 -∗ on_val Ψ v2.
   Proof.
-    case: op; destruct v1 as [|lit| | |];
+    case: op; destruct v1 as [|lit| | | | |];
     repeat (discriminate 1 || injection 1 as <- || destruct lit); auto.
   Qed.
 
@@ -71,7 +71,7 @@ Section wp_on_val.
     bin_op_eval op v1 v2 = Some v3 →
     on_val Ψ v1 ∗ on_val Ψ v2 -∗ on_val Ψ v3.
   Proof.
-    case: op; destruct v1 as [|lit1| | |]; destruct v2 as [|lit2| | |];
+    case: op; destruct v1 as [|lit1| | | | |]; destruct v2 as [|lit2| | | | |];
     repeat (discriminate 1 || injection 1 as <- || destruct lit1
       || destruct lit2); auto.
   Qed.
@@ -102,6 +102,9 @@ Section wp_on_val.
     - iApply wp_if_true. iNext. by iDestruct "Hei" as "[? _]".
     - iApply wp_if_false. iNext. by iDestruct "Hei" as "[_ ?]".
   Qed.
+
+  Lemma on_val_unit E : WP Unit @ E ?{{ on_val Ψ }}%I.
+  Proof. wp_value. by simpl_on_val. Qed.
 
   Lemma wp_on_val_pair E e1 e2 :
     WP e1 @ E ?{{ on_val Ψ }} -∗
@@ -184,6 +187,9 @@ Section wp_on_val.
 
   (** The heap may be inspected or modified according to [Ψ]. *)
 
+  Lemma wp_on_val_loc p E l : Ψ l -∗ WP (Loc l) @ p; E {{ on_val Ψ }}.
+  Proof. iIntros "Hl". wp_value. by simpl_on_val. Qed.
+
   Lemma wp_on_val_alloc p E e Φ :
     WP e @ p; E {{ Φ }} -∗
     (∀ v, Φ v -∗ WP Alloc (of_val v) @ p; E {{ on_val Ψ }}) -∗
@@ -196,13 +202,13 @@ Section wp_on_val.
 
   Lemma wp_on_val_load E e :
     WP e @ E ?{{ on_val Ψ }} -∗
-    (∀ l, Ψ l -∗ WP Load (Lit (LitLoc l)) @ E ?{{ on_val Ψ }}) -∗
+    (∀ l, Ψ l -∗ WP Load (Loc l) @ E ?{{ on_val Ψ }}) -∗
     WP Load e @ E ?{{ on_val Ψ }}.
   Proof.
     iIntros "He Hload".
     wp_bind e. iApply (wp_wand with "He"). iIntros (v) "Hv".
     case: (decide (is_loc (of_val v)))=>Hl; last by iApply wp_stuck_load.
-    destruct (is_loc_val _ Hl) as (l&->). rewrite on_val_elim on_lit_elim.
+    destruct (is_loc_val _ Hl) as (l&->). rewrite on_val_elim.
     by iApply ("Hload" with "Hv").
   Qed.
 
@@ -210,14 +216,14 @@ Section wp_on_val.
     WP e1 @ E ?{{ on_val Ψ }} -∗
     WP e2 @ E ?{{ on_val Ψ }} -∗
     (∀ l1 v2, Ψ l1 -∗ on_val Ψ v2 -∗
-     WP Store (Lit (LitLoc l1)) (of_val v2) @ E ?{{ on_val Ψ }}) -∗
+     WP Store (Loc l1) (of_val v2) @ E ?{{ on_val Ψ }}) -∗
     WP Store e1 e2 @ E ?{{ on_val Ψ }}.
   Proof.
     iIntros "He1 He2 Hstore".
     wp_bind e1. iApply (wp_wand with "He1"). iIntros (v1) "Hv1".
     wp_bind e2. iApply (wp_wand with "He2"). iIntros (v2) "Hv2".
     case: (decide (is_loc (of_val v1)))=>Hl; last by iApply wp_stuck_store.
-    destruct (is_loc_val _ Hl) as (l1&->). rewrite on_val_elim on_lit_elim.
+    destruct (is_loc_val _ Hl) as (l1&->). rewrite on_val_elim.
     by iApply ("Hstore" with "Hv1 Hv2").
   Qed.
 
@@ -226,7 +232,7 @@ Section wp_on_val.
     WP e1 @ E ?{{ Φ1 }} -∗
     WP e2 @ E ?{{ on_val Ψ }} -∗
     (∀ l0 v1 v2, Ψ l0 -∗ on_val Ψ v2 -∗
-     WP CAS (Lit (LitLoc l0)) (of_val v1) (of_val v2) @ E ?{{ on_val Ψ }}) -∗
+     WP CAS (Loc l0) (of_val v1) (of_val v2) @ E ?{{ on_val Ψ }}) -∗
     WP CAS e0 e1 e2 @ E ?{{ on_val Ψ }}.
   Proof.
     iIntros "He0 He1 He2 Hcas".
@@ -234,7 +240,7 @@ Section wp_on_val.
     wp_bind e1. iApply (wp_wand with "He1"). iIntros (v1) "_".
     wp_bind e2. iApply (wp_wand with "He2"). iIntros (v2) "Hv2".
     case: (decide (is_loc (of_val v0)))=>Hl; last by iApply wp_stuck_cas.
-    destruct (is_loc_val _ Hl) as (l0&->). rewrite on_val_elim on_lit_elim.
+    destruct (is_loc_val _ Hl) as (l0&->). rewrite on_val_elim.
     by iApply ("Hcas" with "Hv0 Hv2").
   Qed.
 End wp_on_val.

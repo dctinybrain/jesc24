@@ -14,7 +14,7 @@ Definition newcounter : val := λ: <>, ref #0.
 Definition incr : val :=
   rec: "incr" "l" :=
     let: "n" := !"l" in
-    if: CAS "l" "n" (#1 + "n") then #() else "incr" "l".
+    if: CAS "l" "n" (#1 + "n") then () else "incr" "l".
 Definition read : val := λ: "l", !"l".
 
 (** The CMRA we need. *)
@@ -92,7 +92,7 @@ Proof. apply _. Qed.
 
 Lemma newcounter_spec N :
   heapN ⊥ N →
-  heap_ctx ⊢ {{ True }} newcounter #() {{ v, ∃ l, ⌜v = #l⌝ ∧ C l 0 }}.
+  heap_ctx ⊢ {{ True }} newcounter () {{ v, ∃ l, ⌜v = l⌝ ∧ C l 0 }}.
 Proof.
   iIntros (?) "#? !# _ /=". rewrite -wp_fupd /newcounter /=. wp_seq. wp_alloc l as "Hl".
   iMod (own_alloc (Auth 0)) as (γ) "Hγ"; first done.
@@ -103,7 +103,7 @@ Proof.
 Qed.
 
 Lemma incr_spec l n :
-  {{ C l n }} incr #l {{ v, ⌜v = #()⌝ ∧ C l (S n) }}.
+  {{ C l n }} incr l {{ v, ⌜v = ()%V⌝ ∧ C l (S n) }}.
 Proof.
   iIntros "!# Hl /=". iLöb as "IH". wp_rec.
   iDestruct "Hl" as (N γ) "(% & #Hh & #Hinv & Hγf)".
@@ -126,7 +126,7 @@ Proof.
 Qed.
 
 Lemma read_spec l n :
-  {{ C l n }} read #l {{ v, ∃ m : nat, ⌜v = #m ∧ n ≤ m⌝ ∧ C l m }}.
+  {{ C l n }} read l {{ v, ∃ m : nat, ⌜v = #m ∧ n ≤ m⌝ ∧ C l m }}.
 Proof.
   iIntros "!# Hl /=". iDestruct "Hl" as (N γ) "(% & #Hh & #Hinv & Hγf)".
   rewrite /read /=. wp_let. iInv N as (c) "[Hl Hγ]" "Hclose". wp_load.

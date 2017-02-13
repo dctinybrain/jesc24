@@ -8,7 +8,7 @@ From iris.heap_lang Require Import proofmode notation.
 Definition newcounter : val := λ: <>, ref #0.
 Definition incr : val := rec: "incr" "l" :=
     let: "n" := !"l" in
-    if: CAS "l" "n" (#1 + "n") then #() else "incr" "l".
+    if: CAS "l" "n" (#1 + "n") then () else "incr" "l".
 Definition read : val := λ: "l", !"l".
 
 (** Monotone counter *)
@@ -34,7 +34,7 @@ Section mono_proof.
 
   Lemma newcounter_mono_spec (R : iProp Σ) :
     heapN ⊥ N →
-    {{{ heap_ctx }}} newcounter #() {{{ l, RET #l; mcounter l 0 }}}.
+    {{{ heap_ctx }}} newcounter () {{{ l, RET LocV l; mcounter l 0 }}}.
   Proof.
     iIntros (? Φ) "#Hh HΦ". rewrite -wp_fupd /newcounter. wp_seq. wp_alloc l as "Hl".
     iMod (own_alloc (● (O:mnat) ⋅ ◯ (O:mnat))) as (γ) "[Hγ Hγ']"; first done.
@@ -44,7 +44,7 @@ Section mono_proof.
   Qed.
 
   Lemma incr_mono_spec l n :
-    {{{ mcounter l n }}} incr #l {{{ RET #(); mcounter l (S n) }}}.
+    {{{ mcounter l n }}} incr l {{{ RET (); mcounter l (S n) }}}.
   Proof.
     iIntros (Φ) "Hl HΦ". iLöb as "IH". wp_rec.
     iDestruct "Hl" as (γ) "(% & #? & #Hinv & Hγf)".
@@ -69,7 +69,7 @@ Section mono_proof.
   Qed.
 
   Lemma read_mono_spec l j :
-    {{{ mcounter l j }}} read #l {{{ i, RET #i; ⌜j ≤ i⌝%nat ∧ mcounter l i }}}.
+    {{{ mcounter l j }}} read l {{{ i, RET #i; ⌜j ≤ i⌝%nat ∧ mcounter l i }}}.
   Proof.
     iIntros (ϕ) "Hc HΦ". iDestruct "Hc" as (γ) "(% & #? & #Hinv & Hγf)".
     rewrite /read /=. wp_let. iInv N as (c) ">[Hγ Hl]" "Hclose". wp_load.
@@ -110,8 +110,8 @@ Section contrib_spec.
 
   Lemma newcounter_contrib_spec (R : iProp Σ) :
     heapN ⊥ N →
-    {{{ heap_ctx }}} newcounter #()
-    {{{ γ l, RET #l; ccounter_ctx γ l ∗ ccounter γ 1 0 }}}.
+    {{{ heap_ctx }}} newcounter ()
+    {{{ γ l, RET LocV l; ccounter_ctx γ l ∗ ccounter γ 1 0 }}}.
   Proof.
     iIntros (? Φ) "#Hh HΦ". rewrite -wp_fupd /newcounter /=. wp_seq. wp_alloc l as "Hl".
     iMod (own_alloc (● (Some (1%Qp, O%nat)) ⋅ ◯ (Some (1%Qp, 0%nat))))
@@ -122,8 +122,8 @@ Section contrib_spec.
   Qed.
 
   Lemma incr_contrib_spec γ l q n :
-    {{{ ccounter_ctx γ l ∗ ccounter γ q n }}} incr #l
-    {{{ RET #(); ccounter γ q (S n) }}}.
+    {{{ ccounter_ctx γ l ∗ ccounter γ q n }}} incr l
+    {{{ RET (); ccounter γ q (S n) }}}.
   Proof.
     iIntros (Φ) "(#(%&?&?) & Hγf) HΦ". iLöb as "IH". wp_rec.
     wp_bind (! _)%E. iInv N as (c) ">[Hγ Hl]" "Hclose".
@@ -143,7 +143,7 @@ Section contrib_spec.
   Qed.
 
   Lemma read_contrib_spec γ l q n :
-    {{{ ccounter_ctx γ l ∗ ccounter γ q n }}} read #l
+    {{{ ccounter_ctx γ l ∗ ccounter γ q n }}} read l
     {{{ c, RET #c; ⌜n ≤ c⌝%nat ∧ ccounter γ q n }}}.
   Proof.
     iIntros (Φ) "(#(%&?&?) & Hγf) HΦ".
@@ -155,7 +155,7 @@ Section contrib_spec.
   Qed.
 
   Lemma read_contrib_spec_1 γ l n :
-    {{{ ccounter_ctx γ l ∗ ccounter γ 1 n }}} read #l
+    {{{ ccounter_ctx γ l ∗ ccounter γ 1 n }}} read l
     {{{ n, RET #n; ccounter γ 1 n }}}.
   Proof.
     iIntros (Φ) "(#(%&?&?) & Hγf) HΦ".

@@ -9,8 +9,7 @@ From iris.heap_lang Require Import proofmode notation.
 *)
 
 Definition ignore_lock (LI : LockImpl) : expr :=
-  let: "lk" := newlock LI #() in
-  #().
+  let: "lk" := newlock LI () in ().
 
 Section proof.
   Context `{heapG Σ, LI : LockImpl} (L : lock Σ).

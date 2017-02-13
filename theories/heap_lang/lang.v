@@ -10,12 +10,11 @@ Open Scope Z_scope.
 Definition loc := positive. (* Really, any countable type. *)
 
 (*
-	PDS: It would be nice to move LitUnit and LItLoc into expr and
-	use constraints for base values and operations (like we do for
-	CMRAs).
+	PDS: It would be nice to use constraints for base values and
+	operations (like we do for CMRAs).
 *)
 Inductive base_lit : Set :=
-  | LitInt (n : Z) | LitBool (b : bool) | LitUnit | LitLoc (l : loc).
+  | LitInt (n : Z) | LitBool (b : bool).
 Inductive un_op : Set :=
   | NegOp | MinusUnOp | EvenOp
   | FunofOp | LitofOp | LocofOp | PairofOp | InlofOp | InrofOp.
@@ -49,6 +48,7 @@ Inductive expr :=
   | BinOp (op : bin_op) (e1 e2 : expr)
   | If (e0 e1 e2 : expr)
   (* Products *)
+  | Unit
   | Pair (e1 e2 : expr)
   | Fst (e : expr)
   | Snd (e : expr)
@@ -61,6 +61,7 @@ Inductive expr :=
   (* Concurrency *)
   | Fork (e : expr)
   (* Heap *)
+  | Loc (l : loc)
   | Alloc (e : expr)
   | Load (e : expr)
   | Store (e1 : expr) (e2 : expr)
@@ -72,7 +73,7 @@ Fixpoint is_closed (X : list string) (e : expr) : bool :=
   match e with
   | Var x => bool_decide (x ∈ X)
   | Rec f x e => is_closed (f :b: x :b: X) e
-  | Lit _ => true
+  | Lit _ | Unit | Loc _ => true
   | UnOp _ e | Fst e | Snd e | InjL e | InjR e | Assert e | Fork e
   | Alloc e | Load e =>
      is_closed X e
@@ -91,29 +92,35 @@ Proof. rewrite /Closed. apply _. Qed.
 Inductive val :=
   | RecV (f x : binder) (e : expr) `{!Closed (f :b: x :b: []) e}
   | LitV (lit : base_lit)
+  | UnitV
   | PairV (v1 v2 : val)
   | InjLV (v : val)
-  | InjRV (v : val).
+  | InjRV (v : val)
+  | LocV (l : loc).
 
 Bind Scope val_scope with val.
 
 Fixpoint of_val (v : val) : expr :=
   match v with
   | RecV f x e _ => Rec f x e
-  | LitV l => Lit l
+  | LitV lit => Lit lit
+  | UnitV => Unit
   | PairV v1 v2 => Pair (of_val v1) (of_val v2)
   | InjLV v => InjL (of_val v)
   | InjRV v => InjR (of_val v)
+  | LocV l => Loc l
   end.
 
 Fixpoint to_val (e : expr) : option val :=
   match e with
   | Rec f x e =>
      if decide (Closed (f :b: x :b: []) e) then Some (RecV f x e) else None
-  | Lit l => Some (LitV l)
+  | Lit lit => Some (LitV lit)
+  | Unit => Some UnitV
   | Pair e1 e2 => v1 ← to_val e1; v2 ← to_val e2; Some (PairV v1 v2)
   | InjL e => InjLV <$> to_val e
   | InjR e => InjRV <$> to_val e
+  | Loc l => Some $ LocV l
   | _ => None
   end.
 
@@ -153,8 +160,8 @@ Proof.
  refine (λ v v', cast_if (decide (of_val v = of_val v'))); abstract naive_solver.
 Defined.
 
-Instance expr_inhabited : Inhabited expr := populate (Lit LitUnit).
-Instance val_inhabited : Inhabited val := populate (LitV LitUnit).
+Instance expr_inhabited : Inhabited expr := populate Unit.
+Instance val_inhabited : Inhabited val := populate UnitV.
 Instance state_inhabited : Inhabited state := populate (good_state ∅).
 
 Canonical Structure stateC := leibnizC state.
@@ -217,10 +224,11 @@ Fixpoint subst (x : string) (es : expr) (e : expr)  : expr :=
   | Rec f y e =>
      Rec f y $ if decide (BNamed x ≠ f ∧ BNamed x ≠ y) then subst x es e else e
   | App e1 e2 => App (subst x es e1) (subst x es e2)
-  | Lit l => Lit l
+  | Lit lit => Lit lit
   | UnOp op e => UnOp op (subst x es e)
   | BinOp op e1 e2 => BinOp op (subst x es e1) (subst x es e2)
   | If e0 e1 e2 => If (subst x es e0) (subst x es e1) (subst x es e2)
+  | Unit => Unit
   | Pair e1 e2 => Pair (subst x es e1) (subst x es e2)
   | Fst e => Fst (subst x es e)
   | Snd e => Snd (subst x es e)
@@ -229,6 +237,7 @@ Fixpoint subst (x : string) (es : expr) (e : expr)  : expr :=
   | Case e0 e1 e2 => Case (subst x es e0) (subst x es e1) (subst x es e2)
   | Assert e => Assert (subst x es e)
   | Fork e => Fork (subst x es e)
+  | Loc l => Loc l
   | Alloc e => Alloc (subst x es e)
   | Load e => Load (subst x es e)
   | Store e1 e2 => Store (subst x es e1) (subst x es e2)
@@ -239,7 +248,7 @@ Definition subst' (mx : binder) (es : expr) : expr → expr :=
   match mx with BNamed x => subst x es | BAnon => id end.
 
 (** The stepping relation *)
-Notation NONEV := (InjLV (LitV LitUnit)) (only parsing).
+Notation NONEV := (InjLV UnitV) (only parsing).
 Notation SOMEV x := (InjRV x) (only parsing).
 
 Definition un_op_eval (op : un_op) (v : val) : option val :=
@@ -251,7 +260,7 @@ Definition un_op_eval (op : un_op) (v : val) : option val :=
   | FunofOp, _ => Some $ NONEV
   | LitofOp, LitV _ => Some $ SOMEV v
   | LitofOp, _ => Some $ NONEV
-  | LocofOp, LitV (LitLoc _) => Some $ SOMEV v
+  | LocofOp, LocV _ => Some $ SOMEV v
   | LocofOp, _ => Some $ NONEV
   | PairofOp, PairV _ _ => Some $ SOMEV v
   | PairofOp, _ => Some $ NONEV
@@ -303,28 +312,28 @@ Inductive head_step : expr → state → expr → state → list (expr) → Prop
      to_val e0 = Some v0 →
      head_step (Case (InjR e0) e1 e2) σ (App e2 e0) σ []
   | AssertTrueS σ :
-     head_step (Assert (Lit $ LitBool true)) σ (Lit LitUnit) σ []
+     head_step (Assert (Lit $ LitBool true)) σ Unit σ []
   | AssertFalseS σ :
-     head_step (Assert (Lit $ LitBool false)) σ (Lit LitUnit) (mark_bad σ) []
+     head_step (Assert (Lit $ LitBool false)) σ Unit (mark_bad σ) []
   | ForkS e σ:
-     head_step (Fork e) σ (Lit LitUnit) σ [e]
+     head_step (Fork e) σ Unit σ [e]
   | AllocS e v σ h l :
      to_val e = Some v → heap_of σ = h → h !! l = None →
-     head_step (Alloc e) σ (Lit $ LitLoc l) (hupd σ (<[l:=v]>h)) []
+     head_step (Alloc e) σ (Loc l) (hupd σ (<[l:=v]>h)) []
   | LoadS l v σ h :
      heap_of σ = h → h !! l = Some v →
-     head_step (Load (Lit $ LitLoc l)) σ (of_val v) σ []
+     head_step (Load (Loc l)) σ (of_val v) σ []
   | StoreS l e v σ h :
      to_val e = Some v → heap_of σ = h → is_Some (h !! l) →
-     head_step (Store (Lit $ LitLoc l) e) σ (Lit LitUnit) (hupd σ (<[l:=v]>h)) []
+     head_step (Store (Loc l) e) σ Unit (hupd σ (<[l:=v]>h)) []
   | CasFailS l e1 v1 e2 v2 vl σ h :
      to_val e1 = Some v1 → to_val e2 = Some v2 →
      heap_of σ = h → h !! l = Some vl → vl ≠ v1 →
-     head_step (CAS (Lit $ LitLoc l) e1 e2) σ (Lit $ LitBool false) σ []
+     head_step (CAS (Loc l) e1 e2) σ (Lit $ LitBool false) σ []
   | CasSucS l e1 v1 e2 v2 σ h :
      to_val e1 = Some v1 → to_val e2 = Some v2 →
      heap_of σ = h → h !! l = Some v1 →
-     head_step (CAS (Lit $ LitLoc l) e1 e2) σ (Lit $ LitBool true) (hupd σ (<[l:=v2]>h)) [].
+     head_step (CAS (Loc l) e1 e2) σ (Lit $ LitBool true) (hupd σ (<[l:=v2]>h)) [].
 
 (** Basic properties about the language *)
 Instance fill_item_inj Ki : Inj (=) (=) (fill_item Ki).
@@ -354,7 +363,7 @@ Qed.
 Lemma alloc_fresh e v σ h :
   let l := fresh (dom _ h) in
   to_val e = Some v → heap_of σ = h →
-  head_step (Alloc e) σ (Lit (LitLoc l)) (hupd σ (<[l:=v]>h)) [].
+  head_step (Alloc e) σ (Loc l) (hupd σ (<[l:=v]>h)) [].
 Proof. by intros; apply AllocS, (not_elem_of_dom (D:=gset _)), is_fresh. Qed.
 
 (* Misc *)
@@ -454,5 +463,5 @@ Notation Seq e1 e2 := (Let BAnon e1 e2).
 Notation LamV x e := (RecV BAnon x e).
 Notation LetCtx x e2 := (AppRCtx (LamV x e2)).
 Notation SeqCtx e2 := (LetCtx BAnon e2).
-Notation Skip := (Seq (Lit LitUnit) (Lit LitUnit)).
+Notation Skip := (Seq Unit Unit).
 Notation Match e0 x1 e1 x2 e2 := (Case e0 (Lam x1 e1) (Lam x2 e2)).

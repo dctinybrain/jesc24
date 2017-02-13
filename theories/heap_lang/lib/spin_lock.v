@@ -9,7 +9,7 @@ Module impl.
 Definition newlock' : val := λ: <>, ref #true.
 Definition try_acquire : val := λ: "l", CAS "l" #false #true.
 Definition acquire : val :=
-  rec: "acquire" "l" := if: try_acquire "l" then #() else "acquire" "l".
+  rec: "acquire" "l" := if: try_acquire "l" then () else "acquire" "l".
 Definition release : val := λ: "l", "l" <- #false.
 End impl.
 
@@ -33,7 +33,7 @@ Section proof.
     (∃ b : bool, l ↦ #b ∗ if b then True else own γ (Excl ()) ∗ R)%I.
 
   Definition is_lock (γ : gname) (lk : val) (R : iProp Σ) : iProp Σ :=
-    (∃ l: loc, ⌜heapN ⊥ N⌝ ∧ heap_ctx ∧ ⌜lk = #l⌝ ∧ inv N (lock_inv γ l R))%I.
+    (∃ l: loc, ⌜heapN ⊥ N⌝ ∧ heap_ctx ∧ ⌜lk = l⌝ ∧ inv N (lock_inv γ l R))%I.
 
   Definition locked (γ : gname): iProp Σ := own γ (Excl ()).
 
@@ -53,7 +53,7 @@ Section proof.
 
   Lemma newlock'_spec (R : iProp Σ):
     heapN ⊥ N →
-    {{{ heap_ctx }}} newlock' spin #() @ p; ⊤
+    {{{ heap_ctx }}} newlock' spin () @ p; ⊤
     {{{ lk γ, RET lk; is_lock γ lk R ∗ locked γ }}}.
   Proof.
     iIntros (? Φ) "#Hh HΦ". rewrite -wp_fupd.
@@ -78,7 +78,7 @@ Section proof.
   Qed.
 
   Lemma acquire_spec γ lk R :
-    {{{ is_lock γ lk R }}} acquire spin lk @ p; ⊤ {{{ RET #(); locked γ ∗ R }}}.
+    {{{ is_lock γ lk R }}} acquire spin lk @ p; ⊤ {{{ RET (); locked γ ∗ R }}}.
   Proof.
     iIntros (Φ) "#Hl HΦ". iLöb as "IH". wp_rec.
     wp_apply (try_acquire_spec with "Hl"). iIntros ([]).
@@ -88,7 +88,7 @@ Section proof.
 
   Lemma release_spec γ lk R :
     {{{ is_lock γ lk R ∗ locked γ ∗ R }}} release spin lk @ p; ⊤
-    {{{ RET #(); True }}}.
+    {{{ RET (); True }}}.
   Proof.
     iIntros (Φ) "(Hlock & Hlocked & HR) HΦ".
     iDestruct "Hlock" as (l) "(% & #? & % & #?)"; subst.

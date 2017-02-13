@@ -19,12 +19,8 @@ Section tests.
   Qed.
 
   Goal ∀ l P,   (* iAssumption, iExact use FromAssumption *)
-    (Ψ l -∗ P) -∗ on_lit Ψ (LitLoc l) -∗ P.
+    (Ψ l -∗ P) -∗ on_val Ψ (LocV l) -∗ P.
   Proof. iIntros (l P) "Hp Hlit". by iApply "Hp". Qed.
-
-  Goal ∀ l P,   (* Using FromAssumption transitively *)
-    (Ψ l -∗ P) -∗ on_val Ψ (LitV (LitLoc l)) -∗ P.
-  Proof. iIntros (l P) "Hp Hv". by iApply "Hp". Qed.
 
   Goal ∀ v P,   (* Using FromAssumption. *)
     (▷ on_val Ψ v -∗ P) -∗ on_val Ψ (InjLV v) -∗ P.
@@ -39,7 +35,7 @@ Section tests.
   Proof. iIntros (v P) "Hp Hv". iNext. by iApply "Hp". Qed.
 
   Goal ∀ l P,   (* FromAssumption, IntoLater *)
-    (▷ Ψ l -∗ P) -∗ on_val Ψ (InjLV (LitV (LitLoc l))) -∗ P.
+    (▷ Ψ l -∗ P) -∗ on_val Ψ (InjLV (LocV l)) -∗ P.
   Proof. iIntros (v P) "Hp Hv". iApply "Hp". by auto. Qed.
 
   Goal ∀ v P,   (* FromAssumption, IntoLater *)

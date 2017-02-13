@@ -8,7 +8,7 @@ Definition worker (n : Z) : val :=
   λ: "b" "y", wait "b" ;; !"y" #n.
 Definition client : expr :=
   let: "y" := ref #0 in
-  let: "b" := newbarrier #() in
+  let: "b" := newbarrier () in
   ("y" <- (λ: "z", "z" + #42) ;; signal "b") |||
     (worker 12 "b" "y" ||| worker 17 "b" "y").
 
@@ -25,7 +25,7 @@ Section client.
   Qed.
 
   Lemma worker_safe q (n : Z) (b y : loc) :
-    heap_ctx -∗ recv N b (y_inv q y) -∗ WP worker n #b #y {{ _, True }}.
+    heap_ctx -∗ recv N b (y_inv q y) -∗ WP worker n b y {{ _, True }}.
   Proof.
     iIntros "#Hh Hrecv". wp_lam. wp_let.
     wp_apply (wait_spec with "[- $Hrecv]"). iDestruct 1 as (f) "[Hy #Hf]".

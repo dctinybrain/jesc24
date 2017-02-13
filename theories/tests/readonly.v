@@ -17,8 +17,8 @@ Section proof.
 
   (* Triples to match paper. (WP would be simpler.) *)
   Lemma readonly_spec l :
-    {{{ True }}} ! #l {{{ v, RET v; low v }}} -∗
-    {{{ True }}} readonly #l {{{ f, RET f; low f }}}.
+    {{{ True }}} ! l {{{ v, RET v; low v }}} -∗
+    {{{ True }}} readonly l {{{ f, RET f; low f }}}.
   Proof.
     iIntros "#Hderef !#". iIntros (Φ) "_ HΦ". wp_lam. iApply "HΦ". clear Φ.
     rewrite low_val. iAlways. iNext. iIntros (arg) "_". simpl_subst.

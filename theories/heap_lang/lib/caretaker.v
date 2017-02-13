@@ -44,17 +44,17 @@ Section caretaker.
     (** -- specs -- *)
     make_caretaker_spec p N (R : iProp Σ) :
       heapN ⊥ N →
-      {{{ heap_ctx }}} make_caretaker CI #() @ p; ⊤
+      {{{ heap_ctx }}} make_caretaker CI () @ p; ⊤
       {{{ ct γ, RET ct; is_caretaker N γ ct R ∗ enabled γ false }}};
     wrap_spec p N γ ct R (f : val) :
       {{{ is_caretaker N γ ct R ∗ can_wrap f R }}} wrap CI ct f @ p; ⊤
       {{{ v, RET v; low v }}};
     enable_spec p N γ ct R :
       {{{ is_caretaker N γ ct R ∗ enabled γ false ∗ R }}} enable CI ct @ p; ⊤
-      {{{ RET #(); enabled γ true }}};
+      {{{ RET (); enabled γ true }}};
     disable_spec p N γ ct R :
       {{{ is_caretaker N γ ct R ∗ enabled γ true }}} disable CI ct @ p; ⊤
-      {{{ RET #(); enabled γ false ∗ R }}}
+      {{{ RET (); enabled γ false ∗ R }}}
   }.
 
   Global Instance can_wrap_persistent f R : PersistentP (can_wrap f R).
@@ -85,7 +85,7 @@ Module nonblocking_caretaker.
 Module impl.
   Definition make_caretaker (LI : LockImpl) : val := λ: <>,
     let: "enabled" := ref #false in
-    let: "sync" := make_sync LI #() in
+    let: "sync" := make_sync LI () in
     ("sync", "enabled").
 
   Definition wrap : val := λ: "ct" "f" "x",
@@ -115,7 +115,7 @@ Section proof.
     (∃ b : bool, l ↦{small} #b ∗ if b then R else True)%I.
 
   Definition is_caretaker (l : loc) (ct : val) (R : iProp Σ) : iProp Σ :=
-    (∃ sync, ⌜heapN ⊥ N⌝ ∗ heap_ctx ∗ ⌜ct = (sync, #l)%V⌝ ∗
+    (∃ sync, ⌜heapN ⊥ N⌝ ∗ heap_ctx ∗ ⌜ct = (sync, l)%V⌝ ∗
      is_sync sync (caretaker_res l R))%I.
 
   Definition enabled (l : loc) (b : bool) : iProp Σ := (l ↦{large} #b)%I.
@@ -147,7 +147,7 @@ Section proof.
 
   Lemma make_caretaker_spec (R : iProp Σ) :
     heapN ⊥ N →
-    {{{ heap_ctx }}} make_caretaker CI #() @ p; ⊤
+    {{{ heap_ctx }}} make_caretaker CI () @ p; ⊤
     {{{ ct l, RET ct; is_caretaker l ct R ∗ enabled l false }}}.
   Proof.
     iIntros (? Φ) "#Hh HΦ". wp_lam.
@@ -181,7 +181,7 @@ Section proof.
 
   Lemma enable_spec l ct (R : iProp Σ) :
     {{{ is_caretaker l ct R ∗ enabled l false ∗ R }}} enable CI ct @ p; ⊤
-    {{{ RET #(); enabled l true }}}.
+    {{{ RET (); enabled l true }}}.
   Proof.
     iIntros (Φ) "[Hct (Hlarge&Hr)] HΦ".
       iDestruct "Hct" as (sync) "(%&#Hh&%&#Hsync)". subst. wp_lam.
@@ -197,7 +197,7 @@ Section proof.
 
   Lemma disable_spec l ct (R : iProp Σ) :
     {{{ is_caretaker l ct R ∗ enabled l true }}} disable CI ct @ p; ⊤
-    {{{ RET #(); enabled l false ∗ R }}}.
+    {{{ RET (); enabled l false ∗ R }}}.
   Proof.
     iIntros (Φ) "[Hct Hlarge] HΦ".
       iDestruct "Hct" as (sync) "(%&#Hh&%&#Hsync)". subst. wp_lam.
@@ -291,7 +291,7 @@ Section proof.
 
   Lemma make_caretaker_spec (R : iProp Σ) :
     heapN ⊥ N →
-    {{{ heap_ctx }}} make_caretaker CI #() @ p; ⊤
+    {{{ heap_ctx }}} make_caretaker CI () @ p; ⊤
     {{{ ct γ, RET ct; is_caretaker γ ct R ∗ enabled γ false }}}.
   Proof.
     iIntros (? Φ) "#Hh HΦ". rewrite -wp_fupd /make_caretaker.
@@ -318,7 +318,7 @@ Section proof.
 
   Lemma enable_spec γ ct (R : iProp Σ) :
     {{{ is_caretaker γ ct R ∗ enabled γ false ∗ R }}} enable CI ct @ p; ⊤
-    {{{ RET #(); enabled γ true }}}.
+    {{{ RET (); enabled γ true }}}.
   Proof.
     iIntros (Φ) "(Hct & (Htok & Hlock) & Hr) HΦ". rewrite/enable.
     wp_apply (release_spec with "[$Hct $Hlock $Hr]"). rewrite wand_True.
@@ -327,7 +327,7 @@ Section proof.
 
   Lemma disable_spec γ ct (R : iProp Σ) :
     {{{ is_caretaker γ ct R ∗ enabled γ true }}} disable CI ct @ p; ⊤
-    {{{ RET #(); enabled γ false ∗ R }}}.
+    {{{ RET (); enabled γ false ∗ R }}}.
   Proof.
     iIntros (Φ) "(Hct & (Htok & Hlock)) HΦ". rewrite/disable.
     wp_apply (acquire_spec with "[$Hct $Hlock]"). iIntros "(Hlock & Hr)".

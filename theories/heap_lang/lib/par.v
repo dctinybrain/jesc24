@@ -7,7 +7,7 @@ Definition parN : namespace := nroot .@ "par".
 Definition par : val :=
   λ: "fs",
     let: "handle" := spawn (Fst "fs") in
-    let: "v2" := Snd "fs" #() in
+    let: "v2" := Snd "fs" () in
     let: "v1" := join "handle" in
     ("v1", "v2").
 Notation "e1 ||| e2" := (par (Pair (λ: <>, e1) (λ: <>, e2)))%E : expr_scope.
@@ -21,7 +21,7 @@ Context `{!heapG Σ, !spawnG Σ}.
    This is why these are not Texan triples. *)
 Lemma par_spec (Ψ1 Ψ2 : val → iProp Σ) e (f1 f2 : val) (Φ : val → iProp Σ) :
   to_val e = Some (f1,f2)%V →
-  heap_ctx -∗ WP f1 #() {{ Ψ1 }} -∗ WP f2 #() {{ Ψ2 }} -∗
+  heap_ctx -∗ WP f1 () {{ Ψ1 }} -∗ WP f2 () {{ Ψ2 }} -∗
   (▷ ∀ v1 v2, Ψ1 v1 ∗ Ψ2 v2 -∗ ▷ Φ (v1,v2)%V) -∗
   WP par e {{ Φ }}.
 Proof.

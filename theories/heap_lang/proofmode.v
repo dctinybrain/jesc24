@@ -187,7 +187,7 @@ Lemma tac_wp_alloc Δ Δ' p E j e v Φ :
   IntoLaterNEnvs 1 Δ Δ' →
   (∀ l, ∃ Δ'',
     envs_app false (Esnoc Enil j (l ↦ v)) Δ' = Some Δ'' ∧
-    (Δ'' ⊢ Φ (LitV (LitLoc l)))) →
+    (Δ'' ⊢ Φ (LocV l))) →
   Δ ⊢ WP Alloc e @ p; E {{ Φ }}.
 Proof.
   intros ???? HΔ. eapply wand_apply; first exact: wp_alloc.
@@ -202,7 +202,7 @@ Lemma tac_wp_load Δ Δ' p E i l q v Φ :
   IntoLaterNEnvs 1 Δ Δ' →
   envs_lookup i Δ' = Some (false, l ↦{q} v)%I →
   (Δ' ⊢ Φ v) →
-  Δ ⊢ WP Load (Lit (LitLoc l)) @ p; E {{ Φ }}.
+  Δ ⊢ WP Load (Loc l) @ p; E {{ Φ }}.
 Proof.
   intros. eapply wand_apply; first exact: wp_load.
   rewrite -assoc -always_and_sep_l. apply and_intro; first done.
@@ -216,8 +216,8 @@ Lemma tac_wp_store Δ Δ' Δ'' p E i l v e v' Φ :
   IntoLaterNEnvs 1 Δ Δ' →
   envs_lookup i Δ' = Some (false, l ↦ v)%I →
   envs_simple_replace i false (Esnoc Enil i (l ↦ v')) Δ' = Some Δ'' →
-  (Δ'' ⊢ Φ (LitV LitUnit)) →
-  Δ ⊢ WP Store (Lit (LitLoc l)) e @ p; E {{ Φ }}.
+  (Δ'' ⊢ Φ UnitV) →
+  Δ ⊢ WP Store (Loc l) e @ p; E {{ Φ }}.
 Proof.
   intros. eapply wand_apply; first by eapply wp_store.
   rewrite -assoc -always_and_sep_l. apply and_intro; first done.
@@ -231,7 +231,7 @@ Lemma tac_wp_cas_fail Δ Δ' p E i l q v e1 v1 e2 v2 Φ :
   IntoLaterNEnvs 1 Δ Δ' →
   envs_lookup i Δ' = Some (false, l ↦{q} v)%I → v ≠ v1 →
   (Δ' ⊢ Φ (LitV (LitBool false))) →
-  Δ ⊢ WP CAS (Lit (LitLoc l)) e1 e2 @ p; E {{ Φ }}.
+  Δ ⊢ WP CAS (Loc l) e1 e2 @ p; E {{ Φ }}.
 Proof.
   intros. eapply wand_apply; first exact: wp_cas_fail.
   rewrite -assoc -always_and_sep_l. apply and_intro; first done.
@@ -246,7 +246,7 @@ Lemma tac_wp_cas_suc Δ Δ' Δ'' p E i l v e1 v1 e2 v2 Φ :
   envs_lookup i Δ' = Some (false, l ↦ v)%I → v = v1 →
   envs_simple_replace i false (Esnoc Enil i (l ↦ v2)) Δ' = Some Δ'' →
   (Δ'' ⊢ Φ (LitV (LitBool true))) →
-  Δ ⊢ WP CAS (Lit (LitLoc l)) e1 e2 @ p; E {{ Φ }}.
+  Δ ⊢ WP CAS (Loc l) e1 e2 @ p; E {{ Φ }}.
 Proof.
   intros; subst. eapply wand_apply; first exact: wp_cas_suc.
   rewrite -assoc -always_and_sep_l. apply and_intro; first done.

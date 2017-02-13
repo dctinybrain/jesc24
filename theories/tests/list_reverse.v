@@ -11,7 +11,7 @@ Implicit Types l : loc.
 Fixpoint is_list (hd : val) (xs : list val) : iProp Σ :=
   match xs with
   | [] => ⌜hd = NONEV⌝
-  | x :: xs => ∃ l hd', ⌜hd = SOMEV #l⌝ ∗ l ↦ (x,hd') ∗ is_list hd' xs
+  | x :: xs => ∃ l hd', ⌜hd = SOMEV l⌝ ∗ l ↦ (x,hd') ∗ is_list hd' xs
   end%I.
 
 Definition rev : val :=
@@ -36,14 +36,14 @@ Proof.
   - wp_match. by iApply "HΦ".
   - iDestruct "Hxs" as (l hd') "(% & Hx & Hxs)"; iSimplifyEq.
     wp_match. wp_load. wp_proj. wp_let. wp_load. wp_proj. wp_let. wp_store.
-    iApply ("IH" $! hd' (SOMEV #l) xs (x :: ys) with "Hxs [Hx Hys]"); simpl.
+    iApply ("IH" $! hd' (SOMEV l) xs (x :: ys) with "Hxs [Hx Hys]"); simpl.
     { iExists l, acc; by iFrame. }
     iIntros (w). rewrite cons_middle assoc -reverse_cons. iApply "HΦ".
 Qed.
 
 Lemma rev_wp hd xs (Φ : val → iProp Σ) :
   heap_ctx -∗ is_list hd xs -∗ (∀ w, is_list w (reverse xs) -∗ Φ w) -∗
-  WP rev hd (InjL #()) {{ Φ }}.
+  WP rev hd (InjL ()) {{ Φ }}.
 Proof.
   iIntros "#Hh Hxs HΦ".
   iApply (rev_acc_wp hd NONEV xs [] with "Hh Hxs [%]")=> //.

@@ -95,7 +95,7 @@ Section substitution.
     | Var x => default (Var x) (γ !! BNamed x) of_val
     | Rec f x e => Rec f x $ (delete f $ delete x $ γ) e
     | App e1 e2 => App (γ e1) (γ e2)
-    | Lit lit => e
+    | Lit _ | Unit | Loc _ => e
     | UnOp op e => UnOp op (γ e)
     | BinOp op e1 e2 => BinOp op (γ e1) (γ e2)
     | If e1 e2 e3 => If (γ e1) (γ e2) (γ e3)

@@ -24,8 +24,9 @@ Section code.
     iffun: "x" as "f" =>
       let: "unwrap" := "membrane" "locin" "locout" in
       λ: "y", "wrap" ("f" ("unwrap" "y"))
-    else iflit: "x" as "lit" =>
-      ifloc: "lit" as "l" => "locout" "l" else "lit"
+    else ifloc: "x" as "l" => "locout" "l"
+    else iflit: "x" as "lit" => "lit"
+    else if: "x" = () then ()
     else ifpair: "x" as "p" =>
       let: "v1" := "wrap" (Fst "p") in
       let: "v2" := "wrap" (Snd "p") in
@@ -105,7 +106,7 @@ Section proof.
   Import notation.
   Context `{heapG Σ} (locin locout : val) (Ψ : loc → iProp Σ).
   Context {HΨ : ∀ l, PersistentP (Ψ l)}.
-  Notation of_loc := (λ l : loc, #l).
+  Notation of_loc := (λ l : loc, l).
 
   Lemma wrap_unwrap :
     is_mon of_loc locout Ψ low -∗
@@ -140,22 +141,22 @@ Section proof.
         wp_apply ("Hwrap" with "* Hv3"). by iIntros.
       wp_match. iClear "IHmku Hlocin".
 
+      (* Wrapping locations. *)
+      wp_typecast Hloc; wp_match.
+      + destruct (is_loc_val _ Hloc) as (l&->).
+          rewrite on_val_elim /is_mon.
+        wp_apply ("Hlocout" with "* Hv"). iIntros (v1) "Hv1".
+        iApply "HΦ". by rewrite low_val.
+      iClear "Hlocout".
+
       (* Wrapping literals. *)
       wp_typecast Hlit; wp_match.
-      + iClear "Hwrap".
+      + iApply "HΦ". destruct (is_lit_val _ Hlit) as (lit&->).
+        by rewrite low_val.
 
-        (* Wrapping locations. *)
-        wp_typecast Hloc; wp_match.
-        * destruct (is_loc_val _ Hloc) as (l&->).
-            rewrite on_val_elim on_lit_elim /is_mon.
-          wp_apply ("Hlocout" with "* Hv"). iIntros (v1) "Hv1".
-          iApply "HΦ". by rewrite low_val low_lit.
-
-        (* Wrapping other literals. *)
-        iApply "HΦ". destruct (is_lit_val _ Hlit) as (lit&HV).
-          rewrite HV low_val low_lit. rewrite HV /is_loc in Hloc.
-        case: lit Hloc {Hlit HV} => // l Hloc. by exfalso; eauto.
-      iClear "Hlocout".
+      (* Wrapping unit. *)
+      wp_op=>Hu; wp_if.
+      + iApply "HΦ". by rewrite low_val.
 
       (* Wrapping pairs. *)
       wp_typecast Hp.
@@ -183,7 +184,10 @@ Section proof.
         wp_apply ("Hwrap" with "* Hv"). iIntros (v1) "Hv1". wp_value.
         iApply "HΦ". rewrite (low_val (InjRV _)). by iFrame.
       wp_match.
-      iExFalso. iPureIntro. exact: is_val_exhaustive.
+
+      (* We're done with wrapping. *)
+      iExFalso. iPureIntro.
+      apply (is_val_exhaustive v); auto using of_val_inj.
 
     - iIntros (p E Φ) "HΦ". wp_rec. wp_lam.
       iApply "HΦ". clear Φ. iIntros (v) "!#". iIntros (Φ) "#Hv HΦ". wp_lam.
@@ -206,23 +210,22 @@ Section proof.
         wp_apply ("Hunwrap" with "* Hv3"). by iIntros.
       wp_match. iClear "IHmkw Hlocout".
 
+      (* Unwrapping locations. *)
+      wp_typecast Hloc; wp_match.
+      + destruct (is_loc_val _ Hloc) as (l1&->).
+          rewrite low_val /is_mon.
+        wp_apply ("Hlocin" with "* Hv"). iIntros (l2) "Hl2".
+        iApply "HΦ". rewrite on_val_elim. by iFrame.
+      iClear "Hlocin".
+
       (* Unwrapping literals. *)
       wp_typecast Hlit; wp_match.
-      + iClear "Hunwrap".
+      + iApply "HΦ". destruct (is_lit_val _ Hlit) as (lit&->).
+        by rewrite on_val_elim.
 
-        (* Unwrapping locations. *)
-        wp_typecast Hloc; wp_match.
-        * destruct (is_loc_val _ Hloc) as (l1&->).
-            rewrite low_val low_lit /is_mon.
-          wp_apply ("Hlocin" with "* Hv"). iIntros (l2) "Hl2".
-          iApply "HΦ". rewrite on_val_elim on_lit_elim. by iFrame.
-
-        (* Unwrapping other literals. *)
-        iApply "HΦ". destruct (is_lit_val _ Hlit) as (lit&HV).
-          rewrite HV low_val on_val_elim on_lit_elim.
-          rewrite HV /is_loc in Hloc.
-        case: lit Hloc {Hlit HV} => //= l Hloc. by exfalso; eauto.
-      iClear "Hlocin".
+      (* Unwapping unit. *)
+      wp_op=>Hu; wp_if.
+      + iApply "HΦ". by rewrite on_val_elim.
 
       (* Unwrapping pairs. *)
       wp_typecast Hp.
@@ -250,7 +253,10 @@ Section proof.
         wp_apply ("Hunwrap" with "* Hv"). iIntros (v1) "Hv1". wp_value.
         iApply "HΦ". rewrite (on_val_elim _ (InjRV _)). by iFrame.
       wp_match.
-      iExFalso. iPureIntro. exact: is_val_exhaustive.
+
+      (* We're done with unwrapping. *)
+      iExFalso. iPureIntro.
+      apply (is_val_exhaustive v); auto using of_val_inj.
   Qed.
 
   (**
@@ -298,9 +304,9 @@ Section inert.
 
   Definition inert : val → iProp Σ := on_val (const True%I).
   Definition is_locout (locout : val) : iProp Σ :=
-    (∀ l1, {{{ True }}} locout #l1 ?{{{ l2, RET #l2; low l2 }}})%I.
+    (∀ l1, {{{ True }}} locout l1 ?{{{ l2, RET LocV l2; low l2 }}})%I.
   Definition is_locin (locin : val) : iProp Σ :=
-    (∀ l2, {{{ low l2 }}} locin #l2 ?{{{ l1, RET #l1; True }}})%I.
+    (∀ l2, {{{ low l2 }}} locin l2 ?{{{ l1, RET LocV l1; True }}})%I.
   Definition is_wrap (wrap : val) : iProp Σ :=
     (∀ v1, {{{ inert v1 }}} wrap v1 ?{{{ v2, RET v2; low v2 }}})%I.
 

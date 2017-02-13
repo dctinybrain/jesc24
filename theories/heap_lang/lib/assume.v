@@ -4,12 +4,12 @@ From iris.heap_lang.lib Require Import abort.
 From iris.proofmode Require Import tactics.
 From iris.heap_lang Require Import proofmode notation.
 
-Definition assume : val := λ: "v", if: "v" #() then #() else abort.
+Definition assume : val := λ: "v", if: "v" () then () else abort.
 (* just below ;; *)
 Notation "'assume:' e" := (assume (λ: <>, e))%E (at level 99) : expr_scope.
 
 Lemma wp_assume `{heapG Σ} E e (Φ : val → iProp Σ) :
-  WP e @ E ?{{ v, ⌜v = LitV (LitBool true)⌝ -∗ ▷ Φ (LitV LitUnit) }} -∗
+  WP e @ E ?{{ v, ⌜v = LitV (LitBool true)⌝ -∗ ▷ Φ UnitV }} -∗
   WP assume: e @ E ?{{ Φ }}.
 Proof.
   iIntros "HΦ". rewrite /assume. wp_bind (Rec _ _ _).

@@ -19,7 +19,7 @@ Instance subG_oneShotΣ {Σ F} : subG (oneShotΣ F) Σ → oneShotG Σ F.
 Proof. apply subG_inG. Qed.
 
 Definition client eM eW1 eW2 : expr :=
-  let: "b" := newbarrier #() in
+  let: "b" := newbarrier () in
   (eM ;; signal "b") ||| ((wait "b" ;; eW1) ||| (wait "b" ;; eW2)).
 
 Section proof.
@@ -32,7 +32,7 @@ Definition barrier_res γ (Φ : X → iProp Σ) : iProp Σ :=
 
 Lemma worker_spec e γ l (Φ Ψ : X → iProp Σ) `{!Closed [] e} :
   recv N l (barrier_res γ Φ) -∗ (∀ x, {{ Φ x }} e {{ _, Ψ x }}) -∗
-  WP wait #l ;; e {{ _, barrier_res γ Ψ }}.
+  WP wait l ;; e {{ _, barrier_res γ Ψ }}.
 Proof.
   iIntros "Hl #He". wp_apply (wait_spec with "[- $Hl]"); simpl.
   iDestruct 1 as (x) "[#Hγ Hx]".

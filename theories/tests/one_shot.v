@@ -11,7 +11,7 @@ Definition one_shot_example : val := λ: <>,
   (* check  *) (λ: <>,
     let: "y" := !"x" in λ: <>,
     match: "y" with
-      NONE => #()
+      NONE => ()
     | SOME "n" =>
        match: !"x" with
          NONE => assert: #false
@@ -37,8 +37,8 @@ Definition one_shot_inv (γ : gname) (l : loc) : iProp Σ :=
 Lemma wp_one_shot (Φ : val → iProp Σ) :
   heap_ctx ∗ (∀ f1 f2 : val,
     (∀ n : Z, □ WP f1 #n {{ w, ⌜w = #true⌝ ∨ ⌜w = #false⌝ }}) ∗
-    □ WP f2 #() {{ g, □ WP g #() {{ _, True }} }} -∗ Φ (f1,f2)%V)
-  ⊢ WP one_shot_example #() {{ Φ }}.
+    □ WP f2 () {{ g, □ WP g () {{ _, True }} }} -∗ Φ (f1,f2)%V)
+  ⊢ WP one_shot_example () {{ Φ }}.
 Proof.
   iIntros "[#? Hf] /=".
   rewrite -wp_fupd /one_shot_example /=. wp_seq. wp_alloc l as "Hl". wp_let.
@@ -83,10 +83,10 @@ Proof.
 Qed.
 
 Lemma ht_one_shot (Φ : val → iProp Σ) :
-  heap_ctx ⊢ {{ True }} one_shot_example #()
+  heap_ctx ⊢ {{ True }} one_shot_example ()
     {{ ff,
       (∀ n : Z, {{ True }} Fst ff #n {{ w, ⌜w = #true⌝ ∨ ⌜w = #false⌝ }}) ∗
-      {{ True }} Snd ff #() {{ g, {{ True }} g #() {{ _, True }} }}
+      {{ True }} Snd ff () {{ g, {{ True }} g () {{ _, True }} }}
     }}.
 Proof.
   iIntros "#? !# _". iApply wp_one_shot. iSplit; first done.

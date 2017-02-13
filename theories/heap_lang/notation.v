@@ -3,12 +3,13 @@ From iris.heap_lang Require Export lang tactics.
 
 Coercion LitInt : Z >-> base_lit.
 Coercion LitBool : bool >-> base_lit.
-Coercion LitLoc : loc >-> base_lit.
 
 Coercion App : expr >-> Funclass.
 Coercion of_val : val >-> expr.
 
 Coercion Var : string >-> expr.
+Coercion Loc : loc >-> expr.
+Coercion LocV : loc >-> val.
 
 Coercion BNamed : string >-> binder.
 Notation "<>" := BAnon : binder_scope.
@@ -28,7 +29,8 @@ Notation "'match:' e0 'with' 'InjL' x1 => e1 | 'InjR' x2 => e2 'end'" :=
 Notation "'match:' e0 'with' 'InjR' x1 => e1 | 'InjL' x2 => e2 'end'" :=
   (Match e0 x2%bind e2 x1%bind e1)
   (e0, x1, e1, x2, e2 at level 200, only parsing) : expr_scope.
-Notation "()" := LitUnit : val_scope.
+Notation "()" := UnitV : val_scope.
+Notation "()" := Unit : expr_scope.
 Notation "! e" := (Load e%E) (at level 9, right associativity) : expr_scope.
 Notation "'ref' e" := (Alloc e%E)
   (at level 30, right associativity) : expr_scope.
@@ -112,7 +114,7 @@ Notation "e1 || e2" :=
   (If e1%E (Lit (LitBool true)) e2%E) (only parsing) : expr_scope.
 
 (** Notations for option *)
-Notation NONE := (InjL #()) (only parsing).
+Notation NONE := (InjL Unit) (only parsing).
 Notation SOME x := (InjR x) (only parsing).
 
 Notation "'match:' e0 'with' 'NONE' => e1 | 'SOME' x => e2 'end'" :=

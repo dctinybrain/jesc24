@@ -11,7 +11,7 @@ Definition wait_loop: val :=
   rec: "wait_loop" "x" "lk" :=
     let: "o" := !(Fst "lk") in
     if: "x" = "o"
-      then #() (* my turn *)
+      then () (* my turn *)
       else "wait_loop" "x" "lk".
 
 Definition newlock' : val :=
@@ -54,12 +54,12 @@ Section proof.
   Definition is_lock (γ : gname) (lk : val) (R : iProp Σ) : iProp Σ :=
     (∃ lo ln : loc,
        ⌜heapN ⊥ N⌝ ∗ heap_ctx ∗
-       ⌜lk = (#lo, #ln)%V⌝ ∗ inv N (lock_inv γ lo ln R))%I.
+       ⌜lk = (lo, ln)%V⌝ ∗ inv N (lock_inv γ lo ln R))%I.
 
   Definition issued (γ : gname) (lk : val) (x : nat) (R : iProp Σ) : iProp Σ :=
     (∃ lo ln: loc,
        ⌜heapN ⊥ N⌝ ∗ heap_ctx ∗
-       ⌜lk = (#lo, #ln)%V⌝ ∗ inv N (lock_inv γ lo ln R) ∗
+       ⌜lk = (lo, ln)%V⌝ ∗ inv N (lock_inv γ lo ln R) ∗
        own γ (◯ (∅, GSet {[ x ]})))%I.
 
   Definition locked (γ : gname) : iProp Σ := (∃ o, own γ (◯ (Excl' o, ∅)))%I.
@@ -82,7 +82,7 @@ Section proof.
 
   Lemma newlock'_spec (R : iProp Σ) :
     heapN ⊥ N →
-    {{{ heap_ctx }}} newlock' ticket #() @ p; ⊤
+    {{{ heap_ctx }}} newlock' ticket () @ p; ⊤
     {{{ lk γ, RET lk; is_lock γ lk R ∗ locked γ }}}.
   Proof.
     iIntros (? Φ) "#Hh HΦ". rewrite -wp_fupd.
@@ -93,13 +93,13 @@ Section proof.
       auth_valid_discrete /=  prod_included -gset_disj_union //= right_id. }
     iMod (inv_alloc _ _ (lock_inv γ lo ln R) with "[-HΦ Hγ3]").
     { iNext. rewrite /lock_inv. iExists 0%nat, 1%nat. iFrame. by iRight. }
-    iModIntro. iApply ("HΦ" $! (#lo, #ln)%V γ). iSplitR "Hγ3".
+    iModIntro. iApply ("HΦ" $! (lo, ln)%V γ). iSplitR "Hγ3".
     by iExists lo, ln; eauto. by iExists 0%nat.
   Qed.
 
   Lemma wait_loop_spec γ lk x R :
     {{{ issued γ lk x R }}} impl.wait_loop #x lk @ p; ⊤
-    {{{ RET #(); locked γ ∗ R }}}.
+    {{{ RET (); locked γ ∗ R }}}.
   Proof.
     iIntros (Φ) "Hl HΦ". iDestruct "Hl" as (lo ln) "(% & #? & % & #? & Ht)".
     iLöb as "IH". wp_rec. subst. wp_let. wp_proj. wp_bind (! _)%E.
@@ -120,7 +120,7 @@ Section proof.
   Qed.
 
   Lemma acquire_spec γ lk R :
-    {{{ is_lock γ lk R }}} acquire ticket lk @ p; ⊤ {{{ RET #(); locked γ ∗ R }}}.
+    {{{ is_lock γ lk R }}} acquire ticket lk @ p; ⊤ {{{ RET (); locked γ ∗ R }}}.
   Proof.
     iIntros (ϕ) "Hl HΦ". iDestruct "Hl" as (lo ln) "(% & #? & % & #?)".
     iLöb as "IH". wp_rec. wp_bind (! _)%E. subst. wp_proj.
@@ -141,7 +141,7 @@ Section proof.
       { iNext. iExists o', (S n).
         rewrite Nat2Z.inj_succ -Z.add_1_r. by iFrame. }
       iModIntro. wp_if.
-      iApply (wait_loop_spec γ (#lo, #ln) with "[-HΦ]").
+      iApply (wait_loop_spec γ (lo, ln) with "[-HΦ]").
       + rewrite /issued; eauto 10.
       + by iNext.
     - wp_cas_fail.
@@ -152,7 +152,7 @@ Section proof.
 
   Lemma release_spec γ lk R :
     {{{ is_lock γ lk R ∗ locked γ ∗ R }}} release ticket lk @ p; ⊤
-    {{{ RET #(); True }}}.
+    {{{ RET (); True }}}.
   Proof.
     iIntros (Φ) "(Hl & Hγ & HR) HΦ". iDestruct "Hl" as (lo ln) "(% & #? & % & #?)"; subst.
     iDestruct "Hγ" as (o) "Hγo".
