@@ -159,7 +159,7 @@ Section ClosedProof.
   Let example : expr := example (blocking spin) spin.
 
   Lemma example_safe C t2 σ2 :
-    adv_ctx C →
+    AdvCtx C →
     rtc step ([ctx_fill C example], good_state ∅) (t2, σ2) →
     is_good σ2.
   Proof.

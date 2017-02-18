@@ -355,22 +355,6 @@ Instance: Params (@low) 3.
 Instance low_proper `{LowIntegrity Σ A} : Proper ((=) ==> (≡)) low.
 Proof. solve_proper. Qed.
 
-(*
-Class SyntacticallyLow Σ (A : Type) := SynLow {
-  synlow : A → iProp Σ;
-  synlow_timeless a :> TimelessP (synlow a);
-  synlow_persistent a :> PersistentP (synlow a);
-  synlow_ne n :> Proper ((=) ==> dist n) synlow
-}.
-Arguments SynLow {_ _} _ _ _ _.
-Arguments synlow {_ _ _} _ : simpl never.
-Instance: Params (@synlow) 3.
-
-Instance synlow_proper `{SyntacticallyLow Σ A} :
-  Proper ((=) ==> (≡)) synlow.
-Proof. solve_proper. Qed.
-*)
-
 Section low.
   Context `{heapG Σ}.
 
@@ -385,47 +369,6 @@ Section low.
   Proof. rewrite /low/= lowloc'_eq /lowloc'_def. apply _. Qed.
 
   Lemma low_loc l : low l ⊣⊢ lowloc l. Proof. by []. Qed.
-
-  (**
-    A (syntactically) low expression contains neither assertions nor
-    high locations. We reserve assertions for verified code.
-  *)
-  Definition lowexpr : expr → iProp Σ :=
-    fix rec e := match e with
-    | Var _ | Lit _ | Unit => True
-    | Assert _ => False
-    | Loc l => low l
-    | Rec _ _ e | UnOp _ e | Fst e | Snd e | InjL e | InjR e
-    | Fork e | Alloc e | Load e
-      => rec e
-    | App e1 e2 | BinOp _ e1 e2 | Pair e1 e2 | Store e1 e2 => rec e1 ∗ rec e2
-    | If e1 e2 e3 | Case e1 e2 e3 | CAS e1 e2 e3
-      => rec e1 ∗ rec e2 ∗ rec e3
-    end%I.
-  Global Instance lowexpr_persistent e : PersistentP (lowexpr e).
-  Proof.
-    rewrite/lowexpr; elim: e=>//; rewrite-/lowexpr; by apply _.
-  Qed.
-  Global Instance lowexpr_low : LowIntegrity Σ expr := Low lowexpr _ _.
-  Global Instance lowexpr_low_timeless (e : expr) : TimelessP (low e).
-  Proof.
-    rewrite/lowexpr; elim: e=>//; rewrite-/lowexpr; by apply _.
-  Qed.
-
-  Lemma low_expr e :
-    low e ⊣⊢
-    match e with
-    | Var _ | Lit _ | Unit => True
-    | Assert _ => False
-    | Loc l => low l
-    | Rec _ _ e | UnOp _ e | Fst e | Snd e | InjL e | InjR e
-    | Fork e | Alloc e | Load e
-      => low e
-    | App e1 e2 | BinOp _ e1 e2 | Pair e1 e2 | Store e1 e2 => low e1 ∗ low e2
-    | If e1 e2 e3 | Case e1 e2 e3 | CAS e1 e2 e3
-      => low e1 ∗ low e2 ∗ low e3
-    end.
-  Proof. by case: e. Qed.
 
   (** Low values lift low locations to values. *)
   Global Instance val_low : LowIntegrity Σ val := Low (on_val lowloc) _ _.

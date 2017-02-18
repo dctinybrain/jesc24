@@ -31,7 +31,7 @@ Section ClosedProof.
   Let Σ : gFunctors := #[ heapΣ ; lockΣ ].
 
   Lemma ignore_lock_safe C t2 σ2 :
-    adv_ctx C →
+    AdvCtx C →
     rtc step ([ctx_fill C $ ignore_lock spin], good_state ∅) (t2, σ2) →
     is_good σ2.
   Proof.

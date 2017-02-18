@@ -15,8 +15,8 @@ Proof.
   by iApply (Hwp (HeapG _ _ _ γ) with "Hh").
 Qed.
 
-Theorem heap_safety Σ `{heapPreG Σ} p e h1 t2 σ2 :
-  (∀ `{heapG Σ}, heap_ctx -∗ WP e @ p; ⊤ {{ v, True }}) →
+Theorem adequacy_safety Σ `{heapPreG Σ} p e h1 t2 σ2 :
+  (∀ `{heapG Σ}, heap_ctx ⊢ WP e @ p; ⊤ {{ v, True }}) →
   rtc step ([e], good_state h1) (t2, σ2) → is_good σ2.
 Proof.
   intros Hwp Hsteps.
@@ -26,24 +26,16 @@ Proof.
   by iApply (Hwp G). by iApply (@heap_ctx_is_good _ G).
 Qed.
 
-(*
-	PDS: This is just a special case of the more general
-	result with expression
-
-		C_1[e_1] ;; C_2[e_2] ;; ⋯ ;; C_n[e_n]
-
-	where each e_i is semantically low and each C_i
-	is adversarial.
-*)
 Corollary robust_safety Σ `{heapPreG Σ} C p e t2 σ2 :
-  adv_ctx C → is_closed [] e →
+  AdvCtx C → is_closed [] e →
   (∀ `{heapG Σ}, heap_ctx ⊢ WP e @ p; ⊤ {{ low }}) →
   rtc step ([ctx_fill C e], good_state ∅) (t2, σ2) → is_good σ2.
 Proof.
-  move=>?? Hwp Hsteps. apply: (heap_safety Σ) Hsteps=>?.
+  move=>?? Hwp Hsteps. apply: (adequacy_safety Σ) Hsteps=>?.
   iIntros "#Hh". rewrite -(substitute_empty (ctx_fill _ _)).
-  iApply (robust_safetyI with "[$Hh] [] [] []"); auto.
-  - by iApply adv_ctx_low.
+  iApply (wp_wand _ _ _ low with "[-] []"); last by iIntros.
+  iApply (robust_safetyI with "Hh [] []"); auto.
+  - by iApply adv_ctx_i.
   - by rewrite low_env_empty.
-  - iAlways. by iApply Hwp.
+  - iAlways. iSplit. done. by iApply Hwp.
 Qed.

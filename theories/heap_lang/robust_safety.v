@@ -7,13 +7,69 @@ Import uPred.
 
 Local Hint Resolve to_of_val.
 
+(** * Adversarial expressions *)
+(**
+	An _adversarial expression_ contains no assertions and only
+	low locations. (We reserve assertions for verified code.)
+*)
+
+Class Adversarial Σ (A : Type) := Adv {
+  adv : A → iProp Σ;
+  adv_timeless a :> TimelessP (adv a);
+  adv_persistent a :> PersistentP (adv a);
+  adv_ne n :> Proper ((=) ==> dist n) adv
+}.
+Arguments Adv {_ _} _ _ _ _.
+Arguments adv {_ _ _} _ : simpl never.
+Instance: Params (@adv) 3.
+
+Instance adv_proper `{Adversarial Σ A} : Proper ((=) ==> (≡)) adv.
+Proof. solve_proper. Qed.
+
+Section adv_expr.
+  Context `{heapG Σ}.
+
+  Definition advexpr : expr → iProp Σ :=
+    fix rec e := match e with
+    | Var _ | Lit _ | Unit => True
+    | Assert _ => False
+    | Loc l => low l
+    | Rec _ _ e | UnOp _ e | Fst e | Snd e | InjL e | InjR e
+    | Fork e | Alloc e | Load e
+      => rec e
+    | App e1 e2 | BinOp _ e1 e2 | Pair e1 e2 | Store e1 e2 => rec e1 ∗ rec e2
+    | If e1 e2 e3 | Case e1 e2 e3 | CAS e1 e2 e3
+      => rec e1 ∗ rec e2 ∗ rec e3
+    end%I.
+  Global Instance advexpr_persistent e : PersistentP (advexpr e).
+  Proof. elim: e=>//; by apply _. Qed.
+  Global Instance advexpr_timeless (e : expr) : TimelessP (advexpr e).
+  Proof. elim: e=>//; by apply _. Qed.
+  Global Instance advexpr_adv : Adversarial Σ expr := Adv advexpr _ _ _.
+
+  Lemma adv_expr e :
+    adv e ⊣⊢
+    match e with
+    | Var _ | Lit _ | Unit => True
+    | Assert _ => False
+    | Loc l => low l
+    | Rec _ _ e | UnOp _ e | Fst e | Snd e | InjL e | InjR e
+    | Fork e | Alloc e | Load e
+      => adv e
+    | App e1 e2 | BinOp _ e1 e2 | Pair e1 e2 | Store e1 e2 => adv e1 ∗ adv e2
+    | If e1 e2 e3 | Case e1 e2 e3 | CAS e1 e2 e3
+      => adv e1 ∗ adv e2 ∗ adv e3
+    end.
+  Proof. by case: e. Qed.
+End adv_expr.
+Typeclasses Opaque advexpr.
+
 (** * The fundamental theorem of logical relations *)
 (**
-	We model adversarial values and closed, adversarial
-	expressions with [low v] and [WP e ?{{ low }}], respectively
-	(see [low_val]). Our aim is to show that, under the heap
-	invariant, all syntactically low expressions (see [low_expr])
-	inhabit the model.
+	We model adversarial values and expressions with [low v] and
+	[WP e ?{{ low }}], respectively (see [low_val]). Our aim is to
+	show that, under the heap invariant, all adversarial
+	expressions inhabit the model.
 
 	The proof is by induction on expressions. For the induction to
 	go through, we must generalize to account for substitution of
@@ -21,7 +77,6 @@ Local Hint Resolve to_of_val.
 	not imply progress, these need not be closing substitutions.)
  *)
 Section ftlr.
-
   Context `{heapG Σ}.
   Implicit Types γ : env.
   Implicit Types e : expr.
@@ -31,7 +86,7 @@ Section ftlr.
     Low (λ γ, [∗ map] v ∈ γ, low v)%I _ _.
 
   Definition confined : expr → iProp Σ := λ e, (
-    ∀ γ, heap_ctx -∗ low γ -∗ low e -∗ WP γ e ?{{ low }}
+    ∀ γ, heap_ctx -∗ low γ -∗ adv e -∗ WP γ e ?{{ low }}
   )%I.
 
   Lemma low_env γ : low γ ⊣⊢ [∗ map] v ∈ γ, low v. Proof. by []. Qed.
@@ -68,7 +123,7 @@ Section ftlr.
   Lemma confined_rec f x e : □ confined e -∗ confined (Rec f x e).
   Proof.
     iIntros "#IHe". iIntros (γ) "#Hh #Hγ #He".
-    rewrite (low_expr (Rec _ _ _)) substitute_expr. set erec := substitute _ _.
+    rewrite adv_expr substitute_expr. set erec := substitute _ _.
     case: (decide (Closed (f :b: x :b: []) erec)) => ?;
       last by iApply wp_stuck_rec_open.
     iApply wp_value; first exact: to_val_rec.
@@ -97,7 +152,7 @@ Section ftlr.
   Lemma confined_app e1 e2 : confined e1 ∗ confined e2 -∗ confined (App e1 e2).
   Proof.
     iIntros "[IHe1 IHe2]". iIntros (γ) "#Hh #Hγ Happ".
-    rewrite low_expr substitute_expr. iDestruct "Happ" as "(He1&He2)".
+    rewrite adv_expr substitute_expr. iDestruct "Happ" as "(He1&He2)".
     iApply (wp_on_val_app with "[IHe1 He1] [IHe2 He2]").
     - by iApply ("IHe1" with "Hh Hγ He1").
     - by iApply ("IHe2" with "Hh Hγ He2").
@@ -113,7 +168,7 @@ Section ftlr.
 
   Lemma confined_un_op op e : confined e -∗ confined (UnOp op e).
   Proof.
-    iIntros "IHe". iIntros (γ) "Hh Hγ He". rewrite low_expr substitute_expr.
+    iIntros "IHe". iIntros (γ) "Hh Hγ He". rewrite adv_expr substitute_expr.
     iApply wp_on_val_un_op. by iApply ("IHe" with "Hh Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ confined (UnOp _ _)) => rewrite -confined_un_op.
@@ -122,7 +177,7 @@ Section ftlr.
     confined e1 ∗ confined e2 -∗ confined (BinOp op e1 e2).
   Proof.
     iIntros "[IHe1 IHe2]". iIntros (γ) "#Hh #Hγ Hop".
-    rewrite low_expr substitute_expr. iDestruct "Hop" as "(He1&He2)".
+    rewrite adv_expr substitute_expr. iDestruct "Hop" as "(He1&He2)".
     iApply (wp_on_val_bin_op with "[IHe1 He1]").
     - by iApply ("IHe1" with "Hh Hγ He1").
     - by iApply ("IHe2" with "Hh Hγ He2").
@@ -133,7 +188,7 @@ Section ftlr.
     confined e ∗ confined e1 ∗ confined e2 -∗ confined (If e e1 e2).
   Proof.
     iIntros "(IHe&IHe1&IHe2)". iIntros (γ) "#Hh #Hγ Hif".
-    rewrite low_expr substitute_expr. iDestruct "Hif" as "(He&He1&He2)".
+    rewrite adv_expr substitute_expr. iDestruct "Hif" as "(He&He1&He2)".
     wp_apply (wp_on_val_if with "[IHe He]"); last iSplit.
     - by iApply ("IHe" with "Hh Hγ He").
     - by iApply ("IHe1" with "Hh Hγ He1").
@@ -152,7 +207,7 @@ Section ftlr.
     confined e1 ∗ confined e2 -∗ confined (Pair e1 e2).
   Proof.
     iIntros "[IHe1 IHe2]". iIntros (γ) "#Hh #Hγ Hp".
-    rewrite low_expr substitute_expr. iDestruct "Hp" as "(He1&He2)".
+    rewrite adv_expr substitute_expr. iDestruct "Hp" as "(He1&He2)".
     iApply (wp_on_val_pair with "[IHe1 He1]").
     - by iApply ("IHe1" with "Hh Hγ He1").
     - by iApply ("IHe2" with "Hh Hγ He2").
@@ -161,28 +216,28 @@ Section ftlr.
 
   Lemma confined_fst e : confined e -∗ confined (Fst e).
   Proof.
-    iIntros "IHe". iIntros (γ) "Hh Hγ He". rewrite low_expr substitute_expr.
+    iIntros "IHe". iIntros (γ) "Hh Hγ He". rewrite adv_expr substitute_expr.
     iApply wp_on_val_fst. by iApply ("IHe" with "Hh Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ confined (Fst _)) => rewrite -confined_fst.
 
   Lemma confined_snd e : confined e -∗ confined (Snd e).
   Proof.
-    iIntros "IHe". iIntros (γ) "Hh Hγ He". rewrite low_expr substitute_expr.
+    iIntros "IHe". iIntros (γ) "Hh Hγ He". rewrite adv_expr substitute_expr.
     iApply wp_on_val_snd. by iApply ("IHe" with "Hh Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ confined (Snd _)) => rewrite -confined_snd.
 
   Lemma confined_inl e : confined e -∗ confined (InjL e).
   Proof.
-    iIntros "IHe". iIntros (γ) "Hh Hγ He". rewrite low_expr substitute_expr.
+    iIntros "IHe". iIntros (γ) "Hh Hγ He". rewrite adv_expr substitute_expr.
     iApply wp_on_val_inl. by iApply ("IHe" with "Hh Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ confined (InjL _)) => rewrite -confined_inl.
 
   Lemma confined_inr e : confined e -∗ confined (InjR e).
   Proof.
-    iIntros "IHe". iIntros (γ) "Hh Hγ He". rewrite low_expr substitute_expr.
+    iIntros "IHe". iIntros (γ) "Hh Hγ He". rewrite adv_expr substitute_expr.
     iApply wp_on_val_inr. by iApply ("IHe" with "Hh Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ confined (InjR _)) => rewrite -confined_inr.
@@ -191,7 +246,7 @@ Section ftlr.
     confined e ∗ confined e1 ∗ confined e2 -∗ confined (Case e e1 e2).
   Proof.
     iIntros "(IHe&IHe1&IHe2)". iIntros (γ) "#Hh #Hγ Hc".
-    rewrite low_expr substitute_expr. iDestruct "Hc" as "(He&He1&He2)".
+    rewrite adv_expr substitute_expr. iDestruct "Hc" as "(He&He1&He2)".
     wp_apply (wp_on_val_case with "[IHe He]"); last (iIntros (v) "Hv"; iSplit).
     - by iApply ("IHe" with "Hh Hγ He").
     - iApply (wp_on_val_app with "[-Hv] [Hv]").
@@ -202,33 +257,33 @@ Section ftlr.
   Hint Extern 1 (_ ⊢ confined (Case _ _ _)) => rewrite -confined_case.
 
   Lemma confined_assert e : confined (Assert e).
-  Proof. iIntros (γ) "_ _ He". rewrite low_expr. by iExFalso. Qed.
+  Proof. iIntros (γ) "_ _ He". rewrite adv_expr. by iExFalso. Qed.
   Hint Extern 1 (_ ⊢ confined (Assert _)) => rewrite -confined_assert.
 
   Lemma confined_fork e : confined e -∗ confined (Fork e).
   Proof.
-    iIntros "IHe". iIntros (γ) "Hh Hγ He". rewrite low_expr substitute_expr.
+    iIntros "IHe". iIntros (γ) "Hh Hγ He". rewrite adv_expr substitute_expr.
     iApply wp_on_val_fork. by iApply ("IHe" with "Hh Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ confined (Fork _)) => rewrite -confined_fork.
 
   Lemma confined_loc l : confined (Loc l).
   Proof.
-    iIntros (γ) "_ _ ?". rewrite low_expr substitute_expr.
+    iIntros (γ) "_ _ ?". rewrite adv_expr substitute_expr.
     iApply wp_value; first done. by rewrite low_val.
   Qed.
   Hint Extern 1 (_ ⊢ confined (Loc _)) => rewrite -confined_loc.
 
   Lemma confined_alloc e : confined e -∗ confined (Alloc e).
   Proof.
-    iIntros "IHe". iIntros (γ) "#Hh Hγ He". rewrite low_expr substitute_expr.
+    iIntros "IHe". iIntros (γ) "#Hh Hγ He". rewrite adv_expr substitute_expr.
     iApply (wp_low_alloc with "Hh"). done. by iApply ("IHe" with "Hh Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ confined (Alloc _)) => rewrite -confined_alloc.
 
   Lemma confined_load e : confined e -∗ confined (Load e).
   Proof.
-    iIntros "IHe". iIntros (γ) "#Hh Hγ He". rewrite low_expr substitute_expr.
+    iIntros "IHe". iIntros (γ) "#Hh Hγ He". rewrite adv_expr substitute_expr.
     iApply (wp_low_load with "Hh"). done. by iApply ("IHe" with "Hh Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ confined (Load _)) => rewrite -confined_load.
@@ -237,7 +292,7 @@ Section ftlr.
     confined e1 ∗ confined e2 -∗ confined (Store e1 e2).
   Proof.
     iIntros "[IHe1 IHe2]". iIntros (γ) "#Hh #Hγ Hstore".
-    rewrite low_expr substitute_expr. iDestruct "Hstore" as "(He1&He2)".
+    rewrite adv_expr substitute_expr. iDestruct "Hstore" as "(He1&He2)".
     iApply (wp_low_store with "Hh [IHe1 He1]"); first done.
     - by iApply ("IHe1" with "Hh Hγ He1").
     - by iApply ("IHe2" with "Hh Hγ He2").
@@ -248,7 +303,7 @@ Section ftlr.
     confined e0 ∗ confined e1 ∗ confined e2 -∗ confined (CAS e0 e1 e2).
   Proof.
     iIntros "(IHe0&IHe1&IHe2)". iIntros (γ) "#Hh #Hγ Hcas".
-    rewrite low_expr substitute_expr. iDestruct "Hcas" as "(He0&He1&He2)".
+    rewrite adv_expr substitute_expr. iDestruct "Hcas" as "(He0&He1&He2)".
     iApply (wp_low_cas with "Hh [IHe0 He0] [IHe1 He1]"); first done.
     - by iApply ("IHe0" with "Hh Hγ He0").
     - by iApply ("IHe1" with "Hh Hγ He1").
@@ -277,7 +332,7 @@ Section ftlr.
   Proof. rewrite/uPred_valid. by induction e; auto. Qed.
 
   Corollary ftlr_alt γ e Φ :
-    heap_ctx -∗ low γ -∗ low e -∗ (∀ v, low v -∗ Φ v) -∗ WP γ e ?{{ Φ }}.
+    heap_ctx ⊢ low γ -∗ adv e -∗ (∀ v, low v -∗ Φ v) -∗ WP γ e ?{{ Φ }}.
   Proof.
     iIntros "Hh Hγ He". rewrite -wp_wand. by iApply (ftlr with "Hh Hγ He").
   Qed.
@@ -285,9 +340,9 @@ End ftlr.
 
 (** * Contexts *)
 (**
-  Contexts are expressions with a single hole. The following
-  definition must agree with [heap_lang.expr].
- *)
+	Contexts are expressions with a single hole. The following
+	definition must agree with [heap_lang.expr].
+*)
 Inductive ctx :=
   | CHole
   | CRec of binder & binder & ctx
@@ -352,14 +407,14 @@ Fixpoint ctx_fill (C : ctx) (e : expr) : expr :=
   end.
 
 (**
-	A (syntactically) low context contains neither assertions nor
-	high locations. (We reserve assertions for verified code.)
+	An _adversarial context_ contains no assertions and only
+	adversarial subexpressions.
 *)
-Section low_ctx.
+Section adv_ctx.
   Context `{heapG Σ}.
   Implicit Types C : ctx.
 
-  Definition lowctx : ctx → iProp Σ :=
+  Definition advctx : ctx → iProp Σ :=
     fix rec C := match C with
     | CHole => True
     | CAssert _ => False
@@ -367,43 +422,44 @@ Section low_ctx.
     | CFork C | CAlloc C | CLoad C
       => rec C
     | CAppL C1 e2 | CBinOpL _ C1 e2 | CPairL C1 e2 | CStoreL C1 e2
-      => rec C1 ∗ low e2
+      => rec C1 ∗ adv e2
     | CAppR e1 C2 | CBinOpR _ e1 C2 | CPairR e1 C2 | CStoreR e1 C2
-      => low e1 ∗ rec C2
+      => adv e1 ∗ rec C2
     | CIf C0 e1 e2 | CCase C0 e1 e2 | CCASL C0 e1 e2
-      => rec C0 ∗ low e1 ∗ low e2
+      => rec C0 ∗ adv e1 ∗ adv e2
     | CIfL e0 C1 e2 | CCaseL e0 C1 e2 | CCASM e0 C1 e2
-      => low e0 ∗ rec C1 ∗ low e2
+      => adv e0 ∗ rec C1 ∗ adv e2
     | CIfR e0 e1 C2 | CCaseR e0 e1 C2 | CCASR e0 e1 C2
-      => low e0 ∗ low e1 ∗ rec C2
+      => adv e0 ∗ adv e1 ∗ rec C2
     end%I.
-  Global Instance lowctx_persistent C : PersistentP (lowctx C).
-  Proof. rewrite/lowctx; elim: C=>//; rewrite-/lowctx; by apply _. Qed.
-  Global Instance lowctx_low : LowIntegrity Σ ctx := Low lowctx _ _.
-  Global Instance lowctx_timeless (C : ctx) : TimelessP (low C).
-  Proof. rewrite/lowctx; elim: C=>//; rewrite-/lowctx; by apply _. Qed.
+  Global Instance advctx_persistent C : PersistentP (advctx C).
+  Proof. elim: C=>//; by apply _. Qed.
+  Global Instance advctx_timeless (C : ctx) : TimelessP (advctx C).
+  Proof. elim: C=>//; by apply _. Qed.
+  Global Instance advctx_adv : Adversarial Σ ctx := Adv advctx _ _ _.
 
-  Lemma low_ctx C :
-    low C ⊣⊢
+  Lemma adv_ctx C :
+    adv C ⊣⊢
     match C with
     | CHole => True
     | CAssert _ => False
     | CRec _ _ C | CUnOp _ C | CFst C | CSnd C | CInjL C | CInjR C
     | CFork C | CAlloc C | CLoad C
-      => low C
+      => adv C
     | CAppL C1 e2 | CBinOpL _ C1 e2 | CPairL C1 e2 | CStoreL C1 e2
-      => low C1 ∗ low e2
+      => adv C1 ∗ adv e2
     | CAppR e1 C2 | CBinOpR _ e1 C2 | CPairR e1 C2 | CStoreR e1 C2
-      => low e1 ∗ low C2
+      => adv e1 ∗ adv C2
     | CIf C0 e1 e2 | CCase C0 e1 e2 | CCASL C0 e1 e2
-      => low C0 ∗ low e1 ∗ low e2
+      => adv C0 ∗ adv e1 ∗ adv e2
     | CIfL e0 C1 e2 | CCaseL e0 C1 e2 | CCASM e0 C1 e2
-      => low e0 ∗ low C1 ∗ low e2
+      => adv e0 ∗ adv C1 ∗ adv e2
     | CIfR e0 e1 C2 | CCaseR e0 e1 C2 | CCASR e0 e1 C2
-      => low e0 ∗ low e1 ∗ low C2
+      => adv e0 ∗ adv e1 ∗ adv C2
     end%I.
   Proof. by case: C. Qed.
-End low_ctx.
+End adv_ctx.
+Typeclasses Opaque advctx.
 
 (** Sanity check. *)
 (**
@@ -488,159 +544,47 @@ Proof.
     auto using of_to_val, eq_sym with f_equal.
 Qed.
 
-(** * Adversaries *)
-(**
-	To state the [robust_safety] theorem, we define a special case
-	of [low_ctx] at the meta-level. An _adversarial context_ is a
-	heap language context containing neither locations nor
-	assertions.
-*)
-Definition adv_expr : expr → Prop :=
-  fix rec e := match e with
-  | Var _ | Lit _ | Unit => True
-  | Assert _ | Loc _ => False
-  | Rec _ _ e | UnOp _ e | Fst e | Snd e | InjL e | InjR e
-  | Fork e | Alloc e | Load e
-    => rec e
-  | App e1 e2 | BinOp _ e1 e2 | Pair e1 e2 | Store e1 e2 => rec e1 ∧ rec e2
-  | If e1 e2 e3 | Case e1 e2 e3 | CAS e1 e2 e3
-    => rec e1 ∧ rec e2 ∧ rec e3
-  end.
-
-Definition adv_ctx : ctx → Prop :=
-  fix rec C := match C with
-  | CHole => True
-  | CAssert _ => False
-  | CRec _ _ C | CUnOp _ C | CFst C | CSnd C | CInjL C | CInjR C
-  | CFork C | CAlloc C | CLoad C
-    => rec C
-  | CAppL C1 e2 | CBinOpL _ C1 e2 | CPairL C1 e2 | CStoreL C1 e2
-    => rec C1 ∧ adv_expr e2
-  | CAppR e1 C2 | CBinOpR _ e1 C2 | CPairR e1 C2 | CStoreR e1 C2
-    => adv_expr e1 ∧ rec C2
-  | CIf C0 e1 e2 | CCase C0 e1 e2 | CCASL C0 e1 e2
-    => rec C0 ∧ adv_expr e1 ∧ adv_expr e2
-  | CIfL e0 C1 e2 | CCaseL e0 C1 e2 | CCASM e0 C1 e2
-    => adv_expr e0 ∧ rec C1 ∧ adv_expr e2
-  | CIfR e0 e1 C2 | CCaseR e0 e1 C2 | CCASR e0 e1 C2
-    => adv_expr e0 ∧ adv_expr e1 ∧ rec C2
-  end.
-
-Section adversary.
-    Context `{heapG Σ}.
-  Implicit Types C : ctx.
-  Implicit Types e : expr.
-
-  Lemma adv_expr_low e : adv_expr e → low e.
-  Proof.	(* PDS: Automate. *)
-    elim: e => //.
-    - move=>e1 IH1 e2 IH2 [] ??. rewrite low_expr /=.
-      iIntros. iSplit. by iApply IH1. by iApply IH2.
-    - move=>op e1 IH1 e2 IH2 [] ??. rewrite low_expr /=.
-      iIntros. iSplit. by iApply IH1. by iApply IH2.
-    - move=>e0 IH0 e1 IH1 e2 IH2 [] ? [] ?. rewrite low_expr /=.
-      iIntros. iSplit; last iSplit. by iApply IH0. by iApply IH1. by iApply IH2.
-    - move=>e1 IH1 e2 IH2 [] ??. rewrite low_expr /=.
-      iIntros. iSplit. by iApply IH1. by iApply IH2.
-    - move=>e0 IH0 e1 IH1 e2 IH2 [] ? [] ?. rewrite low_expr /=.
-      iIntros. iSplit; last iSplit. by iApply IH0. by iApply IH1. by iApply IH2.
-    - move=>e1 IH1 e2 IH2 [] ??. rewrite low_expr /=.
-      iIntros. iSplit. by iApply IH1. by iApply IH2.
-    - move=>e0 IH0 e1 IH1 e2 IH2 [] ? [] ?. rewrite low_expr /=.
-      iIntros. iSplit; last iSplit. by iApply IH0. by iApply IH1. by iApply IH2.
-  Qed.
-
-  Lemma adv_ctx_low C : adv_ctx C → low C.
-  Proof.	(* PDS: Automate. *)
-    elim: C => //=.
-    (* application *)
-    - move=>C1 IH e2 [] ??. rewrite low_ctx.
-      iSplit. by iApply IH. by iApply adv_expr_low.
-    - move=>e1 C2 IH [] ??. rewrite low_ctx.
-      iSplit. by iApply adv_expr_low. by iApply IH.
-    (* binary operations *)
-    - move=>op C1 IH e2 [] ??. rewrite low_ctx.
-      iSplit. by iApply IH. by iApply adv_expr_low.
-    - move=>op e1 C2 IH [] ??. rewrite low_ctx.
-      iSplit. by iApply adv_expr_low. by iApply IH.
-    (* if *)
-    - move=>C0 IH e1 e2 [] ? [] ??. rewrite low_ctx.
-      iSplit; [|iSplit]. by iApply IH. by iApply adv_expr_low.
-      by iApply adv_expr_low.
-    - move=>e0 C1 IH e2 [] ? [] ??. rewrite low_ctx.
-      iSplit; [|iSplit]. by iApply adv_expr_low. by iApply IH.
-      by iApply adv_expr_low.
-    - move=>e0 e1 C2 IH [] ? [] ??. rewrite low_ctx.
-      iSplit; [|iSplit]. by iApply adv_expr_low. by iApply adv_expr_low.
-      by iApply IH.
-    (* pairing *)
-    - move=>C1 IH e2 [] ??. rewrite low_ctx.
-      iSplit. by iApply IH. by iApply adv_expr_low.
-    - move=>e1 C2 IH [] ??. rewrite low_ctx.
-      iSplit. by iApply adv_expr_low. by iApply IH.
-    (* case *)
-    - move=>C0 IH e1 e2 [] ? [] ??. rewrite low_ctx.
-      iSplit; [|iSplit]. by iApply IH. by iApply adv_expr_low.
-      by iApply adv_expr_low.
-    - move=>e0 C1 IH e2 [] ? [] ??. rewrite low_ctx.
-      iSplit; [|iSplit]. by iApply adv_expr_low. by iApply IH.
-      by iApply adv_expr_low.
-    - move=>e0 e1 C2 IH [] ? [] ??. rewrite low_ctx.
-      iSplit; [|iSplit]. by iApply adv_expr_low. by iApply adv_expr_low.
-      by iApply IH.
-    (* store *)
-    - move=>C1 IH e2 [] ??. rewrite low_ctx.
-      iSplit. by iApply IH. by iApply adv_expr_low.
-    - move=>e1 C2 IH [] ??. rewrite low_ctx.
-      iSplit. by iApply adv_expr_low. by iApply IH.
-    (* CAS *)
-    - move=>C0 IH e1 e2 [] ? [] ??. rewrite low_ctx.
-      iSplit; [|iSplit]. by iApply IH. by iApply adv_expr_low.
-      by iApply adv_expr_low.
-    - move=>e0 C1 IH e2 [] ? [] ??. rewrite low_ctx.
-      iSplit; [|iSplit]. by iApply adv_expr_low. by iApply IH.
-      by iApply adv_expr_low.
-    - move=>e0 e1 C2 IH [] ? [] ??. rewrite low_ctx.
-      iSplit; [|iSplit]. by iApply adv_expr_low. by iApply adv_expr_low.
-      by iApply IH.
-  Qed.
-End adversary.
-
 (** * Robust safety *)
 (**
 	Our aim is to show that, under the heap invariant, if we plug
 	a closed, semantically low expression (i.e., verified code)
-	into a syntactically low context (i.e., an adversary), the
-	resulting expression is semantically low.
+	into an adversarial context, the resulting expression is
+	semantically low.
 
 	The proof is by induction on contexts, using the FTLR to zap
 	the context's subexpressions to low values. As in the proof of
 	the FTLR, we must generalize to account for substitution.
+
+	PDS: This is just a special case of the more general
+	result with expression
+
+		C_1[e_1] ;; C_2[e_2] ;; ⋯ ;; C_n[e_n]
+
+	where each e_i is semantically low and each C_i
+	is adversarial.
  *)
 Section robust_safety.
-
   Context `{heapG Σ}.
   Implicit Types γ : env.
   Implicit Types C : ctx.
   Implicit Types e : expr.
   Implicit Types v : val.
 
-  Definition verified : pbit → expr → iProp Σ := λ p e, (
-     ⌜Closed [] e⌝ ∗ WP e @ p; ⊤ {{ low }}
-  )%I.
+  Definition verified : pbit → expr → iProp Σ := λ p e,
+     (□ (⌜Closed [] e⌝ ∗ WP e @ p; ⊤ {{ low }}))%I.
 
   Definition safe : ctx → iProp Σ := λ C, (
-    ∀ γ p e, heap_ctx -∗ low C -∗ low γ -∗ □ verified p e -∗
+    ∀ γ p e, heap_ctx -∗ adv C -∗ low γ -∗ verified p e -∗
     WP γ (ctx_fill C e) ?{{ low }}
   )%I.
 
   Lemma safe_alt C :
     safe C ⊣⊢
-    ∀ γ p e Φ, heap_ctx -∗ low C -∗ low γ -∗ □ verified p e -∗
+    ∀ γ p e Φ, heap_ctx -∗ adv C -∗ low γ -∗ verified p e -∗
     (∀ v, low v -∗ Φ v) -∗ WP γ (ctx_fill C e) ?{{ Φ }}.
   Proof.
     iSplit.
-    - iIntros "Hsafe". iIntros (γ p e Φ) "Hh HC Hγ He".
+    -  iIntros "Hsafe". iIntros (γ p e Φ) "Hh HC Hγ He".
       rewrite -wp_wand. by iApply ("Hsafe" with "Hh HC Hγ He").
     - iIntros "Halt". iIntros (γ p e) "Hh HC Hγ He".
       iApply ("Halt" with "Hh HC Hγ He []"). by iIntros.
@@ -657,7 +601,7 @@ Section robust_safety.
   Proof.
     (* PDS: Lots of duplication with confined_rec. *)
     iIntros "#IH". iIntros (γ p e) "#Hh #HC #Hγ #He /=".
-    rewrite (low_ctx (CRec _ _ _)) substitute_expr. set erec := substitute _ _.
+    rewrite adv_ctx substitute_expr. set erec := substitute _ _.
     case: (decide (Closed (f :b: x :b: []) erec)) => ?;
       last by iApply wp_stuck_rec_open.
     iApply wp_value; first exact: to_val_rec.
@@ -686,7 +630,7 @@ Section robust_safety.
   Lemma safe_app_l C1 e2 : safe C1 -∗ safe (CAppL C1 e2).
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Happ #Hγ He /=".
-    rewrite low_ctx substitute_expr. iDestruct "Happ" as "(HC1&He2)".
+    rewrite adv_ctx substitute_expr. iDestruct "Happ" as "(HC1&He2)".
     iApply (wp_on_val_app with "[-He2] [He2]").
     - by iApply ("IH" with "Hh HC1 Hγ He").
     - by iApply (ftlr with "Hh Hγ He2").
@@ -696,7 +640,7 @@ Section robust_safety.
   Lemma safe_app_r e1 C2 : safe C2 -∗ safe (CAppR e1 C2).
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Happ #Hγ He /=".
-    rewrite low_ctx substitute_expr. iDestruct "Happ" as "(He1&HC2)".
+    rewrite adv_ctx substitute_expr. iDestruct "Happ" as "(He1&HC2)".
     wp_apply (wp_on_val_app with "[He1]").
     - by iApply (ftlr with "Hh Hγ He1").
     - by iApply ("IH" with "Hh HC2 Hγ He").
@@ -706,7 +650,7 @@ Section robust_safety.
   Lemma safe_un_op op C : safe C -∗ safe (CUnOp op C).
   Proof.
     iIntros "IH". iIntros (γ p e) "Hh HC Hγ He /=".
-    rewrite low_ctx substitute_expr.
+    rewrite adv_ctx substitute_expr.
     iApply wp_on_val_un_op. by iApply ("IH" with "Hh HC Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CUnOp _ _)) => rewrite -safe_un_op.
@@ -714,7 +658,7 @@ Section robust_safety.
   Lemma safe_bin_op_l op C1 e2 : safe C1 -∗ safe (CBinOpL op C1 e2).
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hop #Hγ He /=".
-    rewrite low_ctx substitute_expr. iDestruct "Hop" as "(HC1&He2)".
+    rewrite adv_ctx substitute_expr. iDestruct "Hop" as "(HC1&He2)".
     iApply (wp_on_val_bin_op with "[-He2]").
     - by iApply ("IH" with "Hh HC1 Hγ He").
     - by iApply (ftlr with "Hh Hγ He2").
@@ -724,7 +668,7 @@ Section robust_safety.
   Lemma safe_bin_op_r op e1 C2 : safe C2 -∗ safe (CBinOpR op e1 C2).
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hop #Hγ He /=".
-    rewrite low_ctx substitute_expr. iDestruct "Hop" as "(He1&HC2)".
+    rewrite adv_ctx substitute_expr. iDestruct "Hop" as "(He1&HC2)".
     iApply (wp_on_val_bin_op with "[He1]").
     - by iApply (ftlr with "Hh Hγ He1").
     - by iApply ("IH" with "Hh HC2 Hγ He").
@@ -734,7 +678,7 @@ Section robust_safety.
   Lemma safe_if C e1 e2 : safe C -∗ safe (CIf C e1 e2).
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hif #Hγ He /=".
-    rewrite low_ctx substitute_expr. iDestruct "Hif" as "(HC&He1&He2)".
+    rewrite adv_ctx substitute_expr. iDestruct "Hif" as "(HC&He1&He2)".
     wp_apply (wp_on_val_if with "[-He1 He2]"); last iSplit.
     - by iApply ("IH" with "Hh HC Hγ He").
     - by iApply (ftlr with "Hh Hγ He1").
@@ -745,7 +689,7 @@ Section robust_safety.
   Lemma safe_if_l e0 C1 e2 : safe C1 -∗ safe (CIfL e0 C1 e2).
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hif #Hγ He /=".
-    rewrite low_ctx substitute_expr. iDestruct "Hif" as "(He0&HC&He2)".
+    rewrite adv_ctx substitute_expr. iDestruct "Hif" as "(He0&HC&He2)".
     wp_apply (wp_on_val_if with "[He0]"); last iSplit.
     - by iApply (ftlr with "Hh Hγ He0").
     - by iApply ("IH" with "Hh HC Hγ He").
@@ -756,7 +700,7 @@ Section robust_safety.
   Lemma safe_if_r e0 e1 C2 : safe C2 -∗ safe (CIfR e0 e1 C2).
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hif #Hγ He /=".
-    rewrite low_ctx substitute_expr. iDestruct "Hif" as "(He0&He1&HC)".
+    rewrite adv_ctx substitute_expr. iDestruct "Hif" as "(He0&He1&HC)".
     wp_apply (wp_on_val_if with "[He0]"); last iSplit.
     - by iApply (ftlr with "Hh Hγ He0").
     - by iApply (ftlr with "Hh Hγ He1").
@@ -767,7 +711,7 @@ Section robust_safety.
   Lemma safe_pair_l C1 e2 : safe C1 -∗ safe (CPairL C1 e2).
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hp #Hγ He /=".
-    rewrite low_ctx substitute_expr. iDestruct "Hp" as "(HC1&He2)".
+    rewrite adv_ctx substitute_expr. iDestruct "Hp" as "(HC1&He2)".
     wp_apply (wp_on_val_pair with "[-He2]").
     - by iApply ("IH" with "Hh HC1 Hγ He").
     - by iApply (ftlr with "Hh Hγ He2").
@@ -777,7 +721,7 @@ Section robust_safety.
   Lemma safe_pair_r e1 C2 : safe C2 -∗ safe (CPairR e1 C2).
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hp #Hγ He /=".
-    rewrite low_ctx substitute_expr. iDestruct "Hp" as "(He1&HC2)".
+    rewrite adv_ctx substitute_expr. iDestruct "Hp" as "(He1&HC2)".
     wp_apply (wp_on_val_pair with "[He1]").
     - by iApply (ftlr with "Hh Hγ He1").
     - by iApply ("IH" with "Hh HC2 Hγ He").
@@ -787,7 +731,7 @@ Section robust_safety.
   Lemma safe_fst C : safe C -∗ safe (CFst C).
   Proof.
     iIntros "IH". iIntros (γ p e) "Hh HC Hγ He /=".
-    rewrite low_ctx substitute_expr.
+    rewrite adv_ctx substitute_expr.
     wp_apply wp_on_val_fst. by iApply ("IH" with "Hh HC Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CFst _)) => rewrite -safe_fst.
@@ -795,7 +739,7 @@ Section robust_safety.
   Lemma safe_snd C : safe C -∗ safe (CSnd C).
   Proof.
     iIntros "IH". iIntros (γ p e) "Hh HC Hγ He /=".
-    rewrite low_ctx substitute_expr.
+    rewrite adv_ctx substitute_expr.
     wp_apply wp_on_val_snd. by iApply ("IH" with "Hh HC Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CSnd _)) => rewrite -safe_snd.
@@ -803,7 +747,7 @@ Section robust_safety.
   Lemma safe_inl C : safe C -∗ safe (CInjL C).
   Proof.
     iIntros "IH". iIntros (γ p e) "Hh HC Hγ He /=".
-    rewrite low_ctx substitute_expr.
+    rewrite adv_ctx substitute_expr.
     wp_apply wp_on_val_inl. by iApply ("IH" with "Hh HC Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CInjL _)) => rewrite -safe_inl.
@@ -811,7 +755,7 @@ Section robust_safety.
   Lemma safe_inr C : safe C -∗ safe (CInjR C).
   Proof.
     iIntros "IH". iIntros (γ p e) "Hh HC Hγ He /=".
-    rewrite low_ctx substitute_expr.
+    rewrite adv_ctx substitute_expr.
     wp_apply wp_on_val_inr. by iApply ("IH" with "Hh HC Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CInjR _)) => rewrite -safe_inr.
@@ -819,7 +763,7 @@ Section robust_safety.
   Lemma safe_case C e1 e2 : safe C -∗ safe (CCase C e1 e2).
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hc #Hγ He /=".
-    rewrite low_ctx substitute_expr. iDestruct "Hc" as "(HC&He1&He2)".
+    rewrite adv_ctx substitute_expr. iDestruct "Hc" as "(HC&He1&He2)".
     wp_apply (wp_on_val_case with "[-He1 He2]");
       last (iIntros (v0) "Hv0"; iSplit; wp_bind (γ _)).
     - by iApply ("IH" with "Hh HC Hγ He").
@@ -833,7 +777,7 @@ Section robust_safety.
   Lemma safe_case_l e0 C1 e2 : safe C1 -∗ safe (CCaseL e0 C1 e2).
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hc #Hγ He /=".
-    rewrite low_ctx substitute_expr. iDestruct "Hc" as "(He0&HC&He2)".
+    rewrite adv_ctx substitute_expr. iDestruct "Hc" as "(He0&HC&He2)".
     wp_apply (wp_on_val_case with "[He0]");
       last (iIntros (v0) "Hv0"; iSplit; wp_bind (γ _)).
     - by iApply (ftlr with "Hh Hγ He0").
@@ -847,7 +791,7 @@ Section robust_safety.
   Lemma safe_case_r e0 e1 C2 : safe C2 -∗ safe (CCaseR e0 e1 C2).
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hc #Hγ He /=".
-    rewrite low_ctx substitute_expr. iDestruct "Hc" as "(He0&He1&HC)".
+    rewrite adv_ctx substitute_expr. iDestruct "Hc" as "(He0&He1&HC)".
     wp_apply (wp_on_val_case with "[He0]");
       last (iIntros (v0) "Hv0"; iSplit; wp_bind (γ _)).
     - by iApply (ftlr with "Hh Hγ He0").
@@ -859,13 +803,13 @@ Section robust_safety.
   Hint Extern 1 (_ ⊢ safe (CCaseR _ _ _)) => rewrite -safe_case_r.
 
   Lemma safe_assert C : safe (CAssert C).
-  Proof. iIntros (γ p e) "_ Hc _ _ /=". rewrite low_ctx. by iExFalso. Qed.
+  Proof. iIntros (γ p e) "_ Hc _ _ /=". rewrite adv_ctx. by iExFalso. Qed.
   Hint Extern 1 (_ ⊢ safe (CAssert _)) => rewrite -safe_assert.
 
   Lemma safe_fork C : safe C -∗ safe (CFork C).
   Proof.
     iIntros "IH". iIntros (γ p e) "Hh HC Hγ He /=".
-    rewrite low_ctx substitute_expr. iApply wp_on_val_fork.
+    rewrite adv_ctx substitute_expr. iApply wp_on_val_fork.
     by iApply ("IH" with "Hh HC Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CFork _)) => rewrite -safe_fork.
@@ -873,7 +817,7 @@ Section robust_safety.
   Lemma safe_alloc C : safe C -∗ safe (CAlloc C).
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh HC Hγ He /=".
-    rewrite low_ctx substitute_expr.
+    rewrite adv_ctx substitute_expr.
     iApply (wp_low_alloc with "Hh"); first done.
     by iApply ("IH" with "Hh HC Hγ He").
   Qed.
@@ -882,7 +826,7 @@ Section robust_safety.
   Lemma safe_load C : safe C -∗ safe (CLoad C).
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh HC Hγ He /=".
-    rewrite low_ctx substitute_expr.
+    rewrite adv_ctx substitute_expr.
     iApply (wp_low_load with "Hh"); first done.
     by iApply ("IH" with "Hh HC Hγ He").
   Qed.
@@ -891,7 +835,7 @@ Section robust_safety.
   Lemma safe_store_l C1 e2 : safe C1 -∗ safe (CStoreL C1 e2).
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hp #Hγ He /=".
-    rewrite low_ctx substitute_expr. iDestruct "Hp" as "(HC1&He2)".
+    rewrite adv_ctx substitute_expr. iDestruct "Hp" as "(HC1&He2)".
     iApply (wp_low_store with "Hh [-He2]"); first done.
     - by iApply ("IH" with "Hh HC1 Hγ He").
     - by iApply (ftlr with "Hh Hγ He2").
@@ -901,7 +845,7 @@ Section robust_safety.
   Lemma safe_store_r e1 C2 : safe C2 -∗ safe (CStoreR e1 C2).
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hp #Hγ He /=".
-    rewrite low_ctx substitute_expr. iDestruct "Hp" as "(He1&HC2)".
+    rewrite adv_ctx substitute_expr. iDestruct "Hp" as "(He1&HC2)".
     iApply (wp_low_store with "Hh [He1]"); first done.
     - by iApply (ftlr with "Hh Hγ He1").
     - by iApply ("IH" with "Hh HC2 Hγ He").
@@ -911,7 +855,7 @@ Section robust_safety.
   Lemma safe_cas_l C e1 e2 : safe C -∗ safe (CCASL C e1 e2).
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hc #Hγ He /=".
-    rewrite low_ctx substitute_expr. iDestruct "Hc" as "(HC&He1&He2)".
+    rewrite adv_ctx substitute_expr. iDestruct "Hc" as "(HC&He1&He2)".
     wp_apply (wp_low_cas with "Hh [-He1 He2] [He1]"); first done.
     - by iApply ("IH" with "Hh HC Hγ He").
     - by iApply (ftlr with "Hh Hγ He1").
@@ -922,7 +866,7 @@ Section robust_safety.
   Lemma safe_cas_m e0 C1 e2 : safe C1 -∗ safe (CCASM e0 C1 e2).
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hc #Hγ He /=".
-    rewrite low_ctx substitute_expr. iDestruct "Hc" as "(He0&HC&He2)".
+    rewrite adv_ctx substitute_expr. iDestruct "Hc" as "(He0&HC&He2)".
     wp_apply (wp_low_cas with "Hh [He0] [-He2]"); first done.
     - by iApply (ftlr with "Hh Hγ He0").
     - by iApply ("IH" with "Hh HC Hγ He").
@@ -933,7 +877,7 @@ Section robust_safety.
   Lemma safe_cas_r e0 e1 C2 : safe C2 -∗ safe (CCASR e0 e1 C2).
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hc #Hγ He /=".
-    rewrite low_ctx substitute_expr. iDestruct "Hc" as "(He0&He1&HC)".
+    rewrite adv_ctx substitute_expr. iDestruct "Hc" as "(He0&He1&HC)".
     wp_apply (wp_low_cas with "Hh [He0] [He1]"); first done.
     - by iApply (ftlr with "Hh Hγ He0").
     - by iApply (ftlr with "Hh Hγ He1").
@@ -950,11 +894,128 @@ Section robust_safety.
   Proof. rewrite/uPred_valid. by induction C; auto. Qed.
 
   (** The internal version of [robust_safety]. *)
-  Corollary robust_safetyI C γ p e Φ `{!Closed [] e} :
-    heap_ctx -∗ low C -∗ low γ -∗ □ WP e @ p; ⊤ {{ low }} -∗
-    (∀ v, low v -∗ Φ v) -∗ WP γ (ctx_fill C e) ?{{ Φ }}.
+  Corollary robust_safetyI C γ p e :
+    heap_ctx ⊢ adv C -∗ low γ -∗ verified p e -∗ WP γ (ctx_fill C e) ?{{ low }}.
   Proof.
-    iIntros "Hh HC Hγ #He". rewrite -wp_wand.
-    iApply (robust_safetyI' with "[$Hh] [$HC] [$Hγ]"). by iAlways; iSplit.
+    iIntros "Hh HC Hγ #(% & He)".
+    iApply (robust_safetyI' with "Hh HC Hγ"). by iAlways; iSplit.
   Qed.
 End robust_safety.
+
+(** * Adversaries *)
+(**
+	To state the [robust_safety] theorem, we define a special case
+	of adversarial contexts at the meta-level. A _(meta-level)
+	adversary_ is a context containing neither locations nor
+	assertions.
+*)
+Definition AdvExpr : expr → Prop :=
+  fix rec e := match e with
+  | Var _ | Lit _ | Unit => True
+  | Assert _ | Loc _ => False
+  | Rec _ _ e | UnOp _ e | Fst e | Snd e | InjL e | InjR e
+  | Fork e | Alloc e | Load e
+    => rec e
+  | App e1 e2 | BinOp _ e1 e2 | Pair e1 e2 | Store e1 e2 => rec e1 ∧ rec e2
+  | If e1 e2 e3 | Case e1 e2 e3 | CAS e1 e2 e3
+    => rec e1 ∧ rec e2 ∧ rec e3
+  end.
+
+Definition AdvCtx : ctx → Prop :=
+  fix rec C := match C with
+  | CHole => True
+  | CAssert _ => False
+  | CRec _ _ C | CUnOp _ C | CFst C | CSnd C | CInjL C | CInjR C
+  | CFork C | CAlloc C | CLoad C
+    => rec C
+  | CAppL C1 e2 | CBinOpL _ C1 e2 | CPairL C1 e2 | CStoreL C1 e2
+    => rec C1 ∧ AdvExpr e2
+  | CAppR e1 C2 | CBinOpR _ e1 C2 | CPairR e1 C2 | CStoreR e1 C2
+    => AdvExpr e1 ∧ rec C2
+  | CIf C0 e1 e2 | CCase C0 e1 e2 | CCASL C0 e1 e2
+    => rec C0 ∧ AdvExpr e1 ∧ AdvExpr e2
+  | CIfL e0 C1 e2 | CCaseL e0 C1 e2 | CCASM e0 C1 e2
+    => AdvExpr e0 ∧ rec C1 ∧ AdvExpr e2
+  | CIfR e0 e1 C2 | CCaseR e0 e1 C2 | CCASR e0 e1 C2
+    => AdvExpr e0 ∧ AdvExpr e1 ∧ rec C2
+  end.
+
+Section adversary.
+  Context `{heapG Σ}.
+  Implicit Types C : ctx.
+  Implicit Types e : expr.
+
+  Lemma adv_expr_i e : AdvExpr e → adv e.
+  Proof.
+    rewrite/uPred_valid.
+    elim: e => //; intros;
+    lazymatch goal with
+    | IH0 : (AdvExpr ?e0 → True ⊢ adv ?e0),
+      IH1 : (AdvExpr ?e1 → True ⊢ adv ?e1),
+      IH2 : (AdvExpr ?e2 → True ⊢ adv ?e2),
+      He : (AdvExpr (?f ?e0 ?e1 ?e2)) |- True ⊢ adv (?f ?e0 ?e1 ?e2)
+      => rewrite adv_expr; destruct He as (?&?&?); iSplit; [| iSplit];
+        [by rewrite -IH0 | by rewrite -IH1 | by rewrite -IH2]
+    | IH1 : (AdvExpr ?e1 → True ⊢ adv ?e1),
+      IH2 : (AdvExpr ?e2 → True ⊢ adv ?e2),
+      He : (AdvExpr (?f ?e1 ?e2)) |- True ⊢ adv (?f ?e1 ?e2)
+      => rewrite adv_expr; destruct He as [??]; iSplit;
+        [by rewrite -IH1 | by rewrite -IH2]
+    end.
+  Qed.
+
+  Lemma adv_ctx_i C : AdvCtx C → adv C.
+  Proof.	(* PDS: Automate. *)
+    elim: C => //=.
+    (* application *)
+    - move=>C1 IH e2 [] ??. rewrite adv_ctx.
+      iSplit. by iApply IH. by iApply adv_expr_i.
+    - move=>e1 C2 IH [] ??. rewrite adv_ctx.
+      iSplit. by iApply adv_expr_i. by iApply IH.
+    (* binary operations *)
+    - move=>op C1 IH e2 [] ??. rewrite adv_ctx.
+      iSplit. by iApply IH. by iApply adv_expr_i.
+    - move=>op e1 C2 IH [] ??. rewrite adv_ctx.
+      iSplit. by iApply adv_expr_i. by iApply IH.
+    (* if *)
+    - move=>C0 IH e1 e2 [] ? [] ??. rewrite adv_ctx.
+      iSplit; [|iSplit]. by iApply IH. by iApply adv_expr_i.
+      by iApply adv_expr_i.
+    - move=>e0 C1 IH e2 [] ? [] ??. rewrite adv_ctx.
+      iSplit; [|iSplit]. by iApply adv_expr_i. by iApply IH.
+      by iApply adv_expr_i.
+    - move=>e0 e1 C2 IH [] ? [] ??. rewrite adv_ctx.
+      iSplit; [|iSplit]. by iApply adv_expr_i. by iApply adv_expr_i.
+      by iApply IH.
+    (* pairing *)
+    - move=>C1 IH e2 [] ??. rewrite adv_ctx.
+      iSplit. by iApply IH. by iApply adv_expr_i.
+    - move=>e1 C2 IH [] ??. rewrite adv_ctx.
+      iSplit. by iApply adv_expr_i. by iApply IH.
+    (* case *)
+    - move=>C0 IH e1 e2 [] ? [] ??. rewrite adv_ctx.
+      iSplit; [|iSplit]. by iApply IH. by iApply adv_expr_i.
+      by iApply adv_expr_i.
+    - move=>e0 C1 IH e2 [] ? [] ??. rewrite adv_ctx.
+      iSplit; [|iSplit]. by iApply adv_expr_i. by iApply IH.
+      by iApply adv_expr_i.
+    - move=>e0 e1 C2 IH [] ? [] ??. rewrite adv_ctx.
+      iSplit; [|iSplit]. by iApply adv_expr_i. by iApply adv_expr_i.
+      by iApply IH.
+    (* store *)
+    - move=>C1 IH e2 [] ??. rewrite adv_ctx.
+      iSplit. by iApply IH. by iApply adv_expr_i.
+    - move=>e1 C2 IH [] ??. rewrite adv_ctx.
+      iSplit. by iApply adv_expr_i. by iApply IH.
+    (* CAS *)
+    - move=>C0 IH e1 e2 [] ? [] ??. rewrite adv_ctx.
+      iSplit; [|iSplit]. by iApply IH. by iApply adv_expr_i.
+      by iApply adv_expr_i.
+    - move=>e0 C1 IH e2 [] ? [] ??. rewrite adv_ctx.
+      iSplit; [|iSplit]. by iApply adv_expr_i. by iApply IH.
+      by iApply adv_expr_i.
+    - move=>e0 e1 C2 IH [] ? [] ??. rewrite adv_ctx.
+      iSplit; [|iSplit]. by iApply adv_expr_i. by iApply adv_expr_i.
+      by iApply IH.
+  Qed.
+End adversary.
