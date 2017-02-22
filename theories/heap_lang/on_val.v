@@ -35,9 +35,6 @@ Section wp_on_val.
     iApply ("Hv1" with "[$Hv2]"). by iIntros.
   Qed.
 
-  Lemma wp_on_val_lit p E lit : WP (Lit lit) @ p; E {{ on_val Ψ }}%I.
-  Proof. wp_value. by simpl_on_val. Qed.
-
   Hint Extern 1 (_ -∗ on_val Ψ (LitV ?lit)) =>
     rewrite (on_val_elim Ψ (LitV lit)).
   Hint Extern 1 (_ -∗ on_val Ψ UnitV) =>
@@ -102,9 +99,6 @@ Section wp_on_val.
     - iApply wp_if_true. iNext. by iDestruct "Hei" as "[? _]".
     - iApply wp_if_false. iNext. by iDestruct "Hei" as "[_ ?]".
   Qed.
-
-  Lemma on_val_unit E : WP Unit @ E ?{{ on_val Ψ }}%I.
-  Proof. wp_value. by simpl_on_val. Qed.
 
   Lemma wp_on_val_pair E e1 e2 :
     WP e1 @ E ?{{ on_val Ψ }} -∗
@@ -186,9 +180,6 @@ Section wp_on_val.
   Qed.
 
   (** The heap may be inspected or modified according to [Ψ]. *)
-
-  Lemma wp_on_val_loc p E l : Ψ l -∗ WP (Loc l) @ p; E {{ on_val Ψ }}.
-  Proof. iIntros "Hl". wp_value. by simpl_on_val. Qed.
 
   Lemma wp_on_val_alloc p E e Φ :
     WP e @ p; E {{ Φ }} -∗
