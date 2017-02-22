@@ -26,27 +26,45 @@ Section proof.
     iApply ("Hderef" with "[]"); first done. iNext. by iIntros.
   Qed.
 
-  Lemma usetwo_spec N :
-    heapN ⊥ N →
-    {{{ heap_ctx }}} usetwo {{{ v, RET v; low v }}}.
+  Context (N : namespace) (HN : heapN ⊥ N).
+
+  Definition usetwo_inv l : iProp Σ := (inv N (l ↦ #2))%I.
+
+  Lemma usetwo_deref l :
+    {{{ heap_ctx ∗ usetwo_inv l }}} ! l {{{ v, RET v; low v }}}.
   Proof.
-    iIntros (? Φ) "#Hh HΦ". rewrite/usetwo. wp_alloc l as "Hl". wp_let.
-    iMod (inv_alloc N _ (l ↦ #2)%I with "[Hl]") as "#?"; first by iFrame.
-    iDestruct (readonly_spec l with "[]") as ">HRO".
-    { iAlways. iIntros (Ψ) "_ HΨ".
-      iInv N as "Hl" "Hclose". wp_load.
-      iMod ("Hclose" with "[Hl]"); first by iFrame. iModIntro.
-      iApply "HΨ". by simpl_low. }
-    wp_apply ("HRO" with "[]"); first done.
-      iIntros (w) "Hw". wp_let. wp_lam.
-    iApply "HΦ". clear Φ.
-    rewrite (low_val (PairV _ _)). iNext. iFrame.
-    rewrite (low_val (RecV _ _ _)). iAlways. iNext. iIntros (arg) "_".
-      simpl_subst.
+    iIntros (Φ) "#(Hh & Hinv) HΦ".
+    iInv N as "Hl" "Hclose". wp_load.
+      iMod ("Hclose" with "[$Hl]"). iModIntro.
+    iApply "HΦ". by simpl_low.
+  Qed.
+
+  Lemma usetwo_use l :
+    heap_ctx ∗ usetwo_inv l ⊢ low (LamV <> (assert: ! l = #2)).
+  Proof.
+    iIntros "#(Hh & Hinv)".
+    rewrite low_val. iAlways. iNext. iIntros (arg) "_". simpl_subst.
     wp_bind (! _)%E. iInv N as "Hl" "Hclose". wp_load.
-      iMod ("Hclose" with "[Hl]"); first by iFrame. iModIntro.
+      iMod ("Hclose" with "[$Hl]"). iModIntro.
     wp_apply wp_assert. wp_op=>?; last done.
     iSplit. done. by simpl_low.
+  Qed.
+
+  Lemma usetwo_spec :
+    {{{ heap_ctx }}} usetwo {{{ v, RET v; low v }}}.
+  Proof.
+    iIntros (Φ) "#Hh HΦ". rewrite/usetwo.
+    wp_alloc l as "Hl". wp_let.
+    iMod (inv_alloc N _ (l ↦ #2)%I with "[$Hl]") as "#Hinv".
+    (* Over-complicated due to the spurious Texan triple. *)
+    iDestruct (readonly_spec l with "[]") as ">HRO".
+      { iAlways. iIntros (Ψ) "_ HΨ".
+        by wp_apply (usetwo_deref with "[$Hh $Hinv] HΨ"). }
+      wp_apply ("HRO" with "[]"); first done.
+    iIntros (w) "Hw". wp_let. wp_lam.
+    iApply "HΦ". clear Φ.
+    rewrite (low_val (PairV _ _)). iNext. iFrame.
+    by iApply (usetwo_use with "[$Hh $Hinv]").
   Qed.
 End proof.
 
