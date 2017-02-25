@@ -1,71 +1,161 @@
 From iris.heap_lang Require Import heap adequacy.
-From iris.heap_lang.lib Require Import caretaker lock assume.
+From iris.heap_lang.lib Require Import caretaker.
+From iris.heap_lang.lib Require Import is_mon lock assume.
 From iris.heap_lang.lib Require spin_lock.
 From iris.proofmode Require Import tactics.
 From iris.heap_lang Require Import proofmode notation.
 Import caretaker.
 
-(** * Simple caretaker for locations *)
+(** * Caretaker for locations *)
 (**
-	Revokable read/write access to a location with a reference
-	monitor on writes.
+	Revokable read/write access to a location with
+	reference monitors on reads and writes.
 *)
 
 Section loc_ct_code.
   Context (CI : CaretakerImpl).
 
-  Definition make_loc_ct : val := λ: "f" "l",
+  Definition make_loc_ct : val := λ: "rmon" "wmon" "l",
     let: "ct" := make_caretaker CI () in
-    let: "read" := wrap CI "ct" (λ: <>, ! "l") in
-    let: "write" := wrap CI "ct" (λ: "v", "l" <- "f" "v") in
+    let: "read" := wrap CI "ct" (λ: <>, "rmon" (! "l")) in
+    let: "write" := wrap CI "ct" (λ: "v", "l" <- "wmon" "v") in
     ("ct", ("read", "write")).
 End loc_ct_code.
 
 Section loc_ct_proof.
   Context `{heapG Σ, CI : CaretakerImpl} (C : caretaker Σ).
+  Notation lowval := (low : val → iProp Σ).
 
-  Definition is_refmon (f : val) (Ψ : val → iProp Σ) : iProp Σ :=
-    (∀ v : val, {{{ low v }}} f v ?{{{ v', RET v'; low v' ∗ Ψ v' }}})%I.
+  Definition is_rmon (v : val) (Ψ : val → iProp Σ) : iProp Σ :=
+    is_mon v Ψ (λ v1 v2, (lowval v2 ∗ Ψ v1)%I).
 
-  Lemma make_loc_ct_spec N f l Ψ :
-    let R : iProp Σ := (∃ v, l ↦ v ∗ low v ∗ Ψ v)%I in
-    heapN ⊥ N →
-    {{{ heap_ctx ∗ is_refmon f Ψ }}} make_loc_ct CI f l
-    {{{ ct γ v, RET (ct, v);
-      is_caretaker C N γ ct R ∗ enabled C γ false ∗ low v }}}.
+  Definition is_wmon (v : val) (Ψ : val → iProp Σ) : iProp Σ :=
+    is_monP v lowval Ψ.
+
+  Let ct_res (l : loc) (Ψ : val → iProp Σ) : iProp Σ := (∃ v, l ↦ v ∗ Ψ v)%I.
+
+  Definition is_loc_ct (N : namespace) (γ : name C)
+      (ct : val) (l : loc) (Ψ : val → iProp Σ) : iProp Σ :=
+    is_caretaker C N γ ct $ ct_res l Ψ.
+
+  (** Bookkeeping. *)
+  Lemma rmon_triple rmon Ψ :
+    is_rmon rmon Ψ ⊣⊢
+    (∀ v1 : val, {{{ Ψ v1 }}} rmon v1 ?{{{ v2, RET v2; low v2 ∗ Ψ v1 }}})%I.
+  Proof. by []. Qed.
+
+  Lemma wmon_triple wmon Ψ :
+    is_wmon wmon Ψ ⊣⊢
+    (∀ v1 : val, {{{ low v1 }}} wmon v1 ?{{{ v2, RET v2; Ψ v2 }}})%I.
+  Proof. by []. Qed.
+
+  Lemma can_wrap_loc_ct_read N γ ct l r Ψ :
+    heap_ctx -∗
+    is_loc_ct N γ ct l Ψ -∗
+    is_rmon r Ψ -∗
+    can_wrap (LamV <> (r (! l)%E)) (ct_res l Ψ).
   Proof.
-    iIntros (R ? Φ) "#(Hh & Hf) HΦ". wp_lam. wp_lam.
-    wp_apply (make_caretaker_spec _ _ _ R with "Hh"); first done.
-      iIntros (ct γ) "(#Hct & Hoff)". wp_let.
+    iIntros "#Hh #Hct #Hr". iIntros (arg) "!#". iIntros (Φ) "[_ HR] HΦ".
+      iDestruct "HR" as (v1) "(Hl & Hv1)". wp_lam. wp_load.
+      rewrite rmon_triple.
+    wp_apply ("Hr" $! v1 with "[$Hv1]"). iIntros (v2) "[Hlow2 Hv1]".
+    iApply "HΦ". iFrame "Hlow2". iExists v1. by iFrame.
+  Qed.
+
+  Lemma can_wrap_loc_ct_write N γ ct l w Ψ :
+    heap_ctx -∗
+    is_loc_ct N γ ct l Ψ -∗
+    is_wmon w Ψ -∗
+    can_wrap (LamV "v" (l <- w "v")) (ct_res l Ψ).
+  Proof.
+    iIntros "#Hh #Hct #Hw". iIntros (v1) "!#". iIntros (Φ) "[Hv1 HR] HΦ".
+      wp_lam. rewrite wmon_triple.
+    wp_apply ("Hw" $! v1 with "Hv1"). iIntros (v2) "HΨ2".
+      iDestruct "HR" as (v0) "(Hl & _)". wp_store.
+    iApply "HΦ". iSplitR; first by simpl_low. iExists v2. by iFrame.
+  Qed.
+
+  (** Specialize the caretaker interface. *)
+
+ Lemma loc_ct_enable N γ ct l v p Ψ :
+    {{{ is_loc_ct N γ ct l Ψ ∗ enabled C γ false ∗ l ↦ v ∗ Ψ v }}}
+      enable CI ct @ p; ⊤
+    {{{ RET (); enabled C γ true }}}.
+  Proof.
+    iIntros (Φ) "(#Hct & Hoff & Hl & Hv) HΦ".
+    wp_apply (enable_spec with "[$Hct $Hoff Hl Hv] HΦ").
+    iExists v. by iFrame.
+  Qed.
+
+ Lemma loc_ct_disable N γ ct l p Ψ :
+    {{{ is_loc_ct N γ ct l Ψ ∗ enabled C γ true }}}
+      disable CI ct @ p; ⊤
+    {{{ v, RET (); enabled C γ false ∗ l ↦ v ∗ Ψ v }}}.
+  Proof.
+    iIntros (Φ) "(#Hct & Hon) HΦ".
+    wp_apply (disable_spec _ _ _ _ _ (ct_res l Ψ) with "[$Hct $Hon]").
+      iIntros "[Hoff HR]". iDestruct "HR" as (v) "(Hl & Hv)".
+    by iApply ("HΦ" $! v with "[$Hoff $Hl $Hv]").
+  Qed.
+
+  Lemma make_loc_ct_spec N r w l Ψ :
+    heapN ⊥ N →
+    {{{ heap_ctx ∗ is_rmon r Ψ ∗ is_wmon w Ψ }}}
+      make_loc_ct CI r w l
+    {{{ ct γ v, RET (ct, v);
+      is_loc_ct N γ ct l Ψ ∗ enabled C γ false ∗ low v }}}.
+  Proof.
+    iIntros (? Φ) "#(Hh & Hr & Hw) HΦ". wp_lam. wp_lam. wp_lam.
+    wp_apply (make_caretaker_spec C _ _ (ct_res l Ψ) with "Hh");
+      first done. iIntros (ct γ) "(#Hct & Hoff)". wp_let.
     wp_bind (wrap _ _ _). rewrite of_val_rec.
     wp_apply (wrap_spec with "[$Hct]").
-    { clear Φ. iIntros (arg). iAlways. iIntros (Φ) "[_ HR] HΦ".
-        iDestruct "HR" as (v) "(Hl & #Hlow & HΨ)". wp_lam. wp_load.
-      iApply "HΦ". iFrame "Hlow". iExists v. iFrame "Hl Hlow HΨ". }
+    - by iApply (can_wrap_loc_ct_read with "Hh Hct Hr").
     iIntros (read) "Hread". wp_let.
     wp_bind (wrap _ _ _). rewrite of_val_rec.
     wp_apply (wrap_spec with "[$Hct]").
-    { clear Φ. iIntros (arg). iAlways. iIntros (Φ) "[Harg HR] HΦ".
-        iDestruct "HR" as (v) "(Hl & #Hlow & HΨ)". wp_lam.
-      wp_apply ("Hf" $! arg with "Harg"). iIntros (v') "[Hlow' HΨ']".
-        wp_store.
-      iApply "HΦ". iSplitR; first by simpl_low. iExists v'. by iFrame. }
+    - by iApply (can_wrap_loc_ct_write with "Hh Hct Hw").
     iIntros (write) "Hwrite". wp_let.
-    iApply "HΦ". simpl_low. iFrame. iFrame "Hct".
+    iApply "HΦ". simpl_low. by iFrame "Hct Hoff Hread Hwrite".
   Qed.
 End loc_ct_proof.
 
-(** * Simple reference monitor: Write only even integers *)
+(** ** Reference monitors accepting even integers *)
 
-Definition monitor : val := λ: "n", assume: even: "n" ;; "n".
+Definition assert_even : val := λ: "n", assert: even: "n" ;; "n".
+Definition assume_even : val := λ: "n", assume: even: "n" ;; "n".
 
-Section monitor_proof.
+Section monitors.
   Context `{heapG Σ}.
   Implicit Types n : Z.
   Implicit Types v : val.
 
-  Lemma monitor_spec v :
-    {{{ True }}} monitor v ?{{{ n, RET v; ⌜v = #n⌝ ∗ ⌜Z.Even n⌝ }}}.
+  Definition is_even (v : val) : iProp Σ :=
+    (∃ n : Z, ⌜v = #n⌝ ∗ ⌜Z.Even n⌝)%I.
+
+  Global Instance is_even_persistent v : PersistentP (is_even v).
+  Proof. apply _. Qed.
+
+  Lemma is_even_low v : is_even v ⊢ low v.
+  Proof.
+    iIntros "Hv". iDestruct "Hv" as (n) "[EQ _]". iDestruct "EQ" as %->.
+    by simpl_low.
+  Qed.
+
+  Lemma assert_even_spec v :
+    {{{ is_even v }}} assert_even v {{{ RET v; True }}}.
+  Proof.
+    iIntros (Φ) "Hv HΦ". wp_lam.
+    wp_apply wp_assert.
+    iDestruct "Hv" as (n) "(EQ & EV)".
+      iDestruct "EQ" as %[=->]. iDestruct "EV" as "%".
+    wp_op=>?.
+    - iSplit; first done. iNext. wp_seq. by iApply "HΦ".
+    - iExFalso. iPureIntro. exact: Z.Even_Odd_False.
+  Qed.
+
+  Lemma assume_even_spec v :
+    {{{ True }}} assume_even v ?{{{ RET v; is_even v }}}.
   Proof.
     iIntros (Φ) "HΦ". wp_lam.
     wp_apply wp_assume.
@@ -73,20 +163,23 @@ Section monitor_proof.
       last by wp_apply wp_stuck_even.
       destruct (is_int_val _ Hint) as (n&->).
     wp_op=>?.
-    - iIntros "_ !>". wp_seq. by iApply "HΦ"; auto.
+    - iIntros "_ !>". wp_seq. rewrite/is_even. by iApply "HΦ"; auto.
     - iIntros "%". by iExFalso.
   Qed.
-End monitor_proof.
+End monitors.
 
-(** * Using the location caretaker *)
+(** ** Location caretaker client *)
+(**
+	Revokable read/write access to an even integer.
+*)
 
-Section example_code.
+Section even_code.
   Context (CI : CaretakerImpl) (LI : LockImpl).
   Implicit Types n : Z.
 
-  Definition example : expr :=
+  Definition even : expr :=
     let: "l" := ref #0 in
-    let: "ct" := make_loc_ct CI monitor "l" in
+    let: "ct" := make_loc_ct CI assert_even assume_even "l" in
     let: "loc" := Snd "ct" in
     let: "ct" := Fst "ct" in
     enable CI "ct" ;;
@@ -94,71 +187,77 @@ Section example_code.
     let: "use" := "sync" (λ: <>,
       disable CI "ct" ;;
       assert: (even: (! "l")) ;;
+      "l" <- #1 ;;	(* i.e., with wrappers off, we can do as we like *)
       "l" <- #0 ;;
       enable CI "ct")
     in
     ("use", "loc").
-End example_code.
+End even_code.
 
-Section example_proof.
+Section even_proof.
   Context `{heapG Σ, CI : CaretakerImpl, LI : LockImpl}.
   Context (C : caretaker Σ) (L : lock Σ).
   Implicit Types n : Z.
 
-  Lemma example_spec N :
-    heapN ⊥ N →
-    {{{ heap_ctx }}} example CI LI {{{ v, RET v; low v }}}.
+  (* We need to stick the caretaker somewhere. We use the lock. *)
+  Let lock_res (γ : name C) : iProp Σ :=
+    enabled C γ true.
+
+  (* We turn the caretaker on with [l ↦ #0] twice. *)
+  Lemma enable_zero N γ ct l :
+    {{{ is_loc_ct C N γ ct l is_even ∗ enabled C γ false ∗ l ↦ #0 }}}
+      enable CI ct
+    {{{ RET (); enabled C γ true }}}.
   Proof.
-    iIntros (? Φ) "#Hh HΦ". rewrite/example.
+    iIntros (Φ) "(#Hct & Hoff & Hl) HΦ".
+    wp_apply (loc_ct_enable with "[$Hct $Hoff $Hl] HΦ").
+    iExists 0. iSplit; first done. iPureIntro. by apply Z.even_spec.
+  Qed.
+
+  Lemma even_spec N :
+    heapN ⊥ N →
+    {{{ heap_ctx }}} even CI LI {{{ v, RET v; low v }}}.
+  Proof.
+    iIntros (? Φ) "#Hh HΦ". rewrite/even.
     wp_alloc l as "Hl". wp_let.
-    set Ψ : val → iProp Σ := λ v, (∃ n, ⌜v = #n⌝ ∗ ⌜Z.Even n⌝)%I.
-    wp_apply (make_loc_ct_spec _ _ _ _ Ψ with "[$Hh]"); first done.
-    (** [is_refmon monitor Ψ] follows trivially from [monitor_spec]. *)
-    { rewrite/is_refmon. iIntros (v) "!#". iIntros (Ψret) "_ Hret".
-      wp_apply monitor_spec. iIntros (n) "#(EQ & EV)".
-      iApply "Hret". iSplitR.
-      + iDestruct "EQ" as %->. by simpl_low.
-      + rewrite/Ψ. iExists n. by iFrame "EQ EV". }
+    wp_apply (make_loc_ct_spec C _ _ _ _ is_even with "[$Hh]");
+      [done | iSplitL; clear Φ |].
+    - iIntros (v) "!#". iIntros (Φ) "#Hv HΦ".
+      iApply wp_forget_progress.
+      wp_apply (assert_even_spec with "Hv"). iIntros "_".
+      iApply "HΦ". rewrite -is_even_low. by iFrame "Hv".
+    - iIntros (v) "!#". iIntros (Φ) "_ HΦ".
+      wp_apply assume_even_spec. iIntros "Hv".
+      iApply "HΦ". by iFrame.
     iIntros (ct γ loc) "(#Hct & Hoff & #Hloc)". wp_let.
       wp_proj. wp_let. wp_proj. wp_let.
-    (** We need to turn the caretaker on with [l ↦ #0] twice. *)
-    iAssert (
-      {{{ enabled C γ false ∗ l ↦ #0 }}} enable CI ct
-      {{{ RET (); enabled C γ true }}}
-    )%I as "#Hzero".
-    { iAlways. clear Φ. iIntros (Φ) "[Hoff Hl] HΦ".
-      wp_apply (enable_spec with "[$Hct $Hoff Hl] HΦ").
-      iExists #0. iFrame "Hl". iSplit; first by simpl_low.
-      rewrite/Ψ. iExists 0. iSplit; first done.
-      iPureIntro. by apply Z.even_spec. }
-    wp_apply ("Hzero" with "[$Hoff $Hl]"). iIntros "Hon". wp_seq.
-    (* We need to stick the caretaker somewhere. We bury it in a lock. *)
-    wp_apply (make_sync_spec L _ _ (enabled C γ true) with "[$Hh $Hon]"); first done.
-      iIntros (sync) "#Hsync". wp_let. rewrite/is_sync.
+    wp_apply (enable_zero with "[$Hct $Hoff $Hl]").
+      iIntros "Hon". wp_seq.
+    wp_apply (make_sync_spec L _ _ (lock_res γ) with "[$Hh $Hon]");
+      first done. iIntros (sync) "#Hsync". wp_let. rewrite/is_sync.
     wp_apply ("Hsync" with "[%]"). iClear "Hsync".
       iIntros (Ψret) "Hon Hret".
-    wp_apply (disable_spec with "[$Hct $Hon]").
-      iIntros "(Hoff & HlocΨ)". wp_seq.
-    wp_apply wp_assert.
-      iDestruct "HlocΨ" as (v) "(Hl & Hlow & HΨ)". wp_load.
-      iDestruct "HΨ" as (n) "(EQ & EV)".
+    wp_apply (loc_ct_disable with "[$Hct $Hon]").
+      iIntros (v) "(Hoff & Hl & Hv)". wp_seq.
+    wp_apply wp_assert. wp_load.
+      iDestruct "Hv" as (n) "(EQ & EV)".
       iDestruct "EQ" as %EQ. rewrite EQ.
     wp_op => Hparity; last first.
     { iExFalso. iDestruct "EV" as "%". iPureIntro.
       by apply (Z.Even_Odd_False n). }
-    iSplit; first done. iNext. wp_seq. wp_store.
-    wp_apply ("Hzero" with "[$Hoff $Hl]"). iIntros "Hon".
+    iSplit; first done. iNext. wp_seq. wp_store. wp_store.
+    wp_apply (enable_zero with "[$Hct $Hoff $Hl]"). iIntros "Hon".
     iApply ("Hret" with "Hon"). wp_seq.
     iApply "HΦ". simpl_low. by iFrame "Hloc".
   Qed.
-End example_proof.
+End even_proof.
 
 Section ClosedProof.
   Import spin_lock blocking_caretaker.
   Let Σ : gFunctors := #[ heapΣ ; spin_lock.lockΣ ].
-  Let example : expr := example (blocking spin) spin.
+  Let example : expr := even (blocking spin) spin.
 
-  Lemma example_safe C t2 σ2 :
+  Lemma even_safe C t2 σ2 :
     AdvCtx C →
     rtc step ([ctx_fill C example], good_state ∅) (t2, σ2) →
     is_good σ2.
@@ -169,8 +268,8 @@ Section ClosedProof.
     set L := spin_lock.
     set CT := blocking_caretaker L.
     set N := nroot .@ "example".
-    iApply (example_spec CT L N with "Hh"); auto with ndisj.
+    iApply (even_spec CT L N with "Hh"); auto with ndisj.
   Qed.
 End ClosedProof.
 
-Print Assumptions example_safe.
+Print Assumptions even_safe.
