@@ -1,6 +1,7 @@
 From iris.heap_lang Require Import heap adequacy.
 From iris.proofmode Require Import tactics.
 From iris.heap_lang Require Import proofmode notation.
+Import uPred.
 
 (** * Read-only locations *)
 
@@ -16,27 +17,25 @@ Section proof.
   Implicit Types l : loc.
 
   (* Triples to match paper. (WP would be simpler.) *)
-  Lemma readonly_spec l :
-    {{{ True }}} ! l {{{ v, RET v; low v }}} -∗
-    {{{ True }}} readonly l {{{ f, RET f; low f }}}.
+  Lemma readonly_spec :
+    (∀ l, {{{ True }}} ! l {{{ v, RET v; low v }}} -∗
+    {{{ True }}} readonly l {{{ f, RET f; low f }}})%I.
   Proof.
-    iIntros "#Hderef !#". iIntros (Φ) "_ HΦ". wp_lam. iApply "HΦ". clear Φ.
+    iIntros (l) "#Hderef !#". iIntros (Φ) "_ HΦ". wp_lam. iApply "HΦ". clear Φ.
     rewrite low_val. iAlways. iNext. iIntros (arg) "_". simpl_subst.
     iApply wp_forget_progress.
     iApply ("Hderef" with "[]"); first done. iNext. by iIntros.
   Qed.
 
   Context (N : namespace) (HN : heapN ⊥ N).
-
   Definition usetwo_inv l : iProp Σ := (inv N (l ↦ #2))%I.
 
-  Lemma usetwo_deref l :
-    {{{ heap_ctx ∗ usetwo_inv l }}} ! l {{{ v, RET v; low v }}}.
+  Lemma usetwo_deref l p :
+    {{{ heap_ctx ∗ usetwo_inv l }}} ! l @ p; ⊤ {{{ RET #2; True }}}.
   Proof.
     iIntros (Φ) "#(Hh & Hinv) HΦ".
-    iInv N as "Hl" "Hclose". wp_load.
-      iMod ("Hclose" with "[$Hl]"). iModIntro.
-    iApply "HΦ". by simpl_low.
+    iInv N as "Hl" "Hclose". wp_load. iMod ("Hclose" with "[$Hl]"). iModIntro.
+    by iApply "HΦ".
   Qed.
 
   Lemma usetwo_use l :
@@ -44,26 +43,24 @@ Section proof.
   Proof.
     iIntros "#(Hh & Hinv)".
     rewrite low_val. iAlways. iNext. iIntros (arg) "_". simpl_subst.
-    wp_bind (! _)%E. iInv N as "Hl" "Hclose". wp_load.
-      iMod ("Hclose" with "[$Hl]"). iModIntro.
-    wp_apply wp_assert. wp_op=>?; last done.
-    iSplit. done. by simpl_low.
+      wp_bind (! _)%E.
+    wp_apply (usetwo_deref with "[$Hh $Hinv]"). iIntros "_".
+    wp_apply wp_assert. wp_op=>?; last done. iSplit. done. by simpl_low.
   Qed.
 
-  Lemma usetwo_spec :
-    {{{ heap_ctx }}} usetwo {{{ v, RET v; low v }}}.
+  Lemma usetwo_spec : {{{ heap_ctx }}} usetwo {{{ v, RET v; low v }}}.
   Proof.
     iIntros (Φ) "#Hh HΦ". rewrite/usetwo.
     wp_alloc l as "Hl". wp_let.
     iMod (inv_alloc N _ (l ↦ #2)%I with "[$Hl]") as "#Hinv".
-    (* Over-complicated due to the spurious Texan triple. *)
-    iDestruct (readonly_spec l with "[]") as ">HRO".
-      { iAlways. iIntros (Ψ) "_ HΨ".
-        by wp_apply (usetwo_deref with "[$Hh $Hinv] HΨ"). }
-      wp_apply ("HRO" with "[]"); first done.
+    (* Here we pay for not using WP in [readonly_spec]. *)
+    iDestruct (readonly_spec $! l with "[]") as ">HRO".
+    { iAlways. iIntros (Ψ) "_ HΨ".
+      wp_apply (usetwo_deref with "[$Hh $Hinv]"). iIntros "_".
+      iApply "HΨ". by simpl_low. }
+    wp_apply ("HRO" with "[]"); first done.
     iIntros (w) "Hw". wp_let. wp_lam.
-    iApply "HΦ". clear Φ.
-    rewrite (low_val (PairV _ _)). iNext. iFrame.
+    iApply "HΦ". simpl_low. iNext. iFrame.
     by iApply (usetwo_use with "[$Hh $Hinv]").
   Qed.
 End proof.
