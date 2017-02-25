@@ -116,6 +116,7 @@ theories/heap_lang/lib/barrier/specification.v
 theories/heap_lang/lib/barrier/protocol.v
 theories/heap_lang/lib/barrier/proof.v
 theories/heap_lang/lib/caretaker.v
+theories/heap_lang/lib/is_mon.v
 theories/heap_lang/lib/membrane.v
 theories/heap_lang/adequacy.v
 theories/tests/readonly.v

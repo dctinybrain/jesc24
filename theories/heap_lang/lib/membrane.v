@@ -1,5 +1,6 @@
 From iris.heap_lang Require Export heap.
 From iris.heap_lang Require notation.
+From iris.heap_lang.lib Require Import is_mon.
 From iris.proofmode Require Import tactics.
 From iris.heap_lang Require Import proofmode.
 Import uPred.
@@ -74,46 +75,21 @@ End code.
 	invaraint.
 *)
 
-(** * Reference monitors *)
-(**
-	The assertion [is_mon v Ψ1 Ψ2] means that [v] is a reference
-	monitor of "type" [Ψ1 → Ψ2] where the [Ψ_i] are predicates on
-	some type [A] that may be injected into values. (We care about
-	[A = loc] and [A = val].)
-*)
-Section is_mon.
-  Context `{heapG Σ} {A : Type} (f : A → val).
-  Notation ext R := (pointwise_relation _ R).
-
-  Definition is_mon (v : val) (Ψ1 Ψ2 : A → iProp Σ) : iProp Σ :=
-    (∀ a, {{{ Ψ1 a }}} v (f a) ?{{{ a, RET f a; Ψ2 a }}})%I.
-
-  Global Instance is_mon_persistent v Ψ1 Ψ2 :
-    PersistentP (is_mon v Ψ1 Ψ2).
-  Proof. apply _. Qed.
-  Global Instance is_mon_ne v n :
-     Proper (ext (dist n) ==> ext (dist n) ==> dist n) (is_mon v).
-  Proof. solve_proper. Qed.
-  Global Instance is_mon_proper v :
-     Proper (ext (≡) ==> ext (≡) ==> (≡)) (is_mon v).
-  Proof. solve_proper. Qed.
-End is_mon.
-Typeclasses Opaque is_mon.
-
 (** * Membrane proof *)
 
 Section proof.
   Import notation.
-  Context `{heapG Σ} (locin locout : val) (Ψ : loc → iProp Σ).
-  Context {HΨ : ∀ l, PersistentP (Ψ l)}.
-  Notation of_loc := (λ l : loc, l).
+  Context `{heapG Σ} (locout locin : val).
+  Context (Ψ : loc → iProp Σ) {HΨ : ∀ l, PersistentP (Ψ l)}.
+
+  Notation lowval := (low : val → iProp Σ).
 
   Lemma wrap_unwrap :
-    is_mon of_loc locout Ψ low -∗
-    is_mon of_loc locin low Ψ -∗
-    □ ((∀ p E Φ, ▷(∀ v, is_mon id v (on_val Ψ) low -∗ Φ v) -∗
+    is_monP locout Ψ low -∗
+    is_monP locin low Ψ -∗
+    □ ((∀ p E Φ, ▷(∀ v, is_monP v (on_val Ψ) lowval -∗ Φ v) -∗
       WP membrane locout locin @ p; E {{ Φ }}) ∗
-     (∀ p E Φ, ▷(∀ v, is_mon id v low (on_val Ψ) -∗ Φ v) -∗
+     (∀ p E Φ, ▷(∀ v, is_monP v lowval (on_val Ψ) -∗ Φ v) -∗
       WP membrane locin locout @ p; E {{ Φ }}))%I.
   Proof.
     iIntros "#Hlocout #Hlocin".
@@ -123,7 +99,7 @@ Section proof.
     - iIntros (p E Φ) "HΦ". wp_rec. wp_lam.
       iApply "HΦ". clear Φ. iIntros (v) "!#". iIntros (Φ) "#Hv HΦ". wp_lam.
       wp_apply "IHmkw". iIntros (wrap) "#Hwrap". iClear "IHmkw".
-        rewrite {4}/is_mon. setoid_rewrite always_elim. wp_let.
+        rewrite {4}/is_monP. setoid_rewrite always_elim. wp_let.
 
       (* Wrapping functions. *)
       wp_typecast Hrec.
@@ -132,7 +108,7 @@ Section proof.
         destruct (is_rec_val _ Hrec) as (f&x&erec&?&->).
           rewrite on_val_rec always_elim. wp_match.
         wp_apply "IHmku". iIntros (unwrap) "#Hunwrap". iClear "IHmku".
-          rewrite/is_mon. wp_let.
+          rewrite/is_monP. wp_let.
         iApply "HΦ". clear Φ.
         rewrite low_val. iAlways. iNext. iIntros (v1) "Hv1".
           simpl_subst.
@@ -144,7 +120,7 @@ Section proof.
       (* Wrapping locations. *)
       wp_typecast Hloc; wp_match.
       + destruct (is_loc_val _ Hloc) as (l&->).
-          rewrite on_val_elim /is_mon.
+          rewrite on_val_elim /is_monP.
         wp_apply ("Hlocout" with "* Hv"). iIntros (v1) "Hv1".
         iApply "HΦ". by rewrite low_val.
       iClear "Hlocout".
@@ -192,7 +168,7 @@ Section proof.
     - iIntros (p E Φ) "HΦ". wp_rec. wp_lam.
       iApply "HΦ". clear Φ. iIntros (v) "!#". iIntros (Φ) "#Hv HΦ". wp_lam.
       wp_apply "IHmku". iIntros (unwrap) "#Hunwrap". iClear "IHmku".
-        rewrite {4}/is_mon. setoid_rewrite always_elim. wp_let.
+        rewrite {4}/is_monP. setoid_rewrite always_elim. wp_let.
 
       (* Unwrapping functions. *)
       wp_typecast Hrec.
@@ -201,7 +177,7 @@ Section proof.
         destruct (is_rec_val v Hrec) as (f&x&erec&?&->).
           rewrite low_rec always_elim. wp_match.
         wp_apply "IHmkw". iIntros (wrap) "#Hwrap". iClear "IHmkw".
-          rewrite/is_mon. wp_let.
+          rewrite/is_monP. wp_let.
         iApply "HΦ". clear Φ.
         rewrite on_val_elim. iAlways. iNext. iIntros (v1) "Hv1".
           simpl_subst.
@@ -213,7 +189,7 @@ Section proof.
       (* Unwrapping locations. *)
       wp_typecast Hloc; wp_match.
       + destruct (is_loc_val _ Hloc) as (l1&->).
-          rewrite low_val /is_mon.
+          rewrite low_val /is_monP.
         wp_apply ("Hlocin" with "* Hv"). iIntros (l2) "Hl2".
         iApply "HΦ". rewrite on_val_elim. by iFrame.
       iClear "Hlocin".
@@ -264,14 +240,24 @@ Section proof.
 	locations to reference monitors (of type [on_val Ψ → low]) on
 	values.
   *)
-  Lemma membrane_spec p E :
-    {{{ is_mon of_loc locout Ψ low ∗ is_mon of_loc locin low Ψ }}}
+  Lemma membrane_wrap_spec p E :
+    {{{ is_monP locout Ψ low ∗ is_monP locin low Ψ }}}
       membrane locout locin @ p; E
-    {{{ wrap, RET wrap; is_mon id wrap (on_val Ψ) low }}}.
+    {{{ wrap, RET wrap; is_monP wrap (on_val Ψ) lowval }}}.
   Proof.
     iIntros (Φ) "[Hout Hin] HΦ".
     iDestruct (wrap_unwrap with "Hout Hin") as "(Hw & _)".
     by iApply "Hw".
+  Qed.
+
+  Lemma membrane_unwrap_spec p E :
+    {{{ is_monP locout Ψ low ∗ is_monP locin low Ψ }}}
+      membrane locin locout @ p; E
+    {{{ unwrap, RET unwrap; is_monP unwrap lowval (on_val Ψ) }}}.
+  Proof.
+    iIntros (Φ) "[Hout Hin] HΦ".
+    iDestruct (wrap_unwrap with "Hout Hin") as "(_ & Hu)".
+    by iApply "Hu".
   Qed.
 End proof.
 
@@ -315,7 +301,7 @@ Section inert.
       membrane locout locin @ p; E
     {{{ wrap, RET wrap; is_wrap wrap }}}.
   Proof.
-    iIntros (Φ) "#(Hout & Hin)". rewrite -membrane_spec. clear Φ. iSplit.
+    iIntros (Φ) "#(Hout & Hin)". rewrite -membrane_wrap_spec. clear Φ. iSplit.
     - iIntros (l) "!#". iIntros (Φ) "_ HΦ".
       by iApply ("Hout" $! l with "[] HΦ").
     - iIntros (l) "!#". iIntros (Φ) "Hl HΦ".
