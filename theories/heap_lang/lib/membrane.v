@@ -1,6 +1,6 @@
 From iris.heap_lang Require Export heap.
 From iris.heap_lang Require notation.
-From iris.heap_lang.lib Require Import is_mon.
+From iris.heap_lang.lib Require Import monitor.
 From iris.proofmode Require Import tactics.
 From iris.heap_lang Require Import proofmode.
 Import uPred.
@@ -99,7 +99,7 @@ Section proof.
     - iIntros (p E Φ) "HΦ". wp_rec. wp_lam.
       iApply "HΦ". clear Φ. iIntros (v) "!#". iIntros (Φ) "#Hv HΦ". wp_lam.
       wp_apply "IHmkw". iIntros (wrap) "#Hwrap". iClear "IHmkw".
-        rewrite {4}/is_monP. setoid_rewrite always_elim. wp_let.
+        rewrite (monP_triple wrap). setoid_rewrite always_elim. wp_let.
 
       (* Wrapping functions. *)
       wp_typecast Hrec.
@@ -108,7 +108,7 @@ Section proof.
         destruct (is_rec_val _ Hrec) as (f&x&erec&?&->).
           rewrite on_val_rec always_elim. wp_match.
         wp_apply "IHmku". iIntros (unwrap) "#Hunwrap". iClear "IHmku".
-          rewrite/is_monP. wp_let.
+          rewrite (monP_triple unwrap). wp_let.
         iApply "HΦ". clear Φ.
         rewrite low_val. iAlways. iNext. iIntros (v1) "Hv1".
           simpl_subst.
@@ -120,7 +120,7 @@ Section proof.
       (* Wrapping locations. *)
       wp_typecast Hloc; wp_match.
       + destruct (is_loc_val _ Hloc) as (l&->).
-          rewrite on_val_elim /is_monP.
+          rewrite on_val_elim (monP_triple locout).
         wp_apply ("Hlocout" with "* Hv"). iIntros (v1) "Hv1".
         iApply "HΦ". by rewrite low_val.
       iClear "Hlocout".
@@ -168,7 +168,7 @@ Section proof.
     - iIntros (p E Φ) "HΦ". wp_rec. wp_lam.
       iApply "HΦ". clear Φ. iIntros (v) "!#". iIntros (Φ) "#Hv HΦ". wp_lam.
       wp_apply "IHmku". iIntros (unwrap) "#Hunwrap". iClear "IHmku".
-        rewrite {4}/is_monP. setoid_rewrite always_elim. wp_let.
+        rewrite (monP_triple unwrap). setoid_rewrite always_elim. wp_let.
 
       (* Unwrapping functions. *)
       wp_typecast Hrec.
@@ -177,7 +177,7 @@ Section proof.
         destruct (is_rec_val v Hrec) as (f&x&erec&?&->).
           rewrite low_rec always_elim. wp_match.
         wp_apply "IHmkw". iIntros (wrap) "#Hwrap". iClear "IHmkw".
-          rewrite/is_monP. wp_let.
+          rewrite (monP_triple wrap). wp_let.
         iApply "HΦ". clear Φ.
         rewrite on_val_elim. iAlways. iNext. iIntros (v1) "Hv1".
           simpl_subst.
@@ -189,7 +189,7 @@ Section proof.
       (* Unwrapping locations. *)
       wp_typecast Hloc; wp_match.
       + destruct (is_loc_val _ Hloc) as (l1&->).
-          rewrite low_val /is_monP.
+          rewrite low_val (monP_triple locin).
         wp_apply ("Hlocin" with "* Hv"). iIntros (l2) "Hl2".
         iApply "HΦ". rewrite on_val_elim. by iFrame.
       iClear "Hlocin".

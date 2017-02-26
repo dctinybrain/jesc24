@@ -1,6 +1,6 @@
 From iris.heap_lang Require Import heap adequacy.
 From iris.heap_lang.lib Require Import caretaker.
-From iris.heap_lang.lib Require Import is_mon lock assume.
+From iris.heap_lang.lib Require Import monitor lock assume.
 From iris.heap_lang.lib Require spin_lock.
 From iris.proofmode Require Import tactics.
 From iris.heap_lang Require Import proofmode notation.
