@@ -122,6 +122,7 @@ theories/heap_lang/lib/membrane.v
 theories/heap_lang/adequacy.v
 theories/tests/readonly.v
 theories/tests/caretaker.v
+theories/tests/maps.v
 theories/tests/lock.v
 theories/tests/on_val.v
 theories/tests/heap_lang.v
