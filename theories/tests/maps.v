@@ -1,6 +1,7 @@
 From iris.base_logic Require Export big_op.
 From iris.heap_lang Require Export heap.
 From iris.heap_lang.lib Require Export constructor.
+From iris.heap_lang.lib Require Import abort.
 From iris.proofmode Require Import tactics.
 From iris.heap_lang Require Import proofmode notation.
 
@@ -24,9 +25,13 @@ Definition map_lookup : val := rec: "lookup" "map" "k" :=
     if: Fst "kv" = "k" then SOME (Snd "kv") else "lookup" (Snd "cons") "k"
   end.
 
+Definition map_lookup_partial : val := λ: "map" "k",
+  match: map_lookup "map" "k" with
+    SOME "v" => "v" | NONE => abort
+  end.
+
 Section map.
   Context `{heapG Σ} `{EqDecision K, Countable K, fK : constructor K}.
-  Context (p : pbit) (E : coPset).
   Implicit Types k : K.
   Implicit Types v : val.
 
@@ -47,7 +52,7 @@ Section map.
   Lemma map_empty_spec : is_map map_empty ∅.
   Proof. exists []. by simplify_map_eq. Qed.
 
-  Lemma map_insert_new_spec map m k v :
+  Lemma map_insert_new_spec map p E m k v :
     {{{ ⌜is_map map m⌝ ∗ ⌜m !! k = None⌝ }}}
       map_insert_new map (fK k) v @ p; E
     {{{ map', RET map'; ⌜is_map map' (<[k:=v]>m)⌝ }}}.
@@ -58,7 +63,7 @@ Section map.
     by exists map. by rewrite map_of_list_cons.
   Qed.
 
-  Lemma map_lookup_None map m k Φ :
+  Lemma map_lookup_None map p E m k Φ :
     m !! k = None →
     ⌜is_map map m⌝ -∗ ▷ Φ NONEV -∗
     WP map_lookup map (fK k) @ p; E {{ Φ }}.
@@ -76,7 +81,7 @@ Section map.
     rewrite /= lookup_insert_ne // in Hdom=>?. by subst.
   Qed.
 
-  Lemma map_lookup_Some map m k v Φ :
+  Lemma map_lookup_Some map p E m k v Φ :
     m !! k = Some v →
     ⌜is_map map m⌝ -∗ ▷ Φ (SOMEV v) -∗
     WP map_lookup map (fK k) @ p; E {{ Φ }}.
@@ -94,7 +99,7 @@ Section map.
     rewrite /= lookup_insert_ne // in Hdom=>?. by subst.
   Qed.
 
-  Lemma map_lookup_spec map m k P Φ :
+  Lemma map_lookup_spec map p E m k P Φ :
     (m !! k = None → P ⊢ ▷ Φ NONEV) →
     (∀ v, m !! k = Some v → P ⊢ ▷ Φ (SOMEV v)) →
     P ⊢ ⌜is_map map m⌝ -∗ WP map_lookup map (fK k) @ p; E {{ Φ }}.
@@ -102,6 +107,16 @@ Section map.
     iIntros (Hn Hs) "Hp Hm". destruct (m !! k) as [v|] eqn:?.
     - iApply (map_lookup_Some with "Hm"). done. by iApply (Hs with "Hp").
     - iApply (map_lookup_None with "Hm"). done. by iApply (Hn with "Hp").
+  Qed.
+
+  Lemma map_lookup_partial_spec map E m k :
+    {{{ ⌜is_map map m⌝ }}} map_lookup_partial map (fK k) @ E
+    ?{{{ v, RET v; ⌜m !! k = Some v⌝ }}}.
+  Proof.
+    iIntros (Φ) "Hm HΦ". wp_lam. wp_lam.
+    wp_apply (map_lookup_spec _ _ _ _ k with "HΦ Hm").
+    - iIntros (?) "? !>". wp_match. by wp_apply wp_abort.
+    - iIntros (v ?) "HΦ !>". wp_match. by iApply "HΦ".
   Qed.
 End map.
 Hint Resolve map_empty_spec.
@@ -126,9 +141,11 @@ Definition bij_insert_new : val := λ: "bij" "x" "y",
 
 Definition bij_lookup : val := λ: "f" "x", map_lookup (Fst "f") "x".
 
+Definition bij_lookup_partial : val := λ: "f" "x",
+  map_lookup_partial (Fst "f") "x".
+
 Section bij.
   Context `{heapG Σ} `{EqDecision K, Countable K, fK : constructor K}.
-  Context (p : pbit) (E : coPset).
   Implicit Types k : K.
   Implicit Types v : val.
 
@@ -154,7 +171,7 @@ Section bij.
   Lemma bij_empty_spec : is_bij bij_empty ∅ ∅.
   Proof. by eexists _, _; auto. Qed.
 
-  Lemma bij_invert_spec bij m1 m2 :
+  Lemma bij_invert_spec p E bij m1 m2 :
     {{{ ⌜is_bij bij m1 m2⌝ }}} bij_invert bij @ p; E
     {{{ bij', RET bij'; ⌜is_bij bij' m2 m1⌝ }}}.
   Proof.
@@ -174,7 +191,7 @@ Section bij.
       exists k'. by simplify_map_eq.
   Qed.
 
-  Lemma bij_insert_new_spec bij k1 k2 m1 m2 :
+  Lemma bij_insert_new_spec p E bij k1 k2 m1 m2 :
     {{{ ⌜is_bij bij m1 m2⌝ ∗ ⌜m1 !! k1 = None⌝ ∗ ⌜m2 !! k2 = None⌝ }}}
       bij_insert_new bij (fK k1) (fK k2) @ p; E
     {{{ bij', RET bij'; ⌜is_bij bij' (<[k1:=fK k2]>m1) (<[k2:=fK k1]>m2)⌝ }}}.
@@ -190,14 +207,32 @@ Section bij.
     iPureIntro. eexists _, _. naive_solver auto using insert_id.
   Qed.
 
-  Lemma bij_lookup_spec bij m1 m2 k1 P Φ :
+  Lemma lookup_id k1 v2 m1 m2 :
+    identity m1 m2 → m1 !! k1 = Some v2 → ∃ k2, v2 = fK k2.
+  Proof. move=>/(_ k1 v2) Hid /Hid [] k2 [] -> _. by exists k2. Qed.
+
+  Lemma bij_lookup_spec p E bij m1 m2 k1 P Φ :
     (m1 !! k1 = None → P ⊢ ▷ Φ NONEV) →
-    (∀ v2, m1 !! k1 = Some v2 → P ⊢ ▷ Φ (SOMEV v2)) →
+    (∀ k2, m1 !! k1 = Some (fK k2) → P ⊢ ▷ Φ (SOMEV (fK k2))) →
     P ⊢ ⌜is_bij bij m1 m2⌝ -∗ WP bij_lookup bij (fK k1) @ p; E {{ Φ }}.
   Proof.
-    iIntros (??) "Hp Hm". wp_lam. wp_lam.
+    iIntros (? Hfound) "Hp Hm". wp_lam. wp_lam.
       iDestruct "Hm" as (v1 v2) "(Hv&Hm1&_&%&%)".
       iDestruct "Hv" as %[=->]. wp_proj.
-    by wp_apply (map_lookup_spec with "Hp Hm1").
+    wp_apply (map_lookup_spec with "Hp Hm1"); first done.
+    iIntros (v'2 ?) "Hp". destruct (lookup_id k1 v'2 m1 m2) as (k2 & ->)=>//.
+    by iApply Hfound.
+  Qed.
+
+  Lemma bij_lookup_partial_spec E bij m1 m2 k1 :
+    {{{ ⌜is_bij bij m1 m2⌝ }}} bij_lookup_partial bij (fK k1) @ E
+    ?{{{ k2, RET fK k2; ⌜m1 !! k1 = Some (fK k2)⌝ }}}.
+  Proof.
+    iIntros (Φ) "Hm HΦ". wp_lam. wp_lam.
+      iDestruct "Hm" as (v1 v2) "(Hv&Hm1&_&%&%)".
+      iDestruct "Hv" as %[=->]. wp_proj.
+    wp_apply (map_lookup_partial_spec with "Hm1").
+    iIntros (v'2) "%". destruct (lookup_id k1 v'2 m1 m2) as (k2 & ->)=>//.
+    by iApply "HΦ".
   Qed.
 End bij.
