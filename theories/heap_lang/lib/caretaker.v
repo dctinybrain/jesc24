@@ -27,8 +27,8 @@ Arguments enable _ : clear implicits.
 Section caretaker.
   Context `{heapG Σ} {CI : CaretakerImpl}.
 
-  Definition can_wrap (f : val) (R : iProp Σ) : iProp Σ :=
-    (∀ v : val, {{{ low v ∗ R }}} f v ?{{{ v', RET v'; low v' ∗ R }}})%I.
+  Definition can_wrap (p : pbit) (f : val) (R : iProp Σ) : iProp Σ :=
+    (∀ v : val, {{{ low v ∗ R }}} f v @ p; ⊤ {{{ v', RET v'; low v' ∗ R }}})%I.
 
   Structure caretaker := Caretaker {
     (** -- predicates -- *)
@@ -46,8 +46,8 @@ Section caretaker.
       heapN ⊥ N →
       {{{ heap_ctx }}} make_caretaker CI () @ p; ⊤
       {{{ ct γ, RET ct; is_caretaker N γ ct R ∗ enabled γ false }}};
-    wrap_spec p N γ ct R (f : val) :
-      {{{ is_caretaker N γ ct R ∗ can_wrap f R }}} wrap CI ct f @ p; ⊤
+    wrap_spec p N γ ct R (f : val) p1 :
+      {{{ is_caretaker N γ ct R ∗ can_wrap p1 f R }}} wrap CI ct f @ p; ⊤
       {{{ v, RET v; low v }}};
     enable_spec p N γ ct R :
       {{{ is_caretaker N γ ct R ∗ enabled γ false ∗ R }}} enable CI ct @ p; ⊤
@@ -57,15 +57,16 @@ Section caretaker.
       {{{ RET (); enabled γ false ∗ R }}}
   }.
 
-  Global Instance can_wrap_persistent f R : PersistentP (can_wrap f R).
+  Global Instance can_wrap_persistent p f R :
+    PersistentP (can_wrap p f R).
   Proof. apply _. Qed.
 
-  Global Instance can_wrap_ne f n :
-    Proper (dist n ==> dist n) (can_wrap f).
+  Global Instance can_wrap_ne p f n :
+    Proper (dist n ==> dist n) (can_wrap p f).
   Proof. solve_proper. Qed.
 
-  Global Instance can_wrap_proper f :
-    Proper ((≡) ==> (≡)) (can_wrap f) := ne_proper _.
+  Global Instance can_wrap_proper p f :
+    Proper ((≡) ==> (≡)) (can_wrap p f) := ne_proper _.
 End caretaker.
 Typeclasses Opaque can_wrap.
 Arguments caretaker _ {_ _}.
@@ -160,8 +161,8 @@ Section proof.
     iApply ("HΦ" $! _ l). iFrame. iExists sync. by iFrame "# %".
   Qed.
 
-  Lemma wrap_spec l ct (R : iProp Σ) (f : val) :
-    {{{ is_caretaker l ct R ∗ can_wrap f R }}} wrap CI ct f @ p; ⊤
+  Lemma wrap_spec l ct (R : iProp Σ) (f : val) p1 :
+    {{{ is_caretaker l ct R ∗ can_wrap p1 f R }}} wrap CI ct f @ p; ⊤
     {{{ v, RET v; low v }}}.
   Proof.
     iIntros (Φ) "[Hct #Hf] HΦ".
@@ -174,6 +175,7 @@ Section proof.
     wp_apply wp_assume. wp_proj. wp_load.
       iIntros "Hb". iDestruct "Hb" as %[= Hb]. subst. iNext. wp_seq.
       rewrite/can_wrap. setoid_rewrite always_elim.
+      setoid_rewrite (wp_forget_progress p1 _ (f _)).
     wp_apply ("Hf" with "[$Hv $Hr]").
       iClear (v) "Hf Hv". iIntros (v) "(Hv&Hr)".
     iApply ("HΨ" with "[Hl Hr] Hv"). by iExists true; iFrame.
@@ -301,8 +303,8 @@ Section proof.
     iApply ("HΦ" $! lk (γ, γlk)). iSplitR. done. by iFrame.
   Qed.
 
-  Lemma wrap_spec γ ct (R : iProp Σ) (f : val) :
-    {{{ is_caretaker γ ct R ∗ can_wrap f R }}} wrap CI ct f @ p; ⊤
+  Lemma wrap_spec γ ct (R : iProp Σ) (f : val) p1 :
+    {{{ is_caretaker γ ct R ∗ can_wrap p1 f R }}} wrap CI ct f @ p; ⊤
     {{{ v, RET v; low v }}}.
   Proof.
     iIntros (Φ) "#(Hct & Hf) HΦ". wp_lam. wp_lam.
@@ -312,6 +314,7 @@ Section proof.
       rewrite/is_sync.
     wp_apply ("Hsync" with "[%]"). iIntros (Ψ) "Hr HΨ".
       rewrite/can_wrap. setoid_rewrite always_elim.
+      setoid_rewrite (wp_forget_progress p1 _ (f _)).
     wp_apply ("Hf" with "[$Hv $Hr]"). clear v. iIntros (v) "[Hv Hr]".
     by iApply ("HΨ" with "Hr Hv").
   Qed.

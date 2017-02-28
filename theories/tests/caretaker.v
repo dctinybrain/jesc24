@@ -26,11 +26,11 @@ Section loc_ct_proof.
   Context `{heapG Σ, CI : CaretakerImpl} (C : caretaker Σ).
   Notation lowval := (low : val → iProp Σ).
 
-  Definition is_rmon (v : val) (Ψ : val → iProp Σ) : iProp Σ :=
-    is_mon v Ψ (λ v1 v2, (lowval v2 ∗ Ψ v1)%I).
+  Definition is_rmon (p1 : pbit) (v : val) (Ψ : val → iProp Σ) : iProp Σ :=
+    is_mon p1 v Ψ (λ v1 v2, (lowval v2 ∗ Ψ v1)%I).
 
-  Definition is_wmon (v : val) (Ψ : val → iProp Σ) : iProp Σ :=
-    is_monP v lowval Ψ.
+  Definition is_wmon (p2 : pbit) (v : val) (Ψ : val → iProp Σ) : iProp Σ :=
+    is_monP p2 v lowval Ψ.
 
   Let ct_res (l : loc) (Ψ : val → iProp Σ) : iProp Σ := (∃ v, l ↦ v ∗ Ψ v)%I.
 
@@ -39,21 +39,21 @@ Section loc_ct_proof.
     is_caretaker C N γ ct $ ct_res l Ψ.
 
   (** Bookkeeping. *)
-  Lemma rmon_triple rmon Ψ :
-    is_rmon rmon Ψ ⊣⊢
-    (∀ v1 : val, {{{ Ψ v1 }}} rmon v1 ?{{{ v2, RET v2; low v2 ∗ Ψ v1 }}})%I.
+  Lemma rmon_triple rmon p1 Ψ :
+    is_rmon p1 rmon Ψ ⊣⊢
+    (∀ v1 : val, {{{ Ψ v1 }}} rmon v1 @ p1; ⊤ {{{ v2, RET v2; low v2 ∗ Ψ v1 }}})%I.
   Proof. by []. Qed.
 
-  Lemma wmon_triple wmon Ψ :
-    is_wmon wmon Ψ ⊣⊢
-    (∀ v1 : val, {{{ low v1 }}} wmon v1 ?{{{ v2, RET v2; Ψ v2 }}})%I.
+  Lemma wmon_triple wmon p2 Ψ :
+    is_wmon p2 wmon Ψ ⊣⊢
+    (∀ v1 : val, {{{ low v1 }}} wmon v1 @ p2; ⊤ {{{ v2, RET v2; Ψ v2 }}})%I.
   Proof. by []. Qed.
 
-  Lemma can_wrap_loc_ct_read N γ ct l r Ψ :
+  Lemma can_wrap_loc_ct_read p1 N γ ct l r Ψ :
     heap_ctx -∗
     is_loc_ct N γ ct l Ψ -∗
-    is_rmon r Ψ -∗
-    can_wrap (LamV <> (r (! l)%E)) (ct_res l Ψ).
+    is_rmon p1 r Ψ -∗
+    can_wrap p1 (LamV <> (r (! l)%E)) (ct_res l Ψ).
   Proof.
     iIntros "#Hh #Hct #Hr". iIntros (arg) "!#". iIntros (Φ) "[_ HR] HΦ".
       iDestruct "HR" as (v1) "(Hl & Hv1)". wp_lam. wp_load.
@@ -62,11 +62,11 @@ Section loc_ct_proof.
     iApply "HΦ". iFrame "Hlow2". iExists v1. by iFrame.
   Qed.
 
-  Lemma can_wrap_loc_ct_write N γ ct l w Ψ :
+  Lemma can_wrap_loc_ct_write p2 N γ ct l w Ψ :
     heap_ctx -∗
     is_loc_ct N γ ct l Ψ -∗
-    is_wmon w Ψ -∗
-    can_wrap (LamV "v" (l <- w "v")) (ct_res l Ψ).
+    is_wmon p2 w Ψ -∗
+    can_wrap p2 (LamV "v" (l <- w "v")) (ct_res l Ψ).
   Proof.
     iIntros "#Hh #Hct #Hw". iIntros (v1) "!#". iIntros (Φ) "[Hv1 HR] HΦ".
       wp_lam. rewrite wmon_triple.
@@ -98,9 +98,9 @@ Section loc_ct_proof.
     by iApply ("HΦ" $! v with "[$Hoff $Hl $Hv]").
   Qed.
 
-  Lemma make_loc_ct_spec N r w l Ψ :
+  Lemma make_loc_ct_spec N r w l Ψ p1 p2 :
     heapN ⊥ N →
-    {{{ heap_ctx ∗ is_rmon r Ψ ∗ is_wmon w Ψ }}}
+    {{{ heap_ctx ∗ is_rmon p1 r Ψ ∗ is_wmon p2 w Ψ }}}
       make_loc_ct CI r w l
     {{{ ct γ v, RET (ct, v);
       is_loc_ct N γ ct l Ψ ∗ enabled C γ false ∗ low v }}}.
@@ -223,7 +223,6 @@ Section even_proof.
     wp_apply (make_loc_ct_spec C _ _ _ _ is_even with "[$Hh]");
       [done | iSplitL; clear Φ |].
     - iIntros (v) "!#". iIntros (Φ) "#Hv HΦ".
-      iApply wp_forget_progress.
       wp_apply (assert_even_spec with "Hv"). iIntros "_".
       iApply "HΦ". rewrite -is_even_low. by iFrame "Hv".
     - iIntros (v) "!#". iIntros (Φ) "_ HΦ".
