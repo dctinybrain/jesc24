@@ -1,6 +1,6 @@
 From iris.heap_lang Require Export heap.
 From iris.heap_lang Require notation.
-From iris.heap_lang.lib Require Import monitor.
+From iris.heap_lang.lib Require Export monitor.
 From iris.proofmode Require Import tactics.
 From iris.heap_lang Require Import proofmode.
 Import uPred.
@@ -84,6 +84,11 @@ Section proof.
 
   Notation lowval := (low : val → iProp Σ).
 
+  (*
+	PDS: The spec can be improved to properly track progress bits
+	rather than accept the least common denominator: Wrap (unwrap)
+	only gets stuck if locout (locin) does.
+  *)
   Lemma wrap_unwrap :
     is_monP locout Ψ low -∗
     is_monP locin low Ψ -∗
