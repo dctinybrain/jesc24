@@ -4,7 +4,7 @@ From iris.proofmode Require Import tactics.
 From iris.heap_lang Require Import proofmode notation.
 
 (* Notation because solve_closed won't unfold definitions. *)
-Notation abort := (#0 #0)%E (only parsing).
+Notation abort := (#0 #0)%E.
 
 Lemma wp_abort `{heapG Σ} E (Φ : val → iProp Σ) :
   WP abort @ E ?{{ Φ }}%I.
