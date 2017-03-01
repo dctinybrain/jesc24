@@ -118,6 +118,16 @@ Section map.
     - iIntros (?) "? !>". wp_match. by wp_apply wp_abort.
     - iIntros (v ?) "HΦ !>". wp_match. by iApply "HΦ".
   Qed.
+
+  Lemma map_lookup_partial_Some_spec p E map m k v :
+    m !! k = Some v →
+    {{{ ⌜is_map map m⌝ }}} map_lookup_partial map (fK k) @ p; E
+    {{{ RET v; True }}}.
+  Proof.
+    iIntros (? Φ) "Hm HΦ". wp_lam. wp_lam.
+    wp_apply (map_lookup_Some with "Hm")=>//. wp_match.
+    by iApply "HΦ".
+  Qed.
 End map.
 Hint Resolve map_empty_spec.
 
@@ -208,31 +218,48 @@ Section bij.
   Qed.
 
   Lemma lookup_id k1 v2 m1 m2 :
-    identity m1 m2 → m1 !! k1 = Some v2 → ∃ k2, v2 = fK k2.
-  Proof. move=>/(_ k1 v2) Hid /Hid [] k2 [] -> _. by exists k2. Qed.
+    identity m1 m2 → m1 !! k1 = Some v2 →
+    ∃ k2, v2 = fK k2 ∧ m2 !! k2 = Some (fK k1).
+  Proof. by move=>/(_ k1 v2) Hid /Hid. Qed.
 
   Lemma bij_lookup_spec p E bij m1 m2 k1 P Φ :
     (m1 !! k1 = None → P ⊢ ▷ Φ NONEV) →
-    (∀ k2, m1 !! k1 = Some (fK k2) → P ⊢ ▷ Φ (SOMEV (fK k2))) →
+    (∀ k2, m1 !! k1 = Some (fK k2) → m2 !! k2 = Some (fK k1) →
+     P ⊢ ▷ Φ (SOMEV (fK k2))) →
     P ⊢ ⌜is_bij bij m1 m2⌝ -∗ WP bij_lookup bij (fK k1) @ p; E {{ Φ }}.
   Proof.
     iIntros (? Hfound) "Hp Hm". wp_lam. wp_lam.
       iDestruct "Hm" as (v1 v2) "(Hv&Hm1&_&%&%)".
       iDestruct "Hv" as %[=->]. wp_proj.
     wp_apply (map_lookup_spec with "Hp Hm1"); first done.
-    iIntros (v'2 ?) "Hp". destruct (lookup_id k1 v'2 m1 m2) as (k2 & ->)=>//.
+    iIntros (v'2 ?) "Hp".
+    destruct (lookup_id k1 v'2 m1 m2) as (k2 & -> & ?)=>//.
     by iApply Hfound.
   Qed.
 
   Lemma bij_lookup_partial_spec E bij m1 m2 k1 :
     {{{ ⌜is_bij bij m1 m2⌝ }}} bij_lookup_partial bij (fK k1) @ E
-    ?{{{ k2, RET fK k2; ⌜m1 !! k1 = Some (fK k2)⌝ }}}.
+    ?{{{ k2, RET fK k2; ⌜m1 !! k1 = Some (fK k2)⌝ ∗ ⌜m2 !! k2 = Some (fK k1)⌝ }}}.
   Proof.
     iIntros (Φ) "Hm HΦ". wp_lam. wp_lam.
       iDestruct "Hm" as (v1 v2) "(Hv&Hm1&_&%&%)".
       iDestruct "Hv" as %[=->]. wp_proj.
     wp_apply (map_lookup_partial_spec with "Hm1").
-    iIntros (v'2) "%". destruct (lookup_id k1 v'2 m1 m2) as (k2 & ->)=>//.
-    by iApply "HΦ".
+    iIntros (v'2) "%". destruct (lookup_id k1 v'2 m1 m2) as (k2&->&?)=>//.
+    iApply ("HΦ" $! k2). by iFrame "%".
+  Qed.
+
+  Lemma bij_lookup_partial_Some_spec p E bij m1 m2 k1 v2 :
+    m1 !! k1 = Some v2 →
+    {{{ ⌜is_bij bij m1 m2⌝ }}} bij_lookup_partial bij (fK k1) @ p; E
+    {{{ k2, RET v2; ⌜v2 = fK k2⌝ ∗ ⌜m2 !! k2 = Some (fK k1)⌝ }}}.
+  Proof.
+    iIntros (? Φ) "Hm HΦ". wp_lam. wp_lam.
+      iDestruct "Hm" as (v1 v'2) "(Hv&Hm1&_&%&%)".
+      iDestruct "Hv" as %[=->]. wp_proj.
+    destruct (lookup_id k1 v2 m1 m2) as (k2&->&?)=>//.
+    wp_apply (map_lookup_partial_Some_spec with "Hm1")=>//.
+      iIntros "_".
+    iApply ("HΦ" $! k2). by iFrame "%".
   Qed.
 End bij.
