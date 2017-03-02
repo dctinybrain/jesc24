@@ -18,6 +18,6 @@ Arguments Ctor {_} _ _.
 Instance val_ctor : constructor val := Ctor id id_inj.
 
 Lemma locv_inj : Inj (=) (=) LocV. Proof. by move=>?? [] ->. Qed.
-Instance loc_constructor : constructor loc := Ctor LocV locv_inj.
+Instance loc_ctor : constructor loc := Ctor LocV locv_inj.
 
 Coercion ctor : constructor >-> Funclass.
