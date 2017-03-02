@@ -27,10 +27,10 @@ Section loc_ct_proof.
   Notation lowval := (low : val → iProp Σ).
 
   Definition is_rmon (p1 : pbit) (v : val) (Ψ : val → iProp Σ) : iProp Σ :=
-    is_mon p1 v Ψ (λ v1 v2, (lowval v2 ∗ Ψ v1)%I).
+    is_monV p1 v Ψ (λ v1 v2, (lowval v2 ∗ Ψ v1)%I).
 
   Definition is_wmon (p2 : pbit) (v : val) (Ψ : val → iProp Σ) : iProp Σ :=
-    is_monP p2 v lowval Ψ.
+    is_monPV p2 v lowval Ψ.
 
   Let ct_res (l : loc) (Ψ : val → iProp Σ) : iProp Σ := (∃ v, l ↦ v ∗ Ψ v)%I.
 
