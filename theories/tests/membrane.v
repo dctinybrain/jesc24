@@ -8,12 +8,6 @@ Import uPred.
 
 (* PDS: Neither LockImpl nor CaretakerImpl should be type classes. *)
 (* PDS: Heap should actually define [lowval]. *)
-(*
-	PDS: The language should define [CoInductive loc := Loc of
-	positive] so that we can write [gsetUR loc] rather than the
-	inscrutible [coPsetUR].
-*)
-
 (* PDS: Addenda. *)
 Section coPset.	(* addendum, someone forgot to note persistence *)
   From iris.algebra Require Import coPset auth.
@@ -161,7 +155,7 @@ Section pub_code.
 End pub_code.
 
 (** The CMRA we need. *)
-Local Notation locset := coPsetUR.
+Local Notation locset := (gsetUR loc).
 Class pubG Σ := PubG { pub_locsG :> inG Σ (authR locset) }.
 Definition pubΣ : gFunctors := #[ GFunctor (constRF (authR locset)) ].
 
@@ -174,18 +168,16 @@ Section pub_proof.
 
   (** Definitions *)
 
-  Definition is_pub (γ : gname) (l : loc) : iProp Σ := own γ (◯ ({[ l ]})).
+  Definition is_pub (γ : gname) (l : loc) : iProp Σ := own γ (◯ (to_gset {[ l ]})).
 
   Definition pubhigh (γ : gname) (m1 : gmap loc val) : iProp Σ :=
-    (* PDS: [∗ set] l ∈ dom locset m1, ⋯ buggered due to locset/gset mismatch. *)
-    (own γ (● (dom _ m1)) ∗ [∗ map] l↦_∈ m1, is_alloced EXT l)%I.
+    (own γ (● (dom (gset loc) m1)) ∗ [∗ set] l ∈ dom _ m1, is_alloced EXT l)%I.
 
   Definition publow (m2 : gmap loc val) : iProp Σ :=
-    ([∗ map] l2↦_ ∈ m2, low l2)%I.
+    ([∗ set] l2 ∈ dom (gset loc) m2, low l2)%I.
 
   Definition tbl_res (t : loc) (γ : gname) : iProp Σ := (
-    ∃ bij m1 m2, t ↦ bij ∗ ⌜is_bij bij m1 m2⌝ ∗
-    pubhigh γ m1 ∗ publow m2
+    ∃ bij m1 m2, t ↦ bij ∗ ⌜is_bij bij m1 m2⌝ ∗ pubhigh γ m1 ∗ publow m2
   )%I.
 
   Definition is_membrane (γ : gname) (m : val) : iProp Σ := (
@@ -193,7 +185,7 @@ Section pub_proof.
     is_sync sync (tbl_res t γ)
   )%I.
 
-  (** Structure and logical moves *)
+  (** Structure *)
 
   Global Instance is_membrane_persistent γ m :
     PersistentP (is_membrane γ m).
@@ -203,15 +195,55 @@ Section pub_proof.
   Global Instance is_pub_persistent γ l : PersistentP (is_pub γ l).
   Proof. apply _. Qed.
 
+  (** Ghosts *)
+
+  Lemma to_gset_included l (m : gmap loc val) :
+    is_Some (m !! l) ↔ to_gset {[l]} ≼ dom (gset loc) m.
+  Proof.
+    split.
+    - rewrite gset_included elem_of_subseteq=>??.
+      rewrite elem_of_to_gset; last exact: singleton_finite.
+      by rewrite elem_of_singleton elem_of_dom=>->.
+    - rewrite gset_included=>/elem_of_subseteq/(_ l).
+      rewrite elem_of_dom. apply. rewrite elem_of_to_gset.
+      by rewrite elem_of_singleton. exact: singleton_finite.
+  Qed.
+
   Lemma pubhigh_obs γ m1 l1 :
     is_Some (m1 !! l1) →
     pubhigh γ m1 ==∗ pubhigh γ m1 ∗ is_pub γ l1.
   Proof.
-    iIntros (?) "(Hp & Ha)". rewrite/pubhigh /is_pub. iFrame "Ha".
+    iIntros (?) "(Hp & Ha)". rewrite/pubhigh/is_pub. iFrame "Ha".
     rewrite -own_op. iApply (own_update with "Hp").
-    apply auth_frag_alloc; try apply _.
-    by apply coPset_included, elem_of_subseteq_singleton, elem_of_dom.
+    apply auth_frag_alloc; try apply _. by apply to_gset_included.
   Qed.
+
+  Lemma pub_insert_dom {A} m (l : loc) (x : A) (Φ : loc → iProp Σ) :
+    m !! l = None →
+    ([∗ set] l ∈ dom (gset loc) m, Φ l) -∗ Φ l -∗
+    [∗ set] l ∈ dom (gset loc) (<[l := x]> m), Φ l.
+  Proof.
+    iIntros (?) "Hm Hl". rewrite dom_insert_L big_sepS_union;
+      last by rewrite disjoint_singleton_l not_elem_of_dom.
+    rewrite big_sepS_singleton. by iFrame "Hm Hl".
+  Qed.
+
+  Lemma pubhigh_alloc γ m1 l1 l2 :
+    m1 !! l1 = None →
+    pubhigh γ m1 -∗ is_alloced EXT l1 ==∗ pubhigh γ (<[l1:=l2]> m1).
+  Proof.
+    iIntros (?) "(Hp&Ha) Ha1". rewrite/pubhigh.
+    iSplitL "Hp"; last by iApply (pub_insert_dom with "Ha Ha1").
+    rewrite -(own_mono _ _ (● dom (gset loc) (insert _ _ _)));
+      last eapply cmra_included_l. iApply (own_update with "Hp").
+    by eapply auth_update_alloc, gset_local_update,
+      dom_insert_subseteq.
+  Qed.
+
+  Lemma publow_alloc m2 l1 l2 :
+    m2 !! l2 = None →
+    publow m2 -∗ low l2 -∗ publow (<[l2:=l1]> m2).
+  Proof. exact: pub_insert_dom. Qed.
 
   (** Operations *)
 
@@ -225,8 +257,7 @@ Section pub_proof.
     wp_apply (make_sync_spec L _ _ (tbl_res t γ) with "[$Hh Ht Hγ]").
     - solve_ndisj.
     - iExists bij_empty, ∅, ∅.
-      rewrite /pubhigh dom_empty big_sepM_empty.
-      rewrite /publow big_sepM_empty.
+      rewrite /pubhigh /publow dom_empty_L 2!big_sepS_empty.
       iFrame "Ht Hγ". iPureIntro. exact: bij_empty_spec.
     iIntros (sync) "#Hsync". wp_let. iModIntro.
     iApply ("HΦ" $! _ γ). iExists t, sync. by iFrame "% Hh Hsync".
@@ -246,11 +277,11 @@ Section pub_proof.
       iDestruct "HR" as (bij m1 m2) "(Ht & #Hbij & [Hp Ha] & #Hlo)".
       wp_load.
     iDestruct (own_valid_2 with "Hp Hl1") as %
-      [(v1&?)%coPset_included%elem_of_subseteq_singleton
-       %elem_of_dom ?]%auth_valid_discrete_2.
+      [(v1&?)%to_gset_included ?]%auth_valid_discrete_2.
     wp_apply (bij_lookup_partial_Some_spec _ _ _ _ _ l1 with "Hbij")=>//.
       iIntros (l2) "[%%]". subst.
-      iDestruct (big_sepM_lookup _ _ l2 with "Hlo") as "Hl2"=>//.
+      iDestruct (big_sepS_elem_of _ _ l2 with "Hlo") as "Hl2";
+        first by apply elem_of_dom; exists l1.
     iApply ("HΨ" with "[Ht Hp Ha]").
     - iExists bij, m1, m2. by iFrame "Ht Hbij Hp Ha Hlo".
     by iApply ("HΦ" with "Hl2").
@@ -332,56 +363,41 @@ Section pub_proof.
       do 2!(wp_proj; wp_let). rewrite/is_sync.
     wp_apply ("Hsync" with "[%]"). iClear "Hsync".
       iIntros (Ψ) "HR HΨ".
-      iDestruct "HR" as (bij m1 m2) "(Ht & #Hbij & Hhi & #Hlo)".
-(* PDS: To actually apply wp_alloc_fresh, we need to solve the coPset/gset bug. *)
-    wp_alloc l1 as "Hl1". wp_let.
-    wp_apply (wp_alloc_low with "[$Hh $Hv2]"); auto.
-      iIntros (l2) "Hl2". wp_let. wp_load.
-(*
-	As l2 initially high, we can easily show l2 ∉ dom m2 = rng m1.
-	Proving l1 ∉ dom m1 is another matter.
+      iDestruct "HR" as (bij m1 m2) "(Ht & #Hbij & (Hp & #Ha) & #Hlo)".
+    wp_apply (wp_alloc_fresh with "[$Hh $Ha]"); auto.
+      iIntros (l1) "(Hl1&Hm1)". iDestruct "Hm1" as %Hm1.
+      wp_let.
+    wp_apply (wp_alloc_low_fresh EXT _ _ _ _ (dom (gset loc) m2)
+      with "[$Hh Hlo $Hv2]"); auto;
+      first by iApply (big_sepS_mono' _ _ _ (low_alloced EXT) with "Hlo").
+      iIntros (l2) "(#Hl2&Hm2)". iDestruct "Hm2" as %Hm2.
+      wp_let. wp_load. rewrite -> not_elem_of_dom in Hm1, Hm2.
+    wp_apply (bij_insert_new_spec _ _ _ l1 l2 with "* [$Hbij]"); auto.
+      iIntros (bij') "{Hbij} #Hbij". rewrite -wp_fupd. wp_store.
+    iDestruct (high_alloced EXT with "Hl1") as "#Ha1".
+    iMod (pubhigh_alloc _ _ _ l2 with "[$Hp $Ha] Ha1") as "Hhi"=>//.
+    iMod (pubhigh_obs with "Hhi") as "(Hhi & Hpub)";
+      first by rewrite lookup_insert; exists l2. iModIntro.
+    iDestruct (publow_alloc _ l1 with "Hlo Hl2") as "Hlo2"=>//.
+    iApply ("HΨ" with "[Ht Hhi Hlo2]");
+      first by iExists _, _, _; iFrame "Ht Hbij Hhi Hlo2".
+    by iApply ("HΦ" with "[$Hpub $Hl1]").
+  Qed.
 
-	For this proof to go through, I think we need to extend the
-	heap interface to speak of locations that exist in the state:
+  Lemma shadow_read_spec γ m l :
+    {{{ is_membrane γ m ∗ is_pub γ l }}} shadow_read m l
+    {{{ v, RET v; on_val (is_pub γ) v }}}.
+  Proof.
+    iIntros (φ) "#(Hm & Hl) HΦ". wp_lam. wp_lam.
 
-		[is_alloced l](h, g) ≈ l ∈ dom h
-
-	l ↦ v ⊢ is_alloced l
-	low l ⊢ is_alloced l
-	{ [∗ set] l ∈ X, is_alloced l } ref v {l, RET l; l ↦ v ∗ l ∉ X}
-
-	(Retain the simpler high allocation triple for use with wp_alloc.)
-
-	Tokens were a mistake. We can then extend tbl_res with
-	knowledge that every location in m1 has been allocated:
-
-		[∗ set] l ∈ dom m1, is_alloced l
-
-	On allocating l1, we learn l1 ∉ dom m1.
-*)
-​"Hhi" : own (γ.1) (● dom locset m1) ∗ own (γ.2) (● to_tok m1)
-​"Hl1" : l1 ↦ v
-​"Hl2" : low l2
-—
-⌜m1 !! l1 = None⌝ ∗ ⌜m2 !! l2 = None⌝
-
-​"Hhi" : pubhigh γ m1
-—
-pubhigh γ (<[l1 := l2]> m1)
+        wp_bind (pub_unwrap _)%E.
 
 
 
-    wp_apply (bij_insert_new_spec _ _ _ l1 l2 with "* [$Hbij]").
 
-    - iIntros (bij') "Hbij'". wp_store.
-      iApply ("HΨ" with "[Ht Hbij' Hhi]"). iExists _, _, _. iFrame "Ht Hbij'".
 
-      wp_proj. wp_let. wp_proj. wp_let.
-    rewrite/is_sync.
-    wp_apply ("Hsync" with "[%]"). iClear "Hsync".
-      iIntros (Ψ) "HR HΨ".
-    iDestruct "HR" as (bij m1 m2) "(Ht & #Hbij & Hhi & Hlo)".
-      wp_alloc l as "Hl". wp_let.	(* PDS: Need wrap sec. *)
+
+
 
   shadow_read_spec N γ m l :
     {{{ is_membrane N γ m ∗ publoc γ l }}} shadow_read PI m l
