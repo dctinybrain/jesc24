@@ -1,3 +1,4 @@
+From iris.algebra Require Import auth gmap coPset.
 From iris.heap_lang Require Import heap adequacy.
 From iris.heap_lang.lib Require Import membrane abort lock.
 From iris.tests Require Import maps.
@@ -7,112 +8,13 @@ Import uPred.
 
 (* PDS: Neither LockImpl nor CaretakerImpl should be type classes. *)
 (* PDS: Heap should actually define [lowval]. *)
-
-(** * Public membrane interface *)
-(**
-	As a matter of policy, we use [pub_ref] to "declare" _public
-	locations_. Public locations work like high-integrity
-	locations with one twist: Each has a unique, low-integrity
-	_shadow location_ serving as its proxy for use in adversarial
-	code.
-
-	Public locations lift as _public values_. The function
-	[pub_wrap] converts a public value to its low-integrity
-	counterpart (by replacing public locations with their
-	shadows). Its dual is [pub_unwrap].
-
-	The functions [shadow_read] and [shadow_write] read from and
-	write to a public location's shadow. These functions handle
-	wrapping and unwrapping; for example, the value returned by
-	[shadow_read] is a public value.
-*)
-
-Module Import public_membrane.
-  (** ** Operations *)
-  Record PubImpl : Set := pub_impl {
-    make_pub : val;
-    pub_ref : val;
-    shadow_read : val;
-    shadow_write : val;
-    pub_wrap : val;
-    pub_unwrap : val
-  }.
-
-  Section spec.
-    Context `{heapG Σ} {PI : PubImpl}.
-    Notation lowval := (low : val → iProp Σ).
-
-    Structure pub := Pub {
-      (** Predicates *)
-      (** Name is used to associate [publoc] with [is_membrane]. *)
-      name : Type;
-      is_membrane (N : namespace) (γ : name) (m : val) : iProp Σ;
-      publoc (γ : name) (l : loc) : iProp Σ;
-      (** Structure *)
-      is_membrane_persistent N γ m : PersistentP (is_membrane N γ m);
-      publoc_persistent γ l : PersistentP (publoc γ l);
-      publoc_timeless γ l : TimelessP (publoc γ l);
-      (** Operations *)
-      make_pub_spec N :
-        heapN ⊥ N →
-        {{{ heap_ctx }}} make_pub PI () {{{ m γ, RET m; is_membrane N γ m }}};
-      pub_alloc_spec N γ m (v : val) :
-        {{{ is_membrane N γ m ∗ on_val (publoc γ) v }}} pub_ref PI m v
-        {{{ l, RET LocV l; publoc γ l ∗ l ↦ v }}};
-      pub_wrap_spec N γ m v1 :
-        {{{ is_membrane N γ m ∗ on_val (publoc γ) v1 }}} pub_wrap PI m v1
-        {{{ v2, RET v2; low v2 }}};
-      pub_unwrap_spec N γ m v2 :
-        {{{ is_membrane N γ m ∗ lowval v2 }}} pub_unwrap PI m v2
-        ?{{{ v1, RET v1; on_val (publoc γ) v1 }}};
-      shadow_read_spec N γ m l :
-        {{{ is_membrane N γ m ∗ publoc γ l }}} shadow_read PI m l
-        {{{ v, RET v; on_val (publoc γ) v }}};
-      shadow_write_spec N γ m l v :
-        {{{ is_membrane N γ m ∗ publoc γ l ∗ on_val (publoc γ) v }}}
-          shadow_write PI m l v
-        {{{ RET (); True }}}
-    }.
-  End spec.
-  Arguments pub _ {_ _}.
-  Existing Instances is_membrane_persistent publoc_persistent
-    publoc_timeless.
-End public_membrane.
-
-(** * Code *)
-Section pub_code.
-  Context {LI : LockImpl}.
-
-  Definition make_pub : val := λ: "locin",
-    let: "tbl" := ref bij_empty in
-    let: "sync" := make_sync LI () in
-    ("sync", "tbl").
-  Definition locout : val := λ: "m" "l1",
-    let: "sync" := Fst "m" in let: "tbl" := Snd "m" in
-    "sync" (λ: <>, bij_lookup_partial (! "tbl") "l1").
-  Definition locin : val := λ: "m" "l2",
-    let: "sync" := Fst "m" in let: "tbl" := Snd "m" in
-    "sync" (λ: <>, bij_lookup_partial (bij_invert (! "tbl")) "l2").
-  Definition pub_wrap : val := λ: "m", membrane (locout "m") (locin "m").
-  Definition pub_unwrap : val := λ: "m", membrane (locin "m") (locout "m").
-  Definition pub_ref : val := λ: "m" "x",
-    let: "r1" := ref "x" in
-    let: "r2" := ref (pub_wrap "m" "x") in
-    let: "sync" := Fst "m" in let: "tbl" := Snd "m" in
-    "sync" (λ: <>, "tbl" <- bij_insert_new (! "tbl") "r1" "r2") ;;
-    "r1".
-  Definition shadow_read : val := λ: "m" "l",
-    pub_unwrap "m" (! locout "m" "l").
-  Definition shadow_write : val := λ: "m" "l" "x",
-    locout "m" "l" <- pub_wrap "m" "x".
-End pub_code.
-
-(** The CMRA we need. *)
 (*
-	PDS: We should have defined [CoInductive loc := Loc of positive]
-	so that we can write simply [gsetUR loc] here rather
-	than [coPsetUR].
+	PDS: The language should define [CoInductive loc := Loc of
+	positive] so that we can write [gsetUR loc] rather than the
+	inscrutible [coPsetUR].
 *)
+
+(* PDS: Addenda. *)
 Section coPset.	(* addendum, someone forgot to note persistence *)
   From iris.algebra Require Import coPset auth.
   Implicit Types X : coPset.
@@ -138,75 +40,233 @@ Proof.
 Qed.
 End auth.
 
-From iris.algebra Require Import coPset auth.	(* PDS: Hoist. *)
+(** * Public membrane interface *)
+(**
+	As a matter of policy, we use [pub_ref] to "declare" _public
+	locations_. Public locations work like high-integrity
+	locations with two exceptions. Ownership of public locations
+	is exclusive rather than fractional as that suffices for our
+	toy client. (The richer interface is sound, of course, but
+	fractional permissions would go unused.) More important, each
+	public location has a unique, low-integrity _shadow location_
+	serving as its proxy for use in adversarial code.
 
-Notation locset := coPsetUR.	(* PDS: Should be [gsetUR loc]. *)
+	Public locations lift as _public values_. The total function
+	[pub_wrap] convert a public value to its low-integrity
+	counterpart by replacing public locations with their shadows.
+	Its partial inverse is [pub_unwrap].
+
+	The functions [shadow_read] and [shadow_write] read from and
+	write to a public location's shadow. These functions handle
+	wrapping and unwrapping; for example, the value returned by
+	[shadow_read] is a public value.
+*)
+
+Module Import public_membrane.
+  (** ** Operations *)
+  Record PubImpl : Set := pub_impl {
+    make_pub : val;
+    pub_ref : val;
+    pub_wrap : val;
+    pub_unwrap : val;
+    shadow_read : val;
+    shadow_write : val
+  }.
+
+  Section spec.
+    Context `{heapG Σ} {PI : PubImpl}.
+    Notation lowval := (low : val → iProp Σ).
+
+    Structure pub := Pub {
+      (** Predicates *)
+      (** Name ties [is_pub] and [own_pub] to [is_membrane]. *)
+      name : Type;
+      is_membrane (N : namespace) (γ : name) (m : val) : iProp Σ;
+      is_pub (γ : name) (l : loc) : iProp Σ;
+      own_pub (γ : name) (l : loc) (v : val) : iProp Σ;
+      (** Structure *)
+      is_membrane_persistent N γ m : PersistentP (is_membrane N γ m);
+      is_pub_timeless γ l : TimelessP (is_pub γ l);
+      is_pub_persistent γ l : PersistentP (is_pub γ l);
+      own_pub_timeless γ l v : TimelessP (own_pub γ l v);
+      (** Public ownership *)
+      own_pub_pub γ l v : own_pub γ l v ⊢ is_pub γ l;
+      own_pub_exclusive γ l v1 v2 : own_pub γ l v1 ∗ own_pub γ l v2 ⊢ False;
+      open_pub γ l v : own_pub γ l v ⊢ l ↦ v ∗ (∀ w, l ↦ w -∗ own_pub γ l w);
+      (** Operations *)
+      make_pub_spec N :
+        heapN ⊥ N →
+        {{{ heap_ctx }}} make_pub PI () {{{ m γ, RET m; is_membrane N γ m }}};
+      pub_alloc_spec N γ m (v : val) :
+        {{{ is_membrane N γ m ∗ on_val (is_pub γ) v }}} pub_ref PI m v
+        {{{ l, RET LocV l; own_pub γ l v }}};
+      pub_wrap_spec N γ m v1 :
+        {{{ is_membrane N γ m ∗ on_val (is_pub γ) v1 }}} pub_wrap PI m v1
+        {{{ v2, RET v2; low v2 }}};
+      pub_unwrap_spec N γ m v2 :
+        {{{ is_membrane N γ m ∗ lowval v2 }}} pub_unwrap PI m v2
+        ?{{{ v1, RET v1; on_val (is_pub γ) v1 }}};
+      shadow_read_spec N γ m l :
+        {{{ is_membrane N γ m ∗ is_pub γ l }}} shadow_read PI m l
+        {{{ v, RET v; on_val (is_pub γ) v }}};
+      shadow_write_spec N γ m l v :
+        {{{ is_membrane N γ m ∗ is_pub γ l ∗ on_val (is_pub γ) v }}}
+          shadow_write PI m l v
+        {{{ RET (); True }}}
+    }.
+  End spec.
+  Arguments pub _ {_ _}.
+  Existing Instances is_membrane_persistent is_pub_timeless
+    is_pub_persistent own_pub_timeless.
+End public_membrane.
+
+(** * Code *)
+Section pub_code.
+  Context {LI : LockImpl}.
+
+  Definition make_pub : val := λ: "locin",
+    let: "tbl" := ref bij_empty in
+    let: "sync" := make_sync LI () in
+    ("sync", "tbl").
+  Definition locout : val := λ: "m" "l1",
+    let: "sync" := Fst "m" in let: "tbl" := Snd "m" in
+    "sync" (λ: <>, bij_lookup_partial (! "tbl") "l1").
+  Definition locin : val := λ: "m" "l2",
+    let: "sync" := Fst "m" in let: "tbl" := Snd "m" in
+    "sync" (λ: <>, bij_lookup_partial (bij_invert (! "tbl")) "l2").
+  Definition pub_wrap : val := λ: "m", membrane (locout "m") (locin "m").
+  Definition pub_unwrap : val := λ: "m", membrane (locin "m") (locout "m").
+  Definition pub_ref : val := λ: "m" "x1",
+    let: "x2" := pub_wrap "m" "x1" in
+    let: "sync" := Fst "m" in let: "tbl" := Snd "m" in
+    "sync" (λ: <>,
+      let: "r1" := ref "x1" in
+      let: "r2" := ref "x2" in
+      "tbl" <- bij_insert_new (! "tbl") "r1" "r2";;
+      "r1"
+    ).
+  Definition shadow_read : val := λ: "m" "l",
+    pub_unwrap "m" (! locout "m" "l").
+  Definition shadow_write : val := λ: "m" "l" "x",
+    locout "m" "l" <- pub_wrap "m" "x".
+End pub_code.
+
+(** The CMRA we need. *)
+(**
+	We use tokens during allocation, where we have to show that a
+	freshly allocated location isn't in the membrane's table.
+ *)
+Local Notation locset := coPsetUR.
+Local Notation tokmap := (gmapUR loc (exclR unitC)).
 Class pubG Σ := PubG {
-  pub_locsetG :> inG Σ (authR locset)
+  pub_locsG :> inG Σ (authR locset);
+  pub_toksG :> inG Σ (authR tokmap)
 }.
-Definition pubΣ : gFunctors := #[GFunctor (constRF (authR locset))].
+Definition pubΣ : gFunctors := #[
+  GFunctor (constRF (authR locset));
+  GFunctor (constRF (authR tokmap))
+].
 
 Instance subG_pubΣ {Σ} : subG pubΣ Σ → pubG Σ.
-Proof. intros [?%subG_inG _]%subG_inv. split; apply _. Qed.
+Proof. intros [??]%subG_inv; constructor; apply _. Qed.
 
 Section pub_proof.
   Context `{heapG Σ, pubG Σ, LI : LockImpl} (L : lock Σ).
   Context (N : namespace).
 
-  Definition publoc (γ : gname) (l : loc) : iProp Σ := own γ (◯ ({[ l ]})).
-  Definition pubhigh (γ : gname) (m1 : gmap loc val) : iProp Σ :=
-    own γ (● (dom _ m1)).
+  (** Definitions *)
+
+  Definition name : Type := gname * gname.
+
+  Definition is_pub (γ : name) (l : loc) : iProp Σ := own (γ.1) (◯ ({[ l ]})).
+
+  Definition own_tok (γ : name) (l : loc) : iProp Σ :=
+    own (γ.2) (◯ ({[ l := Excl () ]})).
+
+  Definition own_pub (γ : name) (l : loc) (v : val) : iProp Σ :=
+    (is_pub γ l ∗ l ↦ v ∗ own_tok γ l)%I.
+
+  Definition to_tok : gmap loc val → tokmap := fmap (λ v, Excl ()).
+
+  Definition pubhigh (γ : name) (m1 : gmap loc val) : iProp Σ :=
+    (own (γ.1) (● (dom _ m1)) ∗ own (γ.2) (● to_tok m1))%I.
+
   Definition publow (m2 : gmap loc val) : iProp Σ :=
     ([∗ map] l2↦_ ∈ m2, low l2)%I.
 
-  Definition tbl_res (t : loc) (γ : gname) : iProp Σ := (
+  Definition tbl_res (t : loc) (γ : name) : iProp Σ := (
     ∃ bij m1 m2, t ↦ bij ∗ ⌜is_bij bij m1 m2⌝ ∗
     pubhigh γ m1 ∗ publow m2
   )%I.
 
-  Definition is_membrane (γ : gname) (m : val) : iProp Σ := (
+  Definition is_membrane (γ : name) (m : val) : iProp Σ := (
     ∃ (t : loc) sync, ⌜heapN ⊥ N⌝ ∗ heap_ctx ∗ ⌜m = (sync, t)%V⌝ ∗
     is_sync sync (tbl_res t γ)
   )%I.
 
-  (** Structure *)
+  (** Structure and logical moves *)
+
   Global Instance is_membrane_persistent γ m :
     PersistentP (is_membrane γ m).
   Proof. apply _. Qed.
-  Global Instance publoc_persistent γ l : PersistentP (publoc γ l).
+  Global Instance is_pub_timeless γ l : TimelessP (is_pub γ l).
   Proof. apply _. Qed.
-  Global Instance publoc_timeless γ l : TimelessP (publoc γ l).
+  Global Instance is_pub_persistent γ l : PersistentP (is_pub γ l).
+  Proof. apply _. Qed.
+  Global Instance own_pub_timeless γ l v : TimelessP (own_pub γ l v).
   Proof. apply _. Qed.
 
-  Lemma publoc_obs γ m1 l1 :
+  Lemma pubhigh_obs γ m1 l1 :
     is_Some (m1 !! l1) →
-    pubhigh γ m1 ==∗ pubhigh γ m1 ∗ publoc γ l1.
+    pubhigh γ m1 ==∗ pubhigh γ m1 ∗ is_pub γ l1.
   Proof.
-    move=>?. rewrite -own_op. apply own_update.
+    iIntros (?) "(Hpub & Htok)". rewrite/pubhigh /is_pub. iFrame "Htok".
+    rewrite -own_op. iApply (own_update with "Hpub").
     apply auth_frag_alloc; try apply _.
     by apply coPset_included, elem_of_subseteq_singleton, elem_of_dom.
   Qed.
 
+  Lemma own_pub_pub γ l v : own_pub γ l v ⊢ is_pub γ l.
+  Proof. rewrite/own_pub. by iIntros "(?&_&_)". Qed.
+
+  Lemma own_pub_exclusive γ l v1 v2 :
+    own_pub γ l v1 ∗ own_pub γ l v2 ⊢ False.
+  Proof.
+    rewrite/own_pub. iIntros "((_ &Hl1&_) & (_&Hl2&_))".
+    iDestruct (mapsto_valid_2 with "[$Hl1 $Hl2]") as "Hv".
+    iDestruct "Hv" as %Hv. by case: Hv.
+  Qed.
+
+  Lemma open_pub γ l v :
+    own_pub γ l v ⊢ l ↦ v ∗ (∀ w, l ↦ w -∗ own_pub γ l w).
+  Proof.
+    rewrite/own_pub. iIntros "(Hp&Hl&Htok)". iFrame "Hl Htok".
+    iIntros (w) "Hl". by iFrame "Hp Hl".
+  Qed.
+
   (** Operations *)
+
   Lemma make_pub_spec :
     heapN ⊥ N →
     {{{ heap_ctx }}} make_pub () {{{ m γ, RET m; is_membrane γ m }}}.
   Proof.
     iIntros (? Φ) "#Hh HΦ". wp_lam. wp_alloc t as "Ht". wp_let.
-      rewrite -wp_fupd.
-    iMod (own_alloc (Auth (Excl' ∅) ∅)) as (γ) "Hγ"; first done.
-    wp_apply (make_sync_spec L _ _ (tbl_res t γ) with "[$Hh Ht Hγ]").
+      rewrite -wp_fupd. set T := to_tok ∅.
+    iMod (own_alloc (Auth (Excl' ∅) (∅ : locset))) as (γ1) "Hγ1"; first done.
+    iMod (own_alloc (Auth (Excl' T) T)) as (γ2) "Hγ2"; first done.
+      rewrite (auth_both_op T _). iDestruct "Hγ2" as "[Hγ2 _]".
+    wp_apply (make_sync_spec L _ _ (tbl_res t (γ1, γ2)) with "[$Hh Ht Hγ1 Hγ2]").
     - solve_ndisj.
     - iExists bij_empty, ∅, ∅.
       rewrite /pubhigh dom_empty /publow big_sepM_empty.
-      iFrame "Ht Hγ". iPureIntro. exact: bij_empty_spec.
+      iFrame "Ht Hγ1 Hγ2". iPureIntro. exact: bij_empty_spec.
     iIntros (sync) "#Hsync". wp_let. iModIntro.
-    iApply ("HΦ" $! _ γ). iExists t, sync. by iFrame "% Hh Hsync".
+    iApply ("HΦ" $! _ (γ1, γ2)). iExists t, sync. by iFrame "% Hh Hsync".
   Qed.
 
   Lemma locout_spec p E γ m :
     {{{ is_membrane γ m }}} locout m @ p; E
-    {{{ v, RET v; is_monPV progress v (publoc γ) low }}}.
+    {{{ v, RET v; is_monPV progress v (is_pub γ) low }}}.
   Proof.
     iIntros (Φ) "#Hm HΦ". wp_lam.
     iApply "HΦ". clear Φ. iIntros (l1) "!#". iIntros (Φ) "Hl1 HΦ".
@@ -215,20 +275,21 @@ Section pub_proof.
       do 2!(wp_proj; wp_let). rewrite/is_sync.
     wp_apply ("Hsync" with "[%]"). iClear "Hsync".
       iIntros (Ψ) "HR HΨ".
-      iDestruct "HR" as (bij m1 m2) "(Ht & #Hbij & Hhi & #Hlo)". wp_load.
-    iDestruct (own_valid_2 with "Hhi Hl1") as %
+      iDestruct "HR" as (bij m1 m2) "(Ht & #Hbij & [Hlocs Htoks] & #Hlo)".
+      wp_load.
+    iDestruct (own_valid_2 with "Hlocs Hl1") as %
       [(v1&?)%coPset_included%elem_of_subseteq_singleton
        %elem_of_dom ?]%auth_valid_discrete_2.
     wp_apply (bij_lookup_partial_Some_spec _ _ _ _ _ l1 with "Hbij")=>//.
       iIntros (l2) "[%%]". subst.
       iDestruct (big_sepM_lookup _ _ l2 with "Hlo") as "Hl2"=>//.
-    iApply ("HΨ" with "[Ht Hhi]").
-    - iExists bij, m1, m2. by iFrame "Ht Hbij Hhi Hlo".
+    iApply ("HΨ" with "[Ht Hlocs Htoks]").
+    - iExists bij, m1, m2. by iFrame "Ht Hbij Hlocs Htoks Hlo".
     by iApply ("HΦ" with "Hl2").
   Qed.
 
   Lemma locout_mon γ m :
-    is_membrane γ m -∗ is_monP progress (locout m) (publoc γ) low.
+    is_membrane γ m -∗ is_monP progress (locout m) (is_pub γ) low.
   Proof.
     iIntros "#Hm". rewrite monP_triple. iAlways. iIntros (p0 E0 Φ) "HΦ".
     wp_apply (locout_spec with "Hm"). iIntros (vout) "Hout".
@@ -237,7 +298,7 @@ Section pub_proof.
 
   Lemma locin_spec p E γ m :
     {{{ is_membrane γ m }}} locin m @ p; E
-    {{{ v, RET v; is_monPV noprogress v low (publoc γ) }}}.
+    {{{ v, RET v; is_monPV noprogress v low (is_pub γ) }}}.
   Proof.
     iIntros (Φ) "#Hm HΦ". wp_lam.
     iApply "HΦ". clear Φ. iIntros (l2) "!#". iIntros (Φ) "Hl2 HΦ".
@@ -251,25 +312,25 @@ Section pub_proof.
       iIntros (bij') "#Hbij'". rewrite -wp_fupd.
     wp_apply (bij_lookup_partial_spec _ _ m2 m1 with "Hbij'").
       iIntros (l1) "[%%]".
-    iMod (publoc_obs _ _ l1 with "Hhi") as "[Hhi Hl1]"; first by exists l2.
+    iMod (pubhigh_obs _ _ l1 with "Hhi") as "[Hhi Hl1]"; first by exists l2.
     iApply ("HΨ" with "[Ht Hhi]").
     - iExists bij, m1, m2. by iFrame "Ht Hbij Hhi Hlo".
     by iApply ("HΦ" with "Hl1").
   Qed.
 
   Lemma locin_mon γ m :
-    is_membrane γ m -∗ is_monP noprogress (locin m) low (publoc γ).
+    is_membrane γ m -∗ is_monP noprogress (locin m) low (is_pub γ).
   Proof.
     iIntros "#Hm". rewrite monP_triple. iAlways. iIntros (p0 E0 Φ) "HΦ".
     wp_apply (locin_spec with "Hm"). iExact "HΦ".
   Qed.
 
   Lemma pub_wrap_spec γ m v1 :
-    {{{ is_membrane γ m ∗ on_val (publoc γ) v1 }}} pub_wrap m v1
+    {{{ is_membrane γ m ∗ on_val (is_pub γ) v1 }}} pub_wrap m v1
     {{{ v2, RET v2; low v2 }}}.
   Proof.
     iIntros (Φ) "(#Hm & Hv1) HΦ". wp_lam.
-    wp_apply (membrane_spec _ _ progress _ (publoc γ) low with "[]").
+    wp_apply (membrane_spec _ _ progress _ (is_pub γ) low with "[]").
     - by iApply (locout_mon with "Hm").
     iIntros (w) "Hw".
     wp_apply ("Hw" $! _ _ noprogress with "* []").
@@ -280,10 +341,10 @@ Section pub_proof.
 
   Lemma pub_unwrap_spec γ m (v2 : val) :
     {{{ is_membrane γ m ∗ low v2 }}} pub_unwrap m v2
-    ?{{{ v1, RET v1; on_val (publoc γ) v1 }}}.
+    ?{{{ v1, RET v1; on_val (is_pub γ) v1 }}}.
   Proof.
     iIntros (Φ) "(#Hm & Hv2) HΦ". wp_lam.
-    wp_apply (membrane_spec _ _ noprogress _ low (publoc γ) with "[]").
+    wp_apply (membrane_spec _ _ noprogress _ low (is_pub γ) with "[]").
     - by iApply (locin_mon with "Hm").
     iIntros (u) "Hu".
     wp_apply ("Hu" $! _ _ progress with "* []").
@@ -292,27 +353,57 @@ Section pub_proof.
     wp_apply ("Hunwrap" with "* Hv2"). iExact "HΦ".
   Qed.
 
-  Lemma membrane_heap γ m : is_membrane γ m -∗ heap_ctx.
-  Proof.
-    iIntros "Hm". iDestruct "Hm" as (??) "(_&Hh&_&_)". by iFrame "Hh".
-  Qed.
-
   Lemma pub_alloc_spec γ m (v : val) :
-    {{{ is_membrane γ m ∗ on_val (publoc γ) v }}} pub_ref m v
-    {{{ l, RET LocV l; publoc γ l ∗ l ↦ v }}}.
+    {{{ is_membrane γ m ∗ on_val (is_pub γ) v }}} pub_ref m v
+    {{{ l, RET LocV l; own_pub γ l v }}}.
   Proof.
     iIntros (Φ) "#(Hm & Hv) HΦ". wp_lam. wp_lam.
-    iDestruct (membrane_heap with "Hm") as "Hh".
-      wp_alloc l1 as "Hl1". wp_let.
     wp_apply (pub_wrap_spec with "[$Hm $Hv]"). iIntros (v2) "Hv2".
-      wp_apply (wp_alloc_low with "[$Hh $Hv2]"); auto.
-      iIntros (l2) "Hl2". wp_let.
-    iDestruct "Hm" as (t sync) "(%&_&%&Hsync)". subst.
+      wp_let.
+    iDestruct "Hm" as (t sync) "(% & Hh & % & Hsync)". subst.
       do 2!(wp_proj; wp_let). rewrite/is_sync.
     wp_apply ("Hsync" with "[%]"). iClear "Hsync".
       iIntros (Ψ) "HR HΨ".
-      iDestruct "HR" as (bij m1 m2) "(Ht & #Hbij & Hhi & #Hlo)". wp_load.
-    wp_apply (bij_insert_new_spec _ _ _ l1 l2 with "* [$Hbij]"); last first.
+      iDestruct "HR" as (bij m1 m2) "(Ht & #Hbij & Hhi & #Hlo)".
+    wp_alloc l1 as "Hl1". wp_let.
+    wp_apply (wp_alloc_low with "[$Hh $Hv2]"); auto.
+      iIntros (l2) "Hl2". wp_let. wp_load.
+(*
+	As l2 initially high, we can easily show l2 ∉ dom m2 = rng m1.
+	Proving l1 ∉ dom m1 is another matter.
+
+	For this proof to go through, I think we need to extend the
+	heap interface to speak of locations that exist in the state:
+
+		[is_alloced l](h, g) ≈ l ∈ dom h
+
+	l ↦ v ⊢ is_alloced l
+	low l ⊢ is_alloced l
+	{ [∗ set] l ∈ X, is_alloced l } ref v {l, RET l; l ↦ v ∗ l ∉ X}
+
+	(Retain the simpler high allocation triple for use with wp_alloc.)
+
+	Tokens were a mistake. We can then extend tbl_res with
+	knowledge that every location in m1 has been allocated:
+
+		[∗ set] l ∈ dom m1, is_alloced l
+
+	On allocating l1, we learn l1 ∉ dom m1.
+*)
+​"Hhi" : own (γ.1) (● dom locset m1) ∗ own (γ.2) (● to_tok m1)
+​"Hl1" : l1 ↦ v
+​"Hl2" : low l2
+—
+⌜m1 !! l1 = None⌝ ∗ ⌜m2 !! l2 = None⌝
+
+​"Hhi" : pubhigh γ m1
+—
+pubhigh γ (<[l1 := l2]> m1)
+
+
+
+    wp_apply (bij_insert_new_spec _ _ _ l1 l2 with "* [$Hbij]").
+
     - iIntros (bij') "Hbij'". wp_store.
       iApply ("HΨ" with "[Ht Hbij' Hhi]"). iExists _, _, _. iFrame "Ht Hbij'".
 
