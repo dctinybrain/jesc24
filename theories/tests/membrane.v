@@ -43,13 +43,9 @@ End auth.
 (** * Public membrane interface *)
 (**
 	As a matter of policy, we use [pub_ref] to "declare" _public
-	locations_. Public locations work like high-integrity
-	locations with two exceptions. Ownership of public locations
-	is exclusive rather than fractional as that suffices for our
-	toy client. (The richer interface is sound, of course, but
-	fractional permissions would go unused.) More important, each
-	public location has a unique, low-integrity _shadow location_
-	serving as its proxy for use in adversarial code.
+	locations_. Each public location has a unique, low-integrity
+	_shadow location_ serving as its proxy for use in adversarial
+	code.
 
 	Public locations lift as _public values_. The total function
 	[pub_wrap] convert a public value to its low-integrity
@@ -77,29 +73,40 @@ Module Import public_membrane.
     Context `{heapG Σ} {PI : PubImpl}.
     Notation lowval := (low : val → iProp Σ).
 
+    (** PDS: What we need from the heap interface. *)
+    Structure heap_extension := HeapExtension {
+      is_alloced (l : loc) : iProp Σ;
+      is_alloced_timeless l : TimelessP (is_alloced l);
+      is_alloced_persistent l : PersistentP (is_alloced l);
+      high_alloced (l : loc) (q : Qp) (v : val) : l ↦{q} v ⊢ is_alloced l;
+      low_alloced (l : loc) : low l ⊢ is_alloced l;
+      wp_alloc_fresh (p : pbit) (E : coPset) (e : expr) (v : val) (X : gset loc) :
+        to_val e = Some v → ↑heapN ⊆ E →
+        {{{ heap_ctx ∗ [∗ set] l ∈ X, is_alloced l }}} Alloc e @ p; E
+        {{{ l, RET LocV l; l ↦ v ∗ ⌜l ∉ X⌝ }}};
+      wp_alloc_low_fresh (p : pbit) (E : coPset) (e : expr) (v : val) (X : gset loc) :
+        to_val e = Some v → ↑heapN ⊆ E →
+        {{{ heap_ctx ∗ ▷ low v ∗  [∗ set] l ∈ X, is_alloced l }}} Alloc e @ p; E
+        {{{ l, RET LocV l; low l ∗ ⌜l ∉ X⌝ }}}
+    }.
+
     Structure pub := Pub {
       (** Predicates *)
-      (** Name ties [is_pub] and [own_pub] to [is_membrane]. *)
+      (** Name ties [is_pub]  to [is_membrane]. *)
       name : Type;
       is_membrane (N : namespace) (γ : name) (m : val) : iProp Σ;
       is_pub (γ : name) (l : loc) : iProp Σ;
-      own_pub (γ : name) (l : loc) (v : val) : iProp Σ;
       (** Structure *)
       is_membrane_persistent N γ m : PersistentP (is_membrane N γ m);
       is_pub_timeless γ l : TimelessP (is_pub γ l);
       is_pub_persistent γ l : PersistentP (is_pub γ l);
-      own_pub_timeless γ l v : TimelessP (own_pub γ l v);
-      (** Public ownership *)
-      own_pub_pub γ l v : own_pub γ l v ⊢ is_pub γ l;
-      own_pub_exclusive γ l v1 v2 : own_pub γ l v1 ∗ own_pub γ l v2 ⊢ False;
-      open_pub γ l v : own_pub γ l v ⊢ l ↦ v ∗ (∀ w, l ↦ w -∗ own_pub γ l w);
       (** Operations *)
       make_pub_spec N :
         heapN ⊥ N →
         {{{ heap_ctx }}} make_pub PI () {{{ m γ, RET m; is_membrane N γ m }}};
       pub_alloc_spec N γ m (v : val) :
         {{{ is_membrane N γ m ∗ on_val (is_pub γ) v }}} pub_ref PI m v
-        {{{ l, RET LocV l; own_pub γ l v }}};
+        {{{ l, RET LocV l; is_pub γ l ∗ l ↦ v }}};
       pub_wrap_spec N γ m v1 :
         {{{ is_membrane N γ m ∗ on_val (is_pub γ) v1 }}} pub_wrap PI m v1
         {{{ v2, RET v2; low v2 }}};
@@ -115,9 +122,11 @@ Module Import public_membrane.
         {{{ RET (); True }}}
     }.
   End spec.
+  Arguments heap_extension _ {_}.
+  Existing Instances is_alloced_timeless is_alloced_persistent.
   Arguments pub _ {_ _}.
   Existing Instances is_membrane_persistent is_pub_timeless
-    is_pub_persistent own_pub_timeless.
+    is_pub_persistent.
 End public_membrane.
 
 (** * Code *)
@@ -152,54 +161,34 @@ Section pub_code.
 End pub_code.
 
 (** The CMRA we need. *)
-(**
-	We use tokens during allocation, where we have to show that a
-	freshly allocated location isn't in the membrane's table.
- *)
 Local Notation locset := coPsetUR.
-Local Notation tokmap := (gmapUR loc (exclR unitC)).
-Class pubG Σ := PubG {
-  pub_locsG :> inG Σ (authR locset);
-  pub_toksG :> inG Σ (authR tokmap)
-}.
-Definition pubΣ : gFunctors := #[
-  GFunctor (constRF (authR locset));
-  GFunctor (constRF (authR tokmap))
-].
+Class pubG Σ := PubG { pub_locsG :> inG Σ (authR locset) }.
+Definition pubΣ : gFunctors := #[ GFunctor (constRF (authR locset)) ].
 
 Instance subG_pubΣ {Σ} : subG pubΣ Σ → pubG Σ.
 Proof. intros [??]%subG_inv; constructor; apply _. Qed.
 
 Section pub_proof.
-  Context `{heapG Σ, pubG Σ, LI : LockImpl} (L : lock Σ).
+  Context `{heapG Σ, EXT : heap_extension Σ, pubG Σ, LI : LockImpl} (L : lock Σ).
   Context (N : namespace).
 
   (** Definitions *)
 
-  Definition name : Type := gname * gname.
+  Definition is_pub (γ : gname) (l : loc) : iProp Σ := own γ (◯ ({[ l ]})).
 
-  Definition is_pub (γ : name) (l : loc) : iProp Σ := own (γ.1) (◯ ({[ l ]})).
-
-  Definition own_tok (γ : name) (l : loc) : iProp Σ :=
-    own (γ.2) (◯ ({[ l := Excl () ]})).
-
-  Definition own_pub (γ : name) (l : loc) (v : val) : iProp Σ :=
-    (is_pub γ l ∗ l ↦ v ∗ own_tok γ l)%I.
-
-  Definition to_tok : gmap loc val → tokmap := fmap (λ v, Excl ()).
-
-  Definition pubhigh (γ : name) (m1 : gmap loc val) : iProp Σ :=
-    (own (γ.1) (● (dom _ m1)) ∗ own (γ.2) (● to_tok m1))%I.
+  Definition pubhigh (γ : gname) (m1 : gmap loc val) : iProp Σ :=
+    (* PDS: [∗ set] l ∈ dom locset m1, ⋯ buggered due to locset/gset mismatch. *)
+    (own γ (● (dom _ m1)) ∗ [∗ map] l↦_∈ m1, is_alloced EXT l)%I.
 
   Definition publow (m2 : gmap loc val) : iProp Σ :=
     ([∗ map] l2↦_ ∈ m2, low l2)%I.
 
-  Definition tbl_res (t : loc) (γ : name) : iProp Σ := (
+  Definition tbl_res (t : loc) (γ : gname) : iProp Σ := (
     ∃ bij m1 m2, t ↦ bij ∗ ⌜is_bij bij m1 m2⌝ ∗
     pubhigh γ m1 ∗ publow m2
   )%I.
 
-  Definition is_membrane (γ : name) (m : val) : iProp Σ := (
+  Definition is_membrane (γ : gname) (m : val) : iProp Σ := (
     ∃ (t : loc) sync, ⌜heapN ⊥ N⌝ ∗ heap_ctx ∗ ⌜m = (sync, t)%V⌝ ∗
     is_sync sync (tbl_res t γ)
   )%I.
@@ -213,35 +202,15 @@ Section pub_proof.
   Proof. apply _. Qed.
   Global Instance is_pub_persistent γ l : PersistentP (is_pub γ l).
   Proof. apply _. Qed.
-  Global Instance own_pub_timeless γ l v : TimelessP (own_pub γ l v).
-  Proof. apply _. Qed.
 
   Lemma pubhigh_obs γ m1 l1 :
     is_Some (m1 !! l1) →
     pubhigh γ m1 ==∗ pubhigh γ m1 ∗ is_pub γ l1.
   Proof.
-    iIntros (?) "(Hpub & Htok)". rewrite/pubhigh /is_pub. iFrame "Htok".
-    rewrite -own_op. iApply (own_update with "Hpub").
+    iIntros (?) "(Hp & Ha)". rewrite/pubhigh /is_pub. iFrame "Ha".
+    rewrite -own_op. iApply (own_update with "Hp").
     apply auth_frag_alloc; try apply _.
     by apply coPset_included, elem_of_subseteq_singleton, elem_of_dom.
-  Qed.
-
-  Lemma own_pub_pub γ l v : own_pub γ l v ⊢ is_pub γ l.
-  Proof. rewrite/own_pub. by iIntros "(?&_&_)". Qed.
-
-  Lemma own_pub_exclusive γ l v1 v2 :
-    own_pub γ l v1 ∗ own_pub γ l v2 ⊢ False.
-  Proof.
-    rewrite/own_pub. iIntros "((_ &Hl1&_) & (_&Hl2&_))".
-    iDestruct (mapsto_valid_2 with "[$Hl1 $Hl2]") as "Hv".
-    iDestruct "Hv" as %Hv. by case: Hv.
-  Qed.
-
-  Lemma open_pub γ l v :
-    own_pub γ l v ⊢ l ↦ v ∗ (∀ w, l ↦ w -∗ own_pub γ l w).
-  Proof.
-    rewrite/own_pub. iIntros "(Hp&Hl&Htok)". iFrame "Hl Htok".
-    iIntros (w) "Hl". by iFrame "Hp Hl".
   Qed.
 
   (** Operations *)
@@ -251,17 +220,16 @@ Section pub_proof.
     {{{ heap_ctx }}} make_pub () {{{ m γ, RET m; is_membrane γ m }}}.
   Proof.
     iIntros (? Φ) "#Hh HΦ". wp_lam. wp_alloc t as "Ht". wp_let.
-      rewrite -wp_fupd. set T := to_tok ∅.
-    iMod (own_alloc (Auth (Excl' ∅) (∅ : locset))) as (γ1) "Hγ1"; first done.
-    iMod (own_alloc (Auth (Excl' T) T)) as (γ2) "Hγ2"; first done.
-      rewrite (auth_both_op T _). iDestruct "Hγ2" as "[Hγ2 _]".
-    wp_apply (make_sync_spec L _ _ (tbl_res t (γ1, γ2)) with "[$Hh Ht Hγ1 Hγ2]").
+      rewrite -wp_fupd.
+    iMod (own_alloc (Auth (Excl' ∅) ∅)) as (γ) "Hγ"; first done.
+    wp_apply (make_sync_spec L _ _ (tbl_res t γ) with "[$Hh Ht Hγ]").
     - solve_ndisj.
     - iExists bij_empty, ∅, ∅.
-      rewrite /pubhigh dom_empty /publow big_sepM_empty.
-      iFrame "Ht Hγ1 Hγ2". iPureIntro. exact: bij_empty_spec.
+      rewrite /pubhigh dom_empty big_sepM_empty.
+      rewrite /publow big_sepM_empty.
+      iFrame "Ht Hγ". iPureIntro. exact: bij_empty_spec.
     iIntros (sync) "#Hsync". wp_let. iModIntro.
-    iApply ("HΦ" $! _ (γ1, γ2)). iExists t, sync. by iFrame "% Hh Hsync".
+    iApply ("HΦ" $! _ γ). iExists t, sync. by iFrame "% Hh Hsync".
   Qed.
 
   Lemma locout_spec p E γ m :
@@ -275,16 +243,16 @@ Section pub_proof.
       do 2!(wp_proj; wp_let). rewrite/is_sync.
     wp_apply ("Hsync" with "[%]"). iClear "Hsync".
       iIntros (Ψ) "HR HΨ".
-      iDestruct "HR" as (bij m1 m2) "(Ht & #Hbij & [Hlocs Htoks] & #Hlo)".
+      iDestruct "HR" as (bij m1 m2) "(Ht & #Hbij & [Hp Ha] & #Hlo)".
       wp_load.
-    iDestruct (own_valid_2 with "Hlocs Hl1") as %
+    iDestruct (own_valid_2 with "Hp Hl1") as %
       [(v1&?)%coPset_included%elem_of_subseteq_singleton
        %elem_of_dom ?]%auth_valid_discrete_2.
     wp_apply (bij_lookup_partial_Some_spec _ _ _ _ _ l1 with "Hbij")=>//.
       iIntros (l2) "[%%]". subst.
       iDestruct (big_sepM_lookup _ _ l2 with "Hlo") as "Hl2"=>//.
-    iApply ("HΨ" with "[Ht Hlocs Htoks]").
-    - iExists bij, m1, m2. by iFrame "Ht Hbij Hlocs Htoks Hlo".
+    iApply ("HΨ" with "[Ht Hp Ha]").
+    - iExists bij, m1, m2. by iFrame "Ht Hbij Hp Ha Hlo".
     by iApply ("HΦ" with "Hl2").
   Qed.
 
@@ -355,7 +323,7 @@ Section pub_proof.
 
   Lemma pub_alloc_spec γ m (v : val) :
     {{{ is_membrane γ m ∗ on_val (is_pub γ) v }}} pub_ref m v
-    {{{ l, RET LocV l; own_pub γ l v }}}.
+    {{{ l, RET LocV l; is_pub γ l ∗ l ↦ v }}}.
   Proof.
     iIntros (Φ) "#(Hm & Hv) HΦ". wp_lam. wp_lam.
     wp_apply (pub_wrap_spec with "[$Hm $Hv]"). iIntros (v2) "Hv2".
@@ -365,6 +333,7 @@ Section pub_proof.
     wp_apply ("Hsync" with "[%]"). iClear "Hsync".
       iIntros (Ψ) "HR HΨ".
       iDestruct "HR" as (bij m1 m2) "(Ht & #Hbij & Hhi & #Hlo)".
+(* PDS: To actually apply wp_alloc_fresh, we need to solve the coPset/gset bug. *)
     wp_alloc l1 as "Hl1". wp_let.
     wp_apply (wp_alloc_low with "[$Hh $Hv2]"); auto.
       iIntros (l2) "Hl2". wp_let. wp_load.
