@@ -7,7 +7,7 @@ From iris.proofmode Require Import tactics.
 From iris.heap_lang Require Import proofmode notation.
 Import uPred addenda.algebra_auth.
 
-(* PDS: Neither LockImpl nor CaretakerImpl should be type classes. *)
+(* PDS: We'll probably need PubImpl a Class when we link the client. *)
 (* PDS: Heap should actually define [lowval]. *)
 
 (** * Public membrane interface *)
@@ -30,13 +30,9 @@ Import uPred addenda.algebra_auth.
 
 Module Import intf.
 (** Operations *)
-Record PubImpl : Set := pub_impl {
-  make_pub : val;
-  pub_ref : val;
-  pub_wrap : val;
-  pub_unwrap : val;
-  shadow_read : val;
-  shadow_write : val
+Record PubImpl : Set := {
+  make_pub : val; pub_ref : val; pub_wrap : val; pub_unwrap : val;
+  shadow_read : val; shadow_write : val
 }.
 
 Section spec.
@@ -62,8 +58,7 @@ Section spec.
   }.
 
   Structure pub := Pub {
-    (** Predicates *)
-    (** Name ties [is_pub]  to [is_membrane]. *)
+    (** Predicates. Name ties [is_pub]  to [is_membrane]. *)
     name : Type;
     is_membrane (N : namespace) (γ : name) (m : val) : iProp Σ;
     is_pub (γ : name) (l : loc) : iProp Σ;
@@ -102,7 +97,97 @@ Existing Instances is_membrane_persistent is_pub_timeless
   is_pub_persistent.
 End intf.
 
+(*
+(** * Public membrane client *)
+(**
+	A counter with increment and decrement operations and public
+	low and high bounds on the counter's value.
+*)
+Module client.
+Section client.
+  Context (LI : LockImpl) (PI : PubImpl).
+
+  Definition get_limit : val := λ: "m" "limit",
+    let: "prev" := ! "limit" in       (* PDS: isint: *)
+    let: "n" := shadow_read PI "m" "limit" in
+    let: "next" := if: "n" < "prev" then "prev" else "n" in
+    assert: "prev" ≤ "next" ;;
+    "limit" <- "next";; shadow_write PI "m" "limit" "next";;
+    "next".
+
+  Definition make_counter : val := λ: "m",
+    let: "count" := ref #0 in
+    let: "limit" := pub_ref PI "m" #10 in
+    let: "sync" := make_sync LI () in
+    let: "get" := "sync" (λ: <>, ! "count") in
+    let: "inc" := "sync" (λ: <>,
+      let: "n" := (! "count") + #1 in
+      assume: "n" ≤ get_limit "m" "limit";;
+      "count" <- "n"
+    )
+    in ("get", "inc", "limit").
+
+    let: "limits" := λ: <>,
+      let: "a" := "get" "lo" in
+      let: "b" := "get" "hi" in
+      let: "p" := if: "a" < "b" then ("a", "b") else ("b", "a") in
+      let: "a" := Fst "p" in let: "b" := Snd "p" in
+      assert: "a" ≤ "b" ;;
+      "lo" <- "a";; shadow_write PI "m" "lo" "a" ;;
+      "hi" <- "b";; shadow_write PI "m" "hi" "a" ;;
+      "p"
+    in
+    let: "inc" :=
+      "sync" (λ: <>,
+        let: "n" := (! "count") + #1 in
+        assume: "n" ≤ Snd ("limits" ());;
+        "count" <- "n"
+      )
+    in
+    let: "dec" :=
+      "sync" (λ: <>,
+        let: "n" := (! "count") - #1 in
+        assume: "n" ≥ Fst ("limits" ());;
+        "count" <- "n"
+      )
+    in
+    ("inc", "dec", "lo", "hi")
+    in ().
+
+    let: "bounds" := "sync" (λ: <>,
+      let: "prev_lo" := ! "lo" in
+      let: "next_lo" :=
+        if isint: (shadow_read PI "m" "lo") as n =>
+          if n < prev then prev
+    )
+    in ().
+
+
+		let _get_limit = λ (),
+			let prev = ! limit in
+			let next =
+				if isint: (shadow_read limit) as n =>
+					if n < prev then prev else n
+				else prev
+			in
+			assert (prev <= next);
+			limit <- next;
+			shadow_write limit next;	(* inform our clients *)
+			next
+		in
+
+    let: inc := "sync" (λ: <>,
+
+End client.
+End client.
+*)
+
 (** * Public membrane implementation *)
+(**
+	We maintain a partial bijection between public locations and
+	their shadows. The table grows during allocation and matters
+	during wrapping and unwrapping.
+*)
 Module code.
 Section code.
   Context (LI : LockImpl).

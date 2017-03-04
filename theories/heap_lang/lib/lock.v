@@ -3,29 +3,27 @@ From iris.heap_lang Require Import proofmode notation.
 From iris.proofmode Require Import tactics.
 Import uPred.
 
-(** * Lock operations *)
-Class LockImpl : Set := lock_impl {
-  newlock' : val;
-  acquire : val;
-  release : val
+(** * Lock interface *)
+
+(** Operations *)
+Class LockImpl : Set := {
+  newlock' : val; acquire : val; release : val
 }.
 Arguments newlock' _ : clear implicits.
 Arguments acquire _ : clear implicits.
 Arguments release _ : clear implicits.
 
-(** * Lock interface *)
-Structure lock Σ `{!heapG Σ} {LI : LockImpl} := Lock {
-  (* -- predicates -- *)
-  (* name is used to associate locked with is_lock *)
+Structure lock Σ `{heapG Σ} {LI : LockImpl} := Lock {
+  (** Predicates. Name ties [locked] to [is_lock]. *)
   name : Type;
   is_lock (N: namespace) (γ: name) (lock: val) (R: iProp Σ) : iProp Σ;
   locked (γ: name) : iProp Σ;
-  (* -- general properties -- *)
+  (** Structure *)
   is_lock_ne N γ lk n: Proper (dist n ==> dist n) (is_lock N γ lk);
   is_lock_persistent N γ lk R : PersistentP (is_lock N γ lk R);
   locked_timeless γ : TimelessP (locked γ);
   locked_exclusive γ : locked γ -∗ locked γ -∗ False;
-  (* -- operation specs -- *)
+  (** Operations *)
   newlock'_spec p N (R : iProp Σ) :
     heapN ⊥ N →
     {{{ heap_ctx }}} newlock' LI () @ p; ⊤
@@ -42,10 +40,10 @@ Arguments locked {_ _ _} _  _.
 
 Existing Instances is_lock_ne is_lock_persistent locked_timeless.
 
-Instance is_lock_proper Σ `{!heapG Σ, LockImpl} (L: lock Σ) N lk R:
+Instance is_lock_proper Σ `{heapG Σ, LockImpl} (L : lock Σ) N lk R:
   Proper ((≡) ==> (≡)) (is_lock L N lk R) := ne_proper _.
 
-(** * The [newlock] function *)
+(** * Initially unlocked locks *)
 Definition newlock (LI : LockImpl) : val := λ: <>,
   let: "lk" := newlock' LI () in release LI "lk" ;; "lk".
 
@@ -66,7 +64,7 @@ Section newlock.
   Qed.
 End newlock.
 
-(** * The [sync_with] and [make_sync] functions *)
+(** * Synchronization *)
 Section sync_code.
   Context (LI : LockImpl).
 

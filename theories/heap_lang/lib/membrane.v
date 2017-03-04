@@ -167,6 +167,8 @@ Section proof.
   Qed.
 End proof.
 
+(** * Special case: Membrane for inert values *)
+
 (**
 	When [locout] works unconditionally, the membrane can wrap all
 	_inert_ values. Inert values (i) include all base values and

@@ -8,22 +8,21 @@ Import uPred.
 
 Module Import caretaker.
 
-(** * Caretaker operations *)
-Class CaretakerImpl : Set := caretaker_impl {
-  make_caretaker : val;
-  wrap : val;
-  disable : val;
-  enable : val
+(** * Caretaker interface *)
+(**
+	This is essentially a special case of the CAP-style lock
+	interface [lock].
+*)
+
+(** Operations *)
+Class CaretakerImpl : Set := {
+  make_caretaker : val; wrap : val; disable : val; enable : val
 }.
 Arguments make_caretaker _ : clear implicits.
 Arguments wrap _ : clear implicits.
 Arguments disable _ : clear implicits.
 Arguments enable _ : clear implicits.
 
-(** * Caretaker interface *)
-(**
-	This is essentially a special case of [lock].
-*)
 Section caretaker.
   Context `{heapG Σ} {CI : CaretakerImpl}.
 
@@ -31,17 +30,16 @@ Section caretaker.
     (∀ v : val, {{{ low v ∗ R }}} f v @ p; ⊤ {{{ v', RET v'; low v' ∗ R }}})%I.
 
   Structure caretaker := Caretaker {
-    (** -- predicates -- *)
-    (** Name is used to associate enabled with is_caretaker. *)
+    (** Predicates. Name ties [enabled] to [is_caretaker]. *)
     name : Type;
     is_caretaker (N : namespace) (γ : name) (ct : val) (R : iProp Σ) : iProp Σ;
     enabled (γ : name) (b : bool) : iProp Σ;
-    (** -- structure -- *)
+    (** Structure *)
     is_caretaker_ne N γ ct n : Proper (dist n ==> dist n) (is_caretaker N γ ct);
     is_caretaker_persistent N γ ct R : PersistentP (is_caretaker N γ ct R);
     enabled_timeless γ b : TimelessP (enabled γ b);
     enabled_exclusive γ b1 b2 : enabled γ b1 -∗ enabled γ b2 -∗ False;
-    (** -- specs -- *)
+    (** Operations *)
     make_caretaker_spec p N (R : iProp Σ) :
       heapN ⊥ N →
       {{{ heap_ctx }}} make_caretaker CI () @ p; ⊤
@@ -74,13 +72,14 @@ Arguments caretaker _ {_ _}.
 Existing Instances is_caretaker_ne is_caretaker_persistent
   enabled_timeless.
 
-Instance is_caretaker_proper Σ `{!heapG Σ, CaretakerImpl} (CT : caretaker Σ) N ct R:
+Instance is_caretaker_proper Σ `{heapG Σ, CaretakerImpl}
+    (CT : caretaker Σ) N ct R :
   Proper ((≡) ==> (≡)) (is_caretaker CT N ct R) := ne_proper _.
 End caretaker.
 
 (** * Non-blocking caretaker *)
 (**
-  When disabled, this caretaker's wrappers fail immediately.
+	Wrappers fail unless the caretaker is enabled.
 *)
 Module nonblocking_caretaker.
 Module impl.
@@ -107,6 +106,8 @@ Section proof.
   Context (p : pbit) (N : namespace).
   Let CI : CaretakerImpl := nonblocking LI.
 
+  (** Definitions *)
+
   Let small := (1/3)%Qp.
   Let large := (small+small)%Qp.
   Lemma caretaker_split : (small + large = 1)%Qp.
@@ -121,7 +122,7 @@ Section proof.
 
   Definition enabled (l : loc) (b : bool) : iProp Σ := (l ↦{large} #b)%I.
 
-  (** Structural lemmas. *)
+  (** Structure *)
 
   Global Instance caretaker_res_ne l n :
     Proper (dist n ==> dist n) (caretaker_res l).
@@ -144,7 +145,7 @@ Section proof.
     by case: Hv.
   Qed.
 
-  (** The main proofs. *)
+  (** Operations *)
 
   Lemma make_caretaker_spec (R : iProp Σ) :
     heapN ⊥ N →
@@ -228,7 +229,7 @@ End nonblocking_caretaker.
 
 (** * Blocking caretaker *)
 (**
-  This caretaker's wrappers block until the caretaker is enabled.
+	Wrappers block until the caretaker is enabled.
 *)
 Module blocking_caretaker.
 Module impl.
@@ -257,12 +258,12 @@ Definition caretakerΣ : gFunctors := #[GFunctor (constRF (exclR unitC))].
 Instance subG_caretakerΣ {Σ} : subG caretakerΣ Σ → caretakerG Σ.
 Proof. intros [?%subG_inG _]%subG_inv. split; apply _. Qed.
 
-(** Proof. *)
 Section proof.
   Context `{heapG Σ, caretakerG Σ, LI : LockImpl} (L : lock Σ) (p : pbit)
     (N : namespace).
   Let CI : CaretakerImpl := blocking LI.
 
+  (** Definitions *)
   Let name : Type := gname * lock.name L.
 
   Definition is_caretaker (γ : name) (ct : val) (R : iProp Σ) : iProp Σ :=
@@ -271,7 +272,7 @@ Section proof.
   Definition enabled (γ : name) (b : bool) : iProp Σ :=
     (own (γ.1) (Excl ()) ∗ (if b then True else locked L (γ.2)))%I.
 
-  (** Structural lemmas. *)
+  (** Structure *)
 
   Global Instance is_caretaker_ne γ ct n :
     Proper (dist n ==> dist n) (is_caretaker γ ct).
@@ -289,7 +290,7 @@ Section proof.
     iIntros "(H1&_) (H2&_)". by iDestruct (own_valid_2 with "H1 H2") as %?.
   Qed.
 
-  (** The main proofs. *)
+  (** Operations *)
 
   Lemma make_caretaker_spec (R : iProp Σ) :
     heapN ⊥ N →

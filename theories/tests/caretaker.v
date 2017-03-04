@@ -120,7 +120,7 @@ Section loc_ct_proof.
   Qed.
 End loc_ct_proof.
 
-(** ** Reference monitors accepting even integers *)
+(** * Reference monitors accepting even integers *)
 
 Definition assert_even : val := λ: "n", assert: even: "n" ;; "n".
 Definition assume_even : val := λ: "n", assume: even: "n" ;; "n".
@@ -168,7 +168,7 @@ Section monitors.
   Qed.
 End monitors.
 
-(** ** Location caretaker client *)
+(** * Location caretaker client *)
 (**
 	Revokable read/write access to an even integer.
 *)
