@@ -1,7 +1,8 @@
 From iris.program_logic Require Export weakestpre ownp.
 From iris.program_logic Require Import ectx_lifting.
+From iris.heap_lang Require addenda.
 From iris.heap_lang Require Export lang.
-From iris.heap_lang Require Import tactics addenda.
+From iris.heap_lang Require Import tactics.
 From iris.proofmode Require Import tactics.
 From iris.prelude Require Import fin_maps.
 Import addenda.ectx_language addenda.ectx_lifting addenda.ownp.

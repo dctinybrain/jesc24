@@ -66,6 +66,27 @@ Section list.
 End list.
 End list.
 
+Module algebra_auth.	(* cf. ../algebra/auth.v *)
+From iris.algebra Require Import auth.
+
+Section auth.
+  Context {A : ucmraT}.
+  Implicit Types a b : A.
+  Implicit Types x y : auth A.
+
+  Lemma auth_frag_alloc a b `{!CMRADiscrete A, !CMRATotal A}
+      (HA : ∀ x : A, Persistent x) :
+    b ≼ a → ● a ~~> ● a ⋅ ◯ b.
+  Proof.
+    move=>[a' ->]. apply auth_update_alloc.
+    rewrite -{3}(persistent_core b) -(right_id _ _ (core b)).
+    rewrite -{2}(cmra_core_l b) -assoc.
+    apply op_local_update_discrete.
+    by rewrite assoc cmra_core_l.
+  Qed.
+End auth.
+End algebra_auth.
+
 Module gmap.	(* cf. ../algebra/gmap.v *)
 Section gmap.
   From iris.algebra Require Import gmap.
@@ -139,8 +160,7 @@ Section option.
 End option.
 End option.
 
-
-Module auth.	(* cf. ../base_logic/lib/auth.v *)
+Module lib_auth.	(* cf. ../base_logic/lib/auth.v *)
 Section auth.
   From iris.base_logic.lib Require Import auth.
   Context `{invG Σ, authG Σ A}.
@@ -207,7 +227,30 @@ Section auth.
 End auth.
 Arguments auth_open_strong {_ _ _} [_] {_} [_] _ _ _ _ _ _ _.
 Arguments auth_open {_ _ _} [_] {_} [_] _ _ _ _ _ _ _.
-End auth.
+End lib_auth.
+
+Module weakestpre.	(* cf. ../program_logic/weakestpre.v *)
+From iris.program_logic Require Import weakestpre.
+
+Definition pbit_le (p1 p2 : pbit) : bool :=
+  match p1, p2 with
+  | progress, noprogress => false
+  | _, _ => true
+  end.
+
+Instance: @PreOrder pbit pbit_le.
+Proof.
+  split; first by case. move=>p1 p2 p3. by case: p1; case: p2; case: p3.
+Qed.
+
+Section derived.
+  Context `{irisG Λ Σ}.
+
+  Lemma wp_pbit_mono p1 p2 E e Φ :
+    pbit_le p1 p2 → WP e @ p2; E {{ Φ }} ⊢ WP e @ p1; E {{ Φ }}.
+  Proof. case: p1; case: p2 => // _. exact: wp_forget_progress. Qed.
+End derived.
+End weakestpre.
 
 Module ectx_language.	(* cf. ../program_logic/ectx_language.v *)
 From iris.program_logic Require Import ectx_language.
@@ -267,18 +310,6 @@ Section ectx_lifting.
     iModIntro. iPureIntro. case; first by rewrite Hnv; case.
     move=>[] K [] e1 [] Hfill [] e2 [] σ2 [] efs /= Hstep. exact: Hnstep.
   Qed.
-
-  (* Derived identically to wp_lift_pure_stuck. PDS: Dead. *)
-  Lemma wp_lift_pure_head_stuck_old `{Inhabited state} E Φ e :
-    (∀ σ, ¬ head_progress e σ) →
-    True ⊢ WP e @ E ?{{ Φ }}.
-  Proof.
-    iIntros (Hstuck). iApply wp_lift_head_stuck.
-    - destruct(to_val e) as [v|] eqn:He; last done.
-      by exfalso; apply (Hstuck inhabitant); left; exists v.
-    - iIntros (σ) "_". iMod (fupd_intro_mask' E ∅) as "_"; first set_solver.
-      iModIntro. iPureIntro. apply Hstuck.
-  Qed.
 End ectx_lifting.
 End ectx_lifting.
 
@@ -324,24 +355,4 @@ Proof.
   iDestruct (own_valid_2 with "Hσ Hσf")
     as %[->%Excl_included%leibniz_equiv _]%auth_valid_discrete_2; auto.
 Qed.
-
-Section _ectx_lifting.
-  From iris.program_logic Require Import lifting ectx_lifting.
-  Import ectx_lifting.
-  Hint Resolve progress_head_progress.
-
-  Context {expr val ectx state} {Λ : EctxLanguage expr val ectx state}.
-  Context `{ownPG (ectx_lang expr) Σ}.
-  Implicit Types p : pbit.
-  Implicit Types Φ : val → iProp Σ.
-  Implicit Types e : expr.
-
-  Lemma ownP_lift_head_stuck E Φ e :	(* PDS: Dead. *)
-    (|={E,∅}=> ∃ σ, ⌜¬ head_progress e σ⌝ ∗ ▷ ownP σ)
-    ⊢ WP e @ E ?{{ Φ }}.
-  Proof.
-    iIntros "H". iApply ownP_lift_stuck. iMod "H" as (σ) "[% Hσ]".
-    iModIntro. iExists σ. iFrame. by eauto.
-  Qed.
-End _ectx_lifting.
 End ownp.

@@ -4,13 +4,13 @@ From iris.algebra Require Export gset frac.
 From iris.base_logic.lib Require Export invariants.
 From iris.base_logic.lib Require Import own auth fractional.
 From iris.base_logic Require Import big_op.
-From iris.heap_lang Require Export lifting.
 From iris.heap_lang Require addenda.
+From iris.heap_lang Require Export lifting.
 From iris.proofmode Require Import tactics.
 Import uPred.
 Import addenda.fin_maps.
 Import addenda.option addenda.gmap addenda.csum.
-Import addenda.auth.
+Import addenda.lib_auth.
 
 Local Hint Resolve to_of_val.
 Local Notation ext R := (pointwise_relation _ R).

@@ -1,6 +1,7 @@
 From iris.base_logic Require Import big_op.
+From iris.heap_lang Require addenda.
 From iris.heap_lang Require Export heap on_val substitution.
-From iris.heap_lang Require Import addenda proofmode.
+From iris.heap_lang Require Import proofmode.
 From iris.proofmode Require Import tactics.
 Import addenda.list addenda.fin_maps.
 Import uPred.

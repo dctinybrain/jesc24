@@ -1,7 +1,7 @@
 From iris.prelude Require Import countable decidable.
 From iris.base_logic Require Import big_op.
 From iris.heap_lang Require Export heap.
-From iris.heap_lang Require Import addenda.
+From iris.heap_lang Require addenda.
 From iris.proofmode Require Import tactics.
 Import addenda.list addenda.fin_maps.
 
