@@ -79,57 +79,52 @@ End code.
 Section proof.
   Context `{heapG Σ}.
   Implicit Types f g : val.
-  Implicit Types eout ein : expr.
-  Implicit Types Ψ : loc → iProp Σ.
 
-  Lemma membrane_spec p0 E0 p1 eout Ψ1 Ψ2
+  Lemma membrane_spec p0 E0 p1 vout  Ψ1 Ψ2
       {HΨ1 : ∀ l, PersistentP (Ψ1 l)} {HΨ2 : ∀ l, PersistentP (Ψ2 l)} :
-    {{{ is_monP p1 eout Ψ1 Ψ2 }}}
-      membrane eout @ p0; E0
-    {{{ f, RET f;
-      ∀ p0 E0 p2 ein, {{{ is_monP p2 ein Ψ2 Ψ1 }}} f ein @ p0; E0 {{{ g, RET g;
-        is_monPV p1 g (on_val Ψ1) (on_val Ψ2)
+    {{{ is_monP p1 vout Ψ1 Ψ2 }}}
+      membrane vout @ p0; E0
+    {{{ f, RET f; ∀ p0 E0 p2 vin,
+      {{{ is_monP p2 vin Ψ2 Ψ1 }}} f vin @ p0; E0 {{{ g, RET g;
+        is_monP p1 g (on_val Ψ1) (on_val Ψ2)
       }}}
-    }}}%I.
+    }}}%I.	(* %I as the iLöb tactic cannot generalize 9 variables *)
   Proof.
-    iAlways. iLöb as "IH" forall (p0 E0 p1 eout Ψ1 Ψ2 HΨ1 HΨ2).
-      iIntros (Φ) "Hout HΦ". rewrite monP_triple.
-    wp_apply "Hout". clear eout. iIntros (vout) "#Hout". wp_rec.
-    iApply "HΦ". clear p0 E0 Φ. iIntros (p0 E0 p2 ein) "!#".
-      iIntros (Φ) "Hin HΦ". rewrite (monP_triple _ ein).
-    wp_apply "Hin". clear ein. iIntros (vin) "#Hin". wp_lam.
-    iApply "HΦ". clear p0 E0 Φ. iIntros (v) "!#". iIntros (Φ) "#Hv HΦ".
-      wp_let.
-    wp_apply ("IH" $! _ _ _ _ Ψ1 Ψ2 with "[%] [%] * [Hout]");
-      first by iApply mon_ret. iIntros (w) "Hw".
-    wp_apply ("Hw" with "* [Hin]"); first by iApply mon_ret.
-      clear w. iIntros (wrap) "#Hwrap". wp_let.
+    (**
+      A straightforward Löb induction, unfolding our assumption
+      [on_val Ψ1 v] early when [v] is a function, pair, or injection
+      (in order to eat the later exposed by unfolding).
+    *)
+    iAlways. iLöb as "IH" forall (p0 E0 p1 vout Ψ1 Ψ2 HΨ1 HΨ2).
+      iIntros (Φ) "#Hout HΦ". wp_rec.
+    iApply "HΦ". clear p0 E0 Φ. iIntros (p0 E0 p2 vin) "!#".
+      iIntros (Φ) "#Hin HΦ". wp_lam.
+    iApply "HΦ". clear p0 E0 Φ. iIntros (v) "!#". iIntros (Φ) "#Hv HΦ". wp_let.
+    wp_apply ("IH" $! _ _ _ _ Ψ1 Ψ2 with "[%] [%] * Hout"). iIntros (w) "Hw".
+    wp_apply ("Hw" with "* Hin"). clear w. iIntros (wrap) "#Hwrap". wp_let.
 
     (* Wrapping functions. *)
     wp_typecast Hrec.
-    - (* Unfold Hv early, to eat the later. *)
-      destruct (is_rec_val _ Hrec) as (f&x&erec&?&->).
+    - destruct (is_rec_val _ Hrec) as (f&x&erec&?&->).
         rewrite on_val_rec always_elim. wp_match.
-      wp_apply ("IH" $! _ _ _ _ Ψ2 Ψ1 with "[%] [%] * [Hin]");
-        first by iApply mon_ret.
-      iIntros (u) "Hu".
-      wp_apply ("Hu" with "* [Hout]"); first by iApply mon_ret.
-        iClear (u) "IH Hout Hin". iIntros (unwrap) "#Hunwrap". wp_let.
+      wp_apply ("IH" $! _ _ _ _ Ψ2 Ψ1 with "[%] [%] * Hin"). iIntros (u) "Hu".
+      wp_apply ("Hu" with "* Hout"). iClear (u) "IH Hout Hin".
+        iIntros (unwrap) "#Hunwrap". wp_let.
       iApply "HΦ". clear Φ.
       rewrite on_val_elim. iAlways. iNext. iIntros (v1) "Hv1".
-        simpl_subst. rewrite (monPV_triple _ unwrap).
-        setoid_rewrite (wp_forget_progress p2).
+        simpl_subst. rewrite (monP_pbit_mono noprogress p2) //
+          (monP_triple _ unwrap).
       wp_apply ("Hunwrap" with "* Hv1"). iIntros (v2) "Hv2". wp_rec.
       wp_apply ("Hv" with "Hv2"). iIntros (v3) "Hv3".
-        rewrite (monPV_triple _ wrap).
-        setoid_rewrite (wp_forget_progress p1).
+        rewrite (monP_pbit_mono noprogress p1) //
+          (monP_triple _ wrap).
       wp_apply ("Hwrap" with "* Hv3"). by iIntros.
     wp_match. iClear "IH Hin".
 
     (* Wrapping locations. *)
     wp_typecast Hloc; wp_match.
     - destruct (is_loc_val _ Hloc) as (l&->).
-        rewrite on_val_elim (monPV_triple _ vout).
+        rewrite on_val_elim (monP_triple _ vout).
       wp_apply ("Hout" with "* Hv"). iIntros (v1) "Hv1".
       iApply "HΦ". by rewrite on_val_elim.
     iClear "Hout".
@@ -142,12 +137,11 @@ Section proof.
     (* Wrapping unit. *)
     wp_op=>Hu; wp_if.
     - iApply "HΦ". by rewrite (on_val_elim Ψ2 _).
+    rewrite monP_triple.
 
     (* Wrapping pairs. *)
-    rewrite monPV_triple.
     wp_typecast Hp.
-    - (* Unfold Hv early, to eat the later. *)
-      destruct (is_pair_val _ Hp) as (v1&v2&->).
+    - destruct (is_pair_val _ Hp) as (v1&v2&->).
         iDestruct "Hv" as "#(Hv1 & Hv2)". wp_match. wp_proj.
       wp_apply ("Hwrap" with "* Hv1"). iIntros (v'1) "Hv'1". wp_let.
         wp_proj.
@@ -157,16 +151,14 @@ Section proof.
 
     (* Wrapping left injections. *)
     wp_typecast v0 Hinl.
-    - (* Unfold Hv early, to eat the later. *)
-      rewrite Hinl. wp_match.
+    - rewrite Hinl. wp_match.
       wp_apply ("Hwrap" with "* Hv"). iIntros (v1) "Hv1". wp_value.
       iApply "HΦ". rewrite (on_val_elim _ (InjLV _)). by iFrame.
     wp_match.
 
     (* Wrapping right injections. *)
     wp_typecast v0 Hinr.
-    - (* Unfold Hv early, to eat the later. *)
-      rewrite Hinr. wp_match.
+    - rewrite Hinr. wp_match.
       wp_apply ("Hwrap" with "* Hv"). iIntros (v1) "Hv1". wp_value.
       iApply "HΦ". rewrite (on_val_elim _ (InjRV _)). by iFrame.
     wp_match.
@@ -199,32 +191,32 @@ End proof.
 Section inert.
   Context `{heapG Σ}.
   Implicit Types l : loc.
-  Implicit Types v : val.
+  Implicit Types f g : val.
 
   Notation lowval := (low : val → iProp Σ).
 
-  Lemma inert_wrap_spec p0 E0 p1 eout :
-    {{{ is_monP p1 eout (const True) low }}}
-      membrane eout @ p0; E0
-    {{{ f, RET f; ∀ p0 E0 p2 ein,
-      {{{ is_monP p2 ein low (const True) }}} f ein @ p0; E0 {{{ g, RET g;
-        is_monPV p1 g (on_val (const True)) lowval
+  Lemma inert_wrap_spec p0 E0 p1 vout :
+    {{{ is_monP p1 vout (const True) low }}}
+      membrane vout @ p0; E0
+    {{{ f, RET f; ∀ p0 E0 p2 vin,
+      {{{ is_monP p2 vin low (const True) }}} f vin @ p0; E0 {{{ g, RET g;
+        is_monP p1 g (on_val (const True)) lowval
       }}}
     }}}.
   Proof.
     iIntros (Φ) "Hout HΦ".
     wp_apply (membrane_spec with "Hout"). iIntros (w) "#Hw".
-    iApply "HΦ". clear p0 E0 Φ. iIntros (p0 E0 p2 ein) "!#".
+    iApply "HΦ". clear p0 E0 Φ. iIntros (p0 E0 p2 vin) "!#".
       iIntros (Φ) "Hin HΦ".
     by wp_apply ("Hw" with "* Hin").
   Qed.
 
-  Lemma inert_unwrap_spec p0 E0 p2 ein :
-    {{{ is_monP p2 ein low (const True) }}}
-      membrane ein @ p0; E0
-    {{{ f, RET f; ∀ p0 E0 p1 eout,
-      {{{ is_monP p1 eout (const True) low }}} f eout @ p0; E0 {{{ g, RET g;
-        is_monPV p2 g lowval (on_val (const True))
+  Lemma inert_unwrap_spec p0 E0 p2 vin :
+    {{{ is_monP p2 vin low (const True) }}}
+      membrane vin @ p0; E0
+    {{{ f, RET f; ∀ p0 E0 p1 vout,
+      {{{ is_monP p1 vout (const True) low }}} f vout @ p0; E0 {{{ g, RET g;
+        is_monP p2 g lowval (on_val (const True))
       }}}
     }}}.
   Proof.
