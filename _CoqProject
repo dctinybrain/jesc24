@@ -123,6 +123,7 @@ theories/heap_lang/adequacy.v
 theories/tests/readonly.v
 theories/tests/caretaker.v
 theories/tests/maps.v
+theories/tests/membrane.v
 theories/tests/lock.v
 theories/tests/on_val.v
 theories/tests/heap_lang.v
