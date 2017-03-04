@@ -25,6 +25,22 @@ Section mon.
   Qed.
 End mon.
 
+Section membrane_spec_proposal.
+  Context `{heapG Σ}.
+  Implicit Types f g : val.
+
+  Lemma membrane_spec_new p0 E0 p1 vout  Ψ1 Ψ2
+      {HΨ1 : ∀ l, PersistentP (Ψ1 l)} {HΨ2 : ∀ l, PersistentP (Ψ2 l)} :
+    {{{ is_monPV p1 vout Ψ1 Ψ2 }}}
+      membrane vout @ p0; E0
+    {{{ f, RET f;
+      ∀ p0 E0 p2 vin, {{{ is_monPV p2 vin Ψ2 Ψ1 }}} f vin @ p0; E0 {{{ g, RET g;
+        is_monPV p1 g (on_val Ψ1) (on_val Ψ2)
+      }}}
+    }}}%I.
+  Admitted.
+End membrane_spec_proposal.
+
 (* PDS: Neither LockImpl nor CaretakerImpl should be type classes. *)
 (* PDS: Heap should actually define [lowval]. *)
 (* PDS: Addenda. *)
@@ -187,7 +203,6 @@ Definition pub_membrane (LI : LockImpl) : PubImpl := {|
 |}.
 End code.
 
-
 Module proof.
 (** The CMRA we need. *)
 Local Notation locset := (gsetUR loc).
@@ -325,15 +340,6 @@ Section proof.
     by iApply ("HΦ" with "Hl2").
   Qed.
 
-  Lemma locout_mon γ m :
-    is_membrane γ m -∗
-    is_monP progress (code.locout m) (is_pub γ) low.
-  Proof.
-    iIntros "#Hm". rewrite monP_triple. iAlways. iIntros (p0 E0 Φ) "HΦ".
-    wp_apply (locout_spec with "Hm"). iIntros (vout) "Hout".
-    iApply ("HΦ" with "Hout").
-  Qed.
-
   Lemma locin_spec p E γ m :
     {{{ is_membrane γ m }}} code.locin m @ p; E
     {{{ v, RET v; is_monPV noprogress v low (is_pub γ) }}}.
@@ -356,24 +362,16 @@ Section proof.
     by iApply ("HΦ" with "Hl1").
   Qed.
 
-  Lemma locin_mon γ m :
-    is_membrane γ m -∗
-    is_monP noprogress (code.locin m) low (is_pub γ).
-  Proof.
-    iIntros "#Hm". rewrite monP_triple. iAlways. iIntros (p0 E0 Φ) "HΦ".
-    wp_apply (locin_spec with "Hm"). iExact "HΦ".
-  Qed.
-
   Lemma pub_wrap_spec γ m p E :
     {{{ is_membrane γ m }}} pub_wrap PI m @ p; E {{{ f, RET f;
       is_monPV progress f (on_val (is_pub γ)) (on_val low)
     }}}.
   Proof.
     iIntros (Φ) "#Hm HΦ". wp_lam.
-    wp_apply (membrane_spec _ _ progress _ (is_pub γ) low with "[]");
-      first by iApply (locout_mon with "Hm"). iIntros (w) "Hw".
-    wp_apply ("Hw" $! _ _ noprogress with "* []");
-      first by iApply (locin_mon with "Hm"). iExact "HΦ".
+    wp_apply (locout_spec with "Hm"). iIntros (locout) "Hlocout".
+    wp_apply (membrane_spec_new with "Hlocout"). iIntros (w) "Hw".
+    wp_apply (locin_spec with "Hm"). iIntros (locin) "Hlocin".
+    wp_apply ("Hw" with "* Hlocin"). iExact "HΦ".
   Qed.
 
   Lemma pub_unwrap_spec γ m p E :
@@ -382,10 +380,10 @@ Section proof.
     }}}.
   Proof.
     iIntros (Φ) "#Hm HΦ". wp_lam.
-    wp_apply (membrane_spec _ _ noprogress _ low (is_pub γ) with "[]");
-      first by iApply (locin_mon with "Hm"). iIntros (u) "Hu".
-    wp_apply ("Hu" $! _ _ progress with "* []");
-      first by iApply (locout_mon with "Hm"). iExact "HΦ".
+    wp_apply (locin_spec with "Hm"). iIntros (locin) "Hlocin".
+    wp_apply (membrane_spec_new with "Hlocin"). iIntros (u) "Hu".
+    wp_apply (locout_spec with "Hm"). iIntros (locout) "Hlocout".
+    wp_apply ("Hu" with "* Hlocout"). iExact "HΦ".
   Qed.
 
   Lemma pub_alloc_spec γ m (v : val) :
