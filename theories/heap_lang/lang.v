@@ -17,7 +17,8 @@ Inductive base_lit : Set :=
   | LitInt (n : Z) | LitBool (b : bool).
 Inductive un_op : Set :=
   | NegOp | MinusUnOp | EvenOp
-  | FunofOp | LitofOp | LocofOp | PairofOp | InlofOp | InrofOp.
+  | FunofOp | LitofOp | IntofOp | BoolofOp | LocofOp
+  | PairofOp | InlofOp | InrofOp.
 Inductive bin_op : Set :=
   | PlusOp | MinusOp | LeOp | LtOp | EqOp.
 
@@ -258,16 +259,15 @@ Definition un_op_eval (op : un_op) (v : val) : option val :=
   | EvenOp, LitV (LitInt n) => Some $ LitV $ LitBool (Z.even n)
   | FunofOp, RecV _ _ _ _ => Some $ SOMEV v
   | FunofOp, _ => Some $ NONEV
-  | LitofOp, LitV _ => Some $ SOMEV v
-  | LitofOp, _ => Some $ NONEV
-  | LocofOp, LocV _ => Some $ SOMEV v
-  | LocofOp, _ => Some $ NONEV
-  | PairofOp, PairV _ _ => Some $ SOMEV v
-  | PairofOp, _ => Some $ NONEV
-  | InlofOp, InjLV v => Some $ SOMEV v
-  | InlofOp, _ => Some $ NONEV
-  | InrofOp, InjRV v => Some $ SOMEV v
-  | InrofOp, _ => Some $ NONEV
+  | LitofOp, LitV _ => Some $ SOMEV v | LitofOp, _ => Some $ NONEV
+  | IntofOp, LitV (LitInt _) => Some $ SOMEV v
+  | IntofOp, _ => Some $ NONEV
+  | BoolofOp, LitV (LitBool _) => Some $ SOMEV v
+  | BoolofOp, _ => Some $ NONEV
+  | LocofOp, LocV _ => Some $ SOMEV v | LocofOp, _ => Some $ NONEV
+  | PairofOp, PairV _ _ => Some $ SOMEV v | PairofOp, _ => Some $ NONEV
+  | InlofOp, InjLV v => Some $ SOMEV v | InlofOp, _ => Some $ NONEV
+  | InrofOp, InjRV v => Some $ SOMEV v | InrofOp, _ => Some $ NONEV
   | _, _ => None
   end.
 

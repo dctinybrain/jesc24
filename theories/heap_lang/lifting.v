@@ -527,6 +527,34 @@ Proof.
   - destruct v; try done. exfalso. apply: Hlit. by exists lit.
 Qed.
 
+Lemma wp_intof p E e v P Φ :
+  to_val e = Some v →
+  (is_int e → P ⊢ ▷ Φ (SOMEV v)) →
+  (¬ is_int e → P ⊢ ▷ Φ NONEV) →
+  P ⊢ WP UnOp IntofOp e @ p; E {{ Φ }}.
+Proof.
+  move=>?. rewrite -(of_to_val e v) // => ??.
+  case: (decide (is_int (of_val v)))=>Hint;
+    [>rewrite -wp_un_op //; first by auto..].
+  - by destruct (is_int_val _ Hint) as (?&->).
+  - destruct v; try done. destruct lit; try done.
+    exfalso. apply: Hint. by exists n.
+Qed.
+
+Lemma wp_boolof p E e v P Φ :
+  to_val e = Some v →
+  (is_bool e → P ⊢ ▷ Φ (SOMEV v)) →
+  (¬ is_bool e → P ⊢ ▷ Φ NONEV) →
+  P ⊢ WP UnOp BoolofOp e @ p; E {{ Φ }}.
+Proof.
+  move=>?. rewrite -(of_to_val e v) // => ??.
+  case: (decide (is_bool (of_val v)))=>Hbool;
+    [>rewrite -wp_un_op //; first by auto..].
+  - by destruct (is_bool_val _ Hbool) as (?&->).
+  - destruct v; try done. destruct lit; try done.
+    exfalso. apply: Hbool. by exists b.
+Qed.
+
 Lemma wp_pairof p E e v P Φ :
   to_val e = Some v →
   (is_pair e → P ⊢ ▷ Φ (SOMEV v)) →
