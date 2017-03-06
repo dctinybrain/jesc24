@@ -11,8 +11,8 @@ Theorem heap_adequacy Σ `{heapPreG Σ} p e h φ :
   adequate p e (good_state h) φ.
 Proof.
   intros Hwp. apply (ownP_adequacy _ _ _ _). iIntros (?) "Hσ".
-  iMod (heap_ctx_alloc with "Hσ") as (γ) "#Hh".
-  by iApply (Hwp (HeapG _ _ _ γ) with "Hh").
+  iMod (heap_ctx_alloc with "Hσ") as (γ) "Hh".
+  by iApply (Hwp (HeapG _ _ _ _ γ) with "Hh").
 Qed.
 
 Theorem adequacy_safety Σ `{heapPreG Σ} p e h1 t2 σ2 :
@@ -22,7 +22,7 @@ Proof.
   intros Hwp Hsteps.
   apply: (ownP_invariance  _ p _ _ _ _ is_good) Hsteps=> /= ?.
   iIntros "Hσ". iMod (heap_ctx_alloc with "Hσ") as (γ) "#Hh".
-  set G := (HeapG _  _ _ γ). iModIntro. iSplitL.
+  set G := (HeapG _  _ _ _ γ). iModIntro. iSplitL.
   by iApply (Hwp G). by iApply (@heap_ctx_is_good _ G).
 Qed.
 

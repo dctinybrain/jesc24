@@ -46,23 +46,6 @@ Section spec.
   Notation lowval := (low : val → iProp Σ).
   Implicit Types v f : val.
 
-  (** PDS: What we need from the heap interface. *)
-  Structure heap_extension := HeapExtension {
-    is_alloced (l : loc) : iProp Σ;
-    is_alloced_timeless l : TimelessP (is_alloced l);
-    is_alloced_persistent l : PersistentP (is_alloced l);
-    high_alloced (l : loc) (q : Qp) (v : val) : l ↦{q} v ⊢ is_alloced l;
-    low_alloced (l : loc) : low l ⊢ is_alloced l;
-    wp_alloc_fresh (p : pbit) (E : coPset) (e : expr) (v : val) (X : gset loc) :
-      to_val e = Some v → ↑heapN ⊆ E →
-      {{{ heap_ctx ∗ [∗ set] l ∈ X, is_alloced l }}} Alloc e @ p; E
-      {{{ l, RET LocV l; l ↦ v ∗ ⌜l ∉ X⌝ }}};
-    wp_alloc_low_fresh (p : pbit) (E : coPset) (e : expr) (v : val) (X : gset loc) :
-      to_val e = Some v → ↑heapN ⊆ E →
-      {{{ heap_ctx ∗ ▷ low v ∗  [∗ set] l ∈ X, is_alloced l }}} Alloc e @ p; E
-      {{{ l, RET LocV l; low l ∗ ⌜l ∉ X⌝ }}}
-  }.
-
   Structure pub := Pub {
     (** Predicates. Name ties [is_pub]  to [is_membrane]. *)
     name : Type;
@@ -96,8 +79,6 @@ Section spec.
       {{{ RET (); True }}}
   }.
 End spec.
-Arguments heap_extension _ {_}.
-Existing Instances is_alloced_timeless is_alloced_persistent.
 Arguments pub _ {_ _}.
 Existing Instances is_membrane_persistent is_pub_timeless
   is_pub_persistent.
@@ -151,7 +132,7 @@ Section mix.
   Qed.
 End mix.
 
-(** ** Monotone counter with public limit. *)
+(** ** Monotone counter with public limit *)
 
 Module counter_1.
 Section code.
@@ -295,7 +276,7 @@ Section proof.
 End proof.
 End counter_1.
 
-(** ** Counter with public upper and lower limits. *)
+(** ** Counter with public upper and lower limits *)
 
 Module counter_2.
 Section code.
@@ -644,15 +625,19 @@ End code.
 Module proof.
 (** The CMRA we need. *)
 Local Notation locset := (gsetUR loc).
-Class pubG Σ := PubG { pub_locsG :> inG Σ (authR locset) }.
+Class pubG Σ := PubG { pub_locsG : inG Σ (authR locset) }.
 Definition pubΣ : gFunctors := #[ GFunctor (constRF (authR locset)) ].
+(*
+ * Lower priority than [heapG]'s instance of [authR locset] so that
+ * [liveloc l] cannot incorrectly refer to our instance.
+ *)
+Existing Instance pub_locsG | 30.
 
 Instance subG_pubΣ {Σ} : subG pubΣ Σ → pubG Σ.
 Proof. intros [??]%subG_inv; constructor; apply _. Qed.
 
 Section proof.
-  Context `{heapG Σ, pubG Σ, LI : LockImpl}
-    (EXT : heap_extension Σ) (L : lock Σ) (N : namespace).
+  Context `{heapG Σ, pubG Σ, LI : LockImpl} (L : lock Σ) (N : namespace).
   Let PI : PubImpl := code.pub_membrane LI.
   Implicit Types v f : val.
 
@@ -662,7 +647,7 @@ Section proof.
     own γ (◯ (to_gset {[ l ]})).
 
   Definition pubhigh (γ : gname) (m1 : gmap loc val) : iProp Σ :=
-    (own γ (● (dom (gset loc) m1)) ∗ [∗ set] l ∈ dom _ m1, is_alloced EXT l)%I.
+    (own γ (● (dom (gset loc) m1)) ∗ live (dom _ m1))%I.
 
   Definition publow (m2 : gmap loc val) : iProp Σ :=
     ([∗ set] l2 ∈ dom (gset loc) m2, low l2)%I.
@@ -721,7 +706,7 @@ Section proof.
 
   Lemma pubhigh_alloc γ m1 l1 l2 :
     m1 !! l1 = None →
-    pubhigh γ m1 -∗ is_alloced EXT l1 ==∗ pubhigh γ (<[l1:=l2]> m1).
+    pubhigh γ m1 -∗ liveloc l1 ==∗ pubhigh γ (<[l1:=l2]> m1).
   Proof.
     iIntros (?) "(Hp&Ha) Ha1". rewrite/pubhigh.
     iSplitL "Hp"; last by iApply (pub_insert_dom with "Ha Ha1").
@@ -748,7 +733,7 @@ Section proof.
     wp_apply (make_sync_spec L _ _ (tbl_res t γ) with "[$Hh Ht Hγ]").
     - solve_ndisj.
     - iExists bij_empty, ∅, ∅.
-      rewrite /pubhigh /publow dom_empty_L 2!big_sepS_empty.
+      rewrite /pubhigh /publow /live dom_empty_L 2!big_sepS_empty.
       iFrame "Ht Hγ". iPureIntro. exact: bij_empty_spec.
     iIntros (sync) "#Hsync". wp_let. iModIntro.
     iApply ("HΦ" $! _ γ). iExists t, sync. by iFrame "% Hh Hsync".
@@ -836,17 +821,17 @@ Section proof.
     wp_apply ("Hsync" with "[%]"). iClear "Hsync".
       iIntros (Ψ) "HR HΨ".
       iDestruct "HR" as (bij m1 m2) "(Ht & #Hbij & (Hp & #Ha) & #Hlo)".
-    wp_apply (wp_alloc_fresh with "[$Hh $Ha]"); auto.
+    wp_apply (wp_alloc_live with "[$Hh $Ha]"); auto.
       iIntros (l1) "(Hl1&Hm1)". iDestruct "Hm1" as %Hm1.
       wp_let.
-    wp_apply (wp_alloc_low_fresh EXT _ _ _ _ (dom (gset loc) m2)
+    wp_apply (wp_alloc_low_live _ _ _ _ (dom (gset loc) m2)
       with "[$Hh Hlo $Hv2]"); auto;
-      first by iApply (big_sepS_mono' _ _ _ (low_alloced EXT) with "Hlo").
+      first by iApply (big_sepS_mono' _ _ _ low_live with "Hlo").
       iIntros (l2) "(#Hl2&Hm2)". iDestruct "Hm2" as %Hm2.
       wp_let. wp_load. rewrite -> not_elem_of_dom in Hm1, Hm2.
     wp_apply (bij_insert_new_spec _ _ _ l1 l2 with "* [$Hbij]"); auto.
       iIntros (bij') "{Hbij} #Hbij". rewrite -wp_fupd. wp_store.
-      iDestruct (high_alloced EXT with "Hl1") as "#Ha1".
+      iDestruct (mapsto_live with "Hl1") as "#Ha1".
       iMod (pubhigh_alloc _ _ _ l2 with "[$Hp $Ha] Ha1") as "Hhi"=>//.
       iMod (pubhigh_obs with "Hhi") as "(Hhi & Hpub)";
         first by rewrite lookup_insert; exists l2. iModIntro.
@@ -889,20 +874,18 @@ Section proof.
 End proof.
 
 Definition pub_membrane `{heapG Σ, pubG Σ, LockImpl}
-    (X : heap_extension Σ) (L : lock Σ) : pub Σ := {|
-  intf.make_pub_spec := make_pub_spec X L;
-  intf.pub_alloc_spec := pub_alloc_spec X;
-  intf.pub_wrap_spec := pub_wrap_spec X;
-  intf.pub_unwrap_spec := pub_unwrap_spec X;
-  intf.shadow_read_spec := shadow_read_spec X;
-  intf.shadow_write_spec := shadow_write_spec X
+    (L : lock Σ) : pub Σ := {|
+  intf.make_pub_spec := make_pub_spec L;
+  intf.pub_alloc_spec := pub_alloc_spec;
+  intf.pub_wrap_spec := pub_wrap_spec;
+  intf.pub_unwrap_spec := pub_unwrap_spec;
+  intf.shadow_read_spec := shadow_read_spec;
+  intf.shadow_write_spec := shadow_write_spec
 |}.
 End proof.
 
-Section NearlyClosedProofs.
+Section ClosedProofs.
   Import spin_lock.
-  Parameter extension : ∀ `{_ : heapG Σ}, heap_extension Σ.	(* PDS *)
-
   Let N : namespace := nroot .@ "example".
   Let Σ : gFunctors := #[ heapΣ; spin_lock.lockΣ; proof.pubΣ ].
   Let lock : LockImpl := spin.
@@ -919,8 +902,7 @@ Section NearlyClosedProofs.
     move=>??. eapply (robust_safety Σ); try done.
     { naive_solver eauto using is_closed_of_val. }
     iIntros (G) "Hh".
-    set L := spin_lock.
-    set X := extension. set P := proof.pub_membrane X L.
+    set L := spin_lock. set P := proof.pub_membrane L.
     iApply (counter_1.client_spec L P N with "Hh"); auto with ndisj.
   Qed.
 
@@ -932,8 +914,7 @@ Section NearlyClosedProofs.
     move=>??. eapply (robust_safety Σ); try done.
     { naive_solver eauto using is_closed_of_val. }
     iIntros (G) "Hh".
-    set L := spin_lock.
-    set X := extension. set P := proof.pub_membrane X L.
+    set L := spin_lock. set P := proof.pub_membrane L.
     iApply (counter_2.client_spec L P N with "Hh"); auto with ndisj.
   Qed.
 
@@ -945,11 +926,10 @@ Section NearlyClosedProofs.
     move=>??. eapply (robust_safety Σ); try done.
     { naive_solver eauto using is_closed_of_val. }
     iIntros (G) "Hh".
-    set L := spin_lock.
-    set X := extension. set P := proof.pub_membrane X L.
+    set L := spin_lock. set P := proof.pub_membrane L.
     iApply (counter_2.client_12_spec L P N with "Hh"); auto with ndisj.
   Qed.
-End NearlyClosedProofs.
+End ClosedProofs.
 
 Print Assumptions counter_1_safe.
 Print Assumptions counter_2_safe.

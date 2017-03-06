@@ -346,8 +346,8 @@ Proof.
   - intros; inv_head_step; eauto.
 Qed.
 
-(** Base axioms for stateful reduction. *)
-Lemma wp_alloc_pst p E σ h v :
+(** Basic axioms for stateful reduction. *)
+Lemma wp_alloc_big p E σ h v :
   heap_of σ = h →
   {{{ ▷ ownP σ }}} Alloc (of_val v) @ p; E
   {{{ l, RET LocV l; ⌜h !! l = None⌝ ∧ ownP (hupd σ (<[l:=v]>h)) }}}.
@@ -367,7 +367,7 @@ Proof.
   case: Ki Hfill=> //= [] ?; subst. apply: stuck_by_val Hstep. naive_solver.
 Qed.
 
-Lemma wp_load_pst p E σ h l v :
+Lemma wp_load_big p E σ h l v :
   heap_of σ = h → h !! l = Some v →
   {{{ ▷ ownP σ }}} Load (Loc l) @ p; E {{{ RET v; ownP σ }}}.
 Proof.
@@ -385,7 +385,7 @@ Proof.
   case: Ki Hfill=> //= ? [] ??; subst; apply: stuck_by_val Hstep; naive_solver.
 Qed.
 
-Lemma wp_store_pst p E σ h l v v' :
+Lemma wp_store_big p E σ h l v v' :
   heap_of σ = h → h !! l = Some v' →
   {{{ ▷ ownP σ }}} Store (Loc l) (of_val v) @ p; E
   {{{ RET UnitV; ownP (hupd σ (<[l:=v]>h)) }}}.
@@ -404,7 +404,7 @@ Proof.
   case: Ki Hfill=> //= ?? [] ???; subst; apply: stuck_by_val Hstep; naive_solver.
 Qed.
 
-Lemma wp_cas_fail_pst p E σ h l v1 v2 v' :
+Lemma wp_cas_fail_big p E σ h l v1 v2 v' :
   heap_of σ = h → h !! l = Some v' → v' ≠ v1 →
   {{{ ▷ ownP σ }}} CAS (Loc l) (of_val v1) (of_val v2) @ p; E
   {{{ RET LitV $ LitBool false; ownP σ }}}.
@@ -413,7 +413,7 @@ Proof.
   intros; inv_head_step; eauto.
 Qed.
 
-Lemma wp_cas_suc_pst p E σ h l v1 v2 :
+Lemma wp_cas_suc_big p E σ h l v1 v2 :
   heap_of σ = h → h !! l = Some v1 →
   {{{ ▷ ownP σ }}} CAS (Loc l) (of_val v1) (of_val v2) @ p; E
   {{{ RET LitV $ LitBool true; ownP (hupd σ (<[l:=v2]>h)) }}}.
