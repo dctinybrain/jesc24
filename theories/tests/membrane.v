@@ -128,12 +128,13 @@ Section lemmas.
     wp_apply ("Hu" with "* Hv2"). iExact "HΦ".
   Qed.
 End lemmas.
-
 End intf.
 
 (** * Public membrane clients *)
 
-Module client.
+(** ** Monotone counter with public limit. *)
+
+Module counter_1.
 Section code.
   Context (LI : LockImpl) (PI : PubImpl).
 
@@ -148,72 +149,29 @@ Section code.
       "n3"
     else (shadow_write PI "m" "r" "n1" ;; "n1").
 
-  Definition use_1 : val := λ: "sync" "count" "limit" <>,
+  Definition use : val := λ: "sync" "count" "limit" <>,
     "sync" (λ: <>,
       assert: (#0 ≤ ! "count");; assert: (! "count" ≤ ! "limit")
     ).
-
-  Definition incr_1 : val := λ: "m" "sync" "count" "limit" <>,
+  Definition incr : val := λ: "m" "sync" "count" "limit" <>,
     "sync" (λ: <>,
       let: "n" := (! "count") + #1 in
       let: "b" := "n" ≤ get_limit "m" max "limit" in
       let: <> := if: "b" then "count" <- "n" else () in
       "b"
     ).
-
-  (** Monotone counter with a monotone upper limit. *)
-  Definition make_counter_1 : val := λ: "m",
+  Definition make_counter : val := λ: "m",
     let: "count" := ref #0 in
     let: "limit" := pub_ref PI "m" #0 in
     let: "sync" := make_sync LI () in
-    let: "use" := use_1 "sync" "count" "limit" in
-    let: "incr" := incr_1 "m" "sync" "count" "limit" in
+    let: "use" := use "sync" "count" "limit" in
+    let: "incr" := incr "m" "sync" "count" "limit" in
     let: "limit" := pub_wrap PI "m" "limit" in
     ("use", "limit", "incr").
 
-  Definition client_1 : expr :=
-    let: "m" := make_pub PI () in
-    make_counter_1 "m".
-
-  (** Counter with upper and lower limits. *)
-  Definition make_counter_2 : val := λ: "m",
-    let: "count" := ref #0 in
-    let: "low" := pub_ref PI "m" #0 in
-    let: "high" := pub_ref PI "m" #0 in
-    let: "sync" := make_sync LI () in
-    let: "use" := λ: <>, "sync" (λ: <>,
-        assert: (! "low" ≤ ! "count") ;; assert: (! "count" ≤ ! "high"))
-    in
-    let: "get_limits" := λ: "n",
-      let: "lo" := get_limit "m" (λ: <> "n2", min "n" "n2") "low" in
-      let: "hi" := get_limit "m" (λ: <> "n2", max "n" "n2") "high" in
-      ("lo", "hi")
-    in
-    let: "decr" := λ: <>,
-      "sync" (λ: <>,
-        let: "n" := (! "count") - #1 in
-        let: "b" := "n" ≤ Fst ("get_limits" "n") in
-        let: <> := if: "b" then "count" <- "n" else () in
-        "b"
-      )
-    in
-    let: "incr" := λ: <>,
-      "sync" (λ: <>,
-        let: "n" := (! "count") + #1 in
-        let: "b" := "n" ≤ Snd ("get_limits" "n") in
-        let: <> := if: "b" then "count" <- "n" else () in
-        "b"
-      )
-    in
-    let: "low" := pub_wrap PI "m" "low" in
-    let: "high" := pub_wrap PI "m" "high" in
-    ("use", "low", "high", "incr", "decr").
-
   Definition client : expr :=
     let: "m" := make_pub PI () in
-    let: "c1" := make_counter_1 "m" in
-    let: "c2" := make_counter_2 "m" in
-    ("c1", "c2").
+    make_counter "m".
 End code.
 
 Section proof.
@@ -265,12 +223,12 @@ Section proof.
       rewrite -{1 4}HF. by iApply "HΦ".
   Qed.
 
-  Definition counter_1_res (γ : name P) (count limit : loc) : iProp Σ :=
+  Definition counter_res (γ : name P) (count limit : loc) : iProp Σ :=
     (∃ n1 n2, count ↦ #n1 ∗ limit ↦ #n2 ∗ is_pub P γ limit ∗ ⌜0 ≤ n1 ≤ n2⌝)%I.
 
-  Lemma use_1_spec sync γ count limit :
-    {{{ heap_ctx ∗ is_sync sync (counter_1_res γ count limit) }}}
-      use_1 sync count limit
+  Lemma use_spec sync γ count limit :
+    {{{ heap_ctx ∗ is_sync sync (counter_res γ count limit) }}}
+      use sync count limit
     {{{ f, RET f; low f }}}.
   Proof.
     iIntros (Φ) "#(Hh & Hsync) HΦ". do 3!wp_lam.
@@ -287,10 +245,10 @@ Section proof.
     - iApply "HΦ". by simpl_low.
   Qed.
 
-  Lemma incr_1_spec m γ sync count limit :
+  Lemma incr_spec m γ sync count limit :
     {{{ heap_ctx ∗ is_membrane P Nm γ m
-    ∗ is_sync sync (counter_1_res γ count limit) }}}
-      incr_1 PI m sync count limit
+    ∗ is_sync sync (counter_res γ count limit) }}}
+      incr PI m sync count limit
     {{{ f, RET f; low f }}}.
   Proof.
     iIntros (Φ) "#(Hh & Hm & Hsync) HΦ". do 4!wp_lam.
@@ -310,49 +268,210 @@ Section proof.
       iExists _, _. iFrame "Hcount Hlimit Hpub". iPureIntro. by lia.
   Qed.
 
-  Lemma make_counter_1_spec γ m :
+  Lemma make_counter_spec γ m :
     heapN ⊥ N →
-    {{{ heap_ctx ∗ is_membrane P Nm γ m }}} make_counter_1 LI PI m
+    {{{ heap_ctx ∗ is_membrane P Nm γ m }}} make_counter LI PI m
     {{{ v, RET v; low v }}}.
   Proof.
     iIntros (? Φ) "#(Hh & Hm) HΦ". wp_lam.
       wp_alloc count as "Hcount". wp_let.
     wp_apply (pub_alloc_spec _ _ _ _ (#0) with "[$Hm]");
       first by simpl_on_val. iIntros (limit) "(#Hpub & Hlimit)". wp_let.
-    wp_apply (make_sync_spec L _ Nlk (counter_1_res γ count limit)
+    wp_apply (make_sync_spec L _ Nlk (counter_res γ count limit)
       with "[$Hh Hcount Hlimit]").
     - by solve_ndisj.
     - iExists 0, 0. by iFrame "Hpub Hcount Hlimit".
     iIntros (sync) "#Hsync". wp_let.
-    wp_apply (use_1_spec with "[$Hh $Hsync]"). iIntros (use) "#Huse".
+    wp_apply (use_spec with "[$Hh $Hsync]"). iIntros (use) "#Huse".
       wp_let.
-    wp_apply (incr_1_spec with "[$Hh $Hm $Hsync]").
+    wp_apply (incr_spec with "[$Hh $Hm $Hsync]").
       iIntros (incr) "#Hincr". wp_let.
     wp_apply (pub_wrap_val _ _ _ _ (LocV limit) with "[$Hm Hpub]");
       first by simpl_on_val. iIntros (limit2) "#Hlimit2". wp_let.
     iApply "HΦ". simpl_low. by iFrame "Huse Hlimit2 Hincr".
   Qed.
 
-  Lemma client_1_spec :
+  Lemma client_spec :
     heapN ⊥ N →
-    {{{ heap_ctx }}} client_1 LI PI {{{ v, RET v; low v }}}.
+    {{{ heap_ctx }}} client LI PI {{{ v, RET v; low v }}}.
   Proof.
-    iIntros (? Φ) "#Hh HΦ". rewrite/client_1.
+    iIntros (? Φ) "#Hh HΦ". rewrite/client.
     wp_apply (make_pub_spec P Nm with "Hh"); first by solve_ndisj.
       iIntros (m γ) "#Hm". wp_let.
-    by wp_apply (make_counter_1_spec with "[$Hh $Hm]").
+    by wp_apply (make_counter_spec with "[$Hh $Hm]").
   Qed.
+End proof.
+End counter_1.
+
+(** ** Counter with public upper and lower limits. *)
+(*
+Module counter_2.
+Section code.
+  Context (LI : LockImpl) (PI : PubImpl).
+
+  Definition get_limits : val := λ: "m" "lo" "hi" "n",
+    let: "a" := get_limit "m" (λ: "n1" "n2", if: "n2" ≤ "n" then "n2" else "n1") "lo" in
+    let: "b" := get_limit "m" (λ: "n1" "n2", if: "n" ≤ "n2" then "n2" else "n1") "hi" in
+    ("a", "b").
+
+  Definition use_2 : val := λ: "sync" "lo" "count" "hi" <>,
+    "sync" (λ: <>,
+      assert: (! "lo" ≤ ! "count") ;; assert: (! "count" ≤ ! "hi")
+    ).
+  Definition decr_2 : val := λ: "sync" "count" "f" <>,
+    "sync" (λ: <>,
+      let: "n" := (! "count") - #1 in
+      let: "b" := "n" ≤ Fst ("f" "n") in
+      let: <> := if: "b" then "count" <- "n" else () in
+      "b"
+    ).
+  Definition incr_2 : val := λ: "sync" "count" "f" <>,
+    "sync" (λ: <>,
+      let: "n" := (! "count") + #1 in
+      let: "b" := "n" ≤ Snd ("f" "n") in
+      let: <> := if: "b" then "count" <- "n" else () in
+      "b"
+    ).
+  Definition make_counter_2 : val := λ: "m",
+    let: "lo" := pub_ref PI "m" #0 in
+    let: "count" := ref #0 in
+    let: "hi" := pub_ref PI "m" #0 in
+    let: "sync" := make_sync LI () in
+    let: "use" := use_2 "sync" "lo" "count" "hi" in
+    let: "get_limits" := get_limits "m" "lo" "hi" in
+    let: "decr" := decr_2 "sync" "count" "get_limits" in
+    let: "incr" := incr_2 "sync" "count" "get_limits" in
+    let: "lo" := pub_wrap PI "m" "lo" in
+    let: "hi" := pub_wrap PI "m" "hi" in
+    ("use", "lo", "hi", "incr", "decr").
+
+  Definition client_2 : expr :=
+    let: "m" := make_pub PI () in
+    make_counter_2 "m".
+
+  Definition client2 : expr :=
+    let: "m" := make_pub PI () in
+    let: "c1" := make_counter "m" in
+    let: "c2" := make_counter_2 "m" in
+    ("c1", "c2").
+End code.
+
+Section proof.
+  Context `{heapG Σ, LI : LockImpl, PI : PubImpl} (L : lock Σ) (P : pub Σ).
+  Context (N : namespace).
+  Let Nm : namespace := N .@ "pub".
+  Let Nlk : namespace := N .@ "lk".
+  Implicit Types f g : val.
+  Implicit Types n : Z.
+
+  Definition is_get_limits (lo hi : loc) (f : val) : iProp Σ := (
+    ∀ n1 n n2, {{{ lo ↦ #n1 ∗ hi ↦ #n2 ∗ ⌜n1 ≤ n ≤ n2⌝ }}} f #n
+    ?{{{ n'1 n'2, RET (#(Z.min n n'1), #(Z.max n n'2));
+      lo ↦ #(Z.min n n'1) ∗ hi ↦ #(Z.max n n'2) }}}
+  )%I.
+
+  Notation mixlo n := (λ n1 n2, Z.min n n2) (only parsing).
+  Notation mixhi n := (λ n1 n2, Z.max n n2) (only parsing).
+
+  Lemma mixlo_spec n :
+    is_mix (LamV <> (λ: "n2", min #n "n2")) (mixlo n).
+  Proof.
+    iIntros (n1 n2) "!#". iIntros (Φ) "_ HΦ". do 2!wp_lam.
+    by wp_apply (min_spec $! n n2 with "[]").
+  Qed.
+
+  Lemma mixhi_spec n :
+    is_mix (LamV <> (λ: "n2", max #n "n2")) (mixhi n).
+  Proof.
+    iIntros (n1 n2) "!#". iIntros (Φ) "_ HΦ". do 2!wp_lam.
+    by wp_apply (max_spec $! n n2 with "[]").
+  Qed.
+
+  Lemma get_limits_spec γ m lo hi :
+    {{{ heap_ctx ∗ is_membrane P Nm γ m ∗ is_pub P γ lo ∗ is_pub P γ hi }}}
+      get_limits PI m lo hi
+    {{{ f, RET f; is_get_limits lo hi f }}}.
+  Proof.
+    iIntros (Φ) "#(Hh & Hm & Hplo & Hphi) HΦ". do 3!wp_lam.
+    iApply "HΦ". clear Φ. iIntros (n1 n n2) "!#".
+      iIntros (Φ) "(Hlo & Hhi & %) HΦ". wp_lam.
+      wp_bind (get_limit _ _ _ _). rewrite of_val_rec.
+    wp_apply (get_limit_spec _ _ _ (mixlo n) with
+      "[$Hh $Hm $Hplo $Hlo]"); [by lia|by rewrite -mixlo_spec|].
+      iIntros (n'1) "Hlo". wp_let. wp_bind (get_limit _ _ _ _).
+      rewrite of_val_rec.
+    wp_apply (get_limit_spec _ _ _ (mixhi n) with
+      "[$Hh $Hm $Hphi $Hhi]"); [by lia|by rewrite -mixhi_spec|].
+      iIntros (n'2) "Hhi". wp_let.
+    by iApply ("HΦ" with "[$Hlo $Hhi]").
+  Qed.
+
+  Definition counter_2_res (γ : name P) (lo count hi : loc) : iProp Σ := (
+    ∃ n1 n n2, lo ↦ #n1 ∗ count ↦ # n ∗ hi ↦ #n2 ∗
+    is_pub P γ lo ∗ is_pub P γ hi ∗ ⌜n1 ≤ n ≤ n2⌝
+  )%I.
+
+  Lemma use_2_spec sync γ lo count hi :
+    {{{ heap_ctx ∗ is_sync sync (counter_2_res γ lo count hi) }}}
+      use_2 sync lo count hi
+    {{{ f, RET f; low f }}}.
+  Proof.
+    iIntros (Φ) "#(Hh & Hsync) HΦ". do 4!wp_lam.
+    iApply "HΦ". clear Φ. rewrite low_rec. iAlways. iNext.
+      iIntros (? Φ) "_ HΦ". wp_finish. rewrite/is_sync.
+    wp_apply ("Hsync" with "[%]"). iClear "Hsync". iIntros (Ψ) "HR HΨ".
+      iDestruct "HR" as (n1 n n2) "(Hlo & Hcount & Hhi & #Hplo & #Hphi & %)".
+    wp_apply wp_assert. do 2!wp_load. wp_op=>?; last by exfalso; lia.
+      iSplit; first done. iNext. wp_seq.
+    wp_apply wp_assert. do 2!wp_load. wp_op=>?; last by exfalso; lia.
+      iSplit; first done. iNext.
+    iApply ("HΨ" with "[Hlo Hcount Hhi] [HΦ]").
+    - iExists n1, n, n2. by iFrame "Hlo Hcount Hhi Hplo Hphi".
+    - iApply "HΦ". by simpl_low.
+  Qed.
+
+  Lemma decr_2_spec sync γ lo count hi f :
+    {{{ heap_ctx ∗ is_sync sync (counter_2_res γ lo count hi)
+    ∗ is_get_limits lo hi f }}}
+      decr_2 sync count f
+    {{{ f, RET f; low f }}}.
+  Proof.
+    iIntros (Φ) "#(Hh & Hsync & Hf) HΦ". do 3!wp_lam.
+    iApply "HΦ". clear Φ. rewrite low_rec. iAlways. iNext.
+      iIntros (? Φ) "_ HΦ". wp_finish. rewrite/is_sync.
+    wp_apply ("Hsync" with "[%]"). iClear "Hsync". iIntros (Ψ) "HR HΨ".
+      iDestruct "HR" as (n1 n n2) "(Hlo & Hcount & Hhi & #Hplo & #Hphi & %)".
+      wp_load. wp_op. wp_let. rewrite/is_get_limits.
+    wp_apply ("Hf" $! n1 (n - 1) n2 with "* [$Hlo $Hhi]").
+    - iPureIntro. lia.
+
+    - exact: Z.max_id.
+    - by rewrite -max_spec.
+    iIntros (hi) "Hlimit". wp_op=>?; wp_let; wp_if.
+    - wp_store. iApply ("HΨ" with "[Hcount Hlimit]");
+        last by iApply "HΦ"; simpl_low.
+      iExists _, _. iFrame "Hcount Hlimit Hpub". iPureIntro. by lia.
+    - iApply ("HΨ" with "[Hcount Hlimit]"); last by iApply "HΦ"; simpl_low.
+      iExists _, _. iFrame "Hcount Hlimit Hpub". iPureIntro. by lia.
+  Qed.
+
 
 (* PDS: Continue here. *)
 
 End proof.
-End client.
+End counter_2.
+*)
 
 (** * Public membrane implementation *)
 (**
 	We maintain a partial bijection between public locations and
 	their shadows. The table grows during allocation and matters
 	during wrapping and unwrapping.
+
+	One can easily arrange for [locin], [unwrap], and
+	[shadow_read] to make progress by (i) allocating a dummy
+	public location in [make_pub] and (ii) having [locin] send
+	unknown low locations to the dummy.
 *)
 Module code.
 Section code.
@@ -657,15 +776,15 @@ Section NearlyClosedProofs.
   Import spin_lock.
   Parameter extension : ∀ `{_ : heapG Σ}, heap_extension Σ.	(* PDS *)
 
-  Let Σ : gFunctors := #[ heapΣ ; spin_lock.lockΣ; proof.pubΣ ].
+  Let N : namespace := nroot .@ "example".
+  Let Σ : gFunctors := #[ heapΣ; spin_lock.lockΣ; proof.pubΣ ].
   Let lock : LockImpl := spin.
   Let pub : PubImpl := code.pub_membrane lock.
-  Let client_1 : expr := client.client_1 lock pub.
-  Let N : namespace := nroot .@ "example".
+  Let counter_1 : expr := counter_1.client lock pub.
 
-  Lemma client_1_safe C t2 σ2 :
+  Lemma counter_1_safe C t2 σ2 :
     AdvCtx C →
-    rtc step ([ctx_fill C client_1], good_state ∅) (t2, σ2) →
+    rtc step ([ctx_fill C counter_1], good_state ∅) (t2, σ2) →
     is_good σ2.
   Proof.
     move=>??. eapply (robust_safety Σ); try done.
@@ -673,8 +792,8 @@ Section NearlyClosedProofs.
     iIntros (G) "Hh".
     set L := spin_lock.
     set X := extension. set P := proof.pub_membrane X L.
-    iApply (client.client_1_spec L P N with "Hh"); auto with ndisj.
+    iApply (counter_1.client_spec L P N with "Hh"); auto with ndisj.
   Qed.
 End NearlyClosedProofs.
 
-Print Assumptions client_1_safe.
+Print Assumptions counter_1_safe.
