@@ -1,6 +1,4 @@
-From iris.program_logic Require Export weakestpre.
 From iris.proofmode Require Import coq_tactics.
-From iris.proofmode Require Export tactics.
 From iris.heap_lang Require Export proofmode_basics heap.
 Import uPred.
 
@@ -84,14 +82,6 @@ Proof.
   rewrite right_id. by apply later_mono, sep_mono_r, wand_mono.
 Qed.
 End heap.
-
-Tactic Notation "wp_apply" open_constr(lem) :=
-  iStartProof;
-  lazymatch goal with
-  | |- _ ⊢ wp ?p ?E ?e ?Q => reshape_expr e ltac:(fun K e' =>
-    wp_bind_core K; iApply lem; wp_finish)
-  | _ => fail "wp_apply: not a 'wp'"
-  end.
 
 Tactic Notation "wp_alloc" ident(l) "as" constr(H) :=
   iStartProof;

@@ -1,17 +1,222 @@
-From iris.heap_lang Require Export heap.
-From iris.heap_lang Require Import proofmode.
-From iris.proofmode Require Import tactics.
+From iris.heap_lang Require Export lifting.
+From iris.heap_lang Require Import proofmode_basics.
 Import uPred.
 
 Local Hint Resolve to_of_val.
+Local Notation ext R := (pointwise_relation _ R).
 
-(** * Eliminating lifted/low values *)
+(** * Lifting location predicates to value predicates *)
 (**
-  These lemmas are useful at the boundary between verified and
-  adversarial code.
+	Given a predicate [Ψ] on locations, the predicate [on_val Ψ]
+	on values lifts [Ψ] structurally. If [Ψ] is persistent, so is
+	[on_val Ψ].
+
+	[on_val Ψ] can be thought of as a semantic subtype of values
+	supporting introduction and elimination rules as follows.
+
+	_Introduction_: Lifted values (i) include all locations
+	satisfying [Ψ] and all base values and (ii) are closed under
+	function abstraction, pairing, and injections. See
+	[on_val_elim], [on_val_rec].
+
+	_Elimination_: Heap resources (q.v.) for lifted locations are
+	determined by [Ψ]; otherwise, eliminating a lifted value
+	produces a lifted value. See [on_val_app] and friends.
+*)
+Section definition.
+  Context `{irisG heap_lang Σ} (Ψ : loc → iProp Σ).
+
+  (**
+    When proving a function [on_val Ψ], one may use any invariant and
+    need not make progress.
+  *)
+  Definition on_val_pre (rec : val -c> iProp Σ) : val -c> iProp Σ := λ v,
+    match v with
+    | RecV f x e _ => □ ▷ ∀ v, rec v -∗
+      WP subst' x (of_val v) (subst' f (Rec f x e) e) ?{{ rec }}
+    | LocV l => Ψ l
+    | LitV _ | UnitV => True
+    | PairV v1 v2 => ▷(rec v1 ∗ rec v2)
+    | InjLV v | InjRV v => ▷(rec v)
+    end%I.
+
+  Instance on_val_pre_contractive : Contractive on_val_pre.
+  Proof.
+    rewrite /on_val_pre=> n rec rec' Hrec ?.
+    repeat (f_contractive || f_equiv); apply Hrec.
+  Qed.
+
+  Definition on_val_def : val → iProp Σ := fixpoint on_val_pre.
+  Definition on_val_aux : { x | x = @on_val_def }. by eexists. Qed.
+  Definition on_val := proj1_sig on_val_aux.
+  Definition on_val_eq : @on_val = @on_val_def := proj2_sig on_val_aux.
+
+  Lemma on_val_unfold v : on_val_def v ≡ on_val_pre on_val_def v.
+  Proof. exact: (fixpoint_unfold on_val_pre). Qed.
+
+  Lemma on_val_elim v :
+    on_val v ⊣⊢
+    match v with
+    | RecV f x e _ => □ ▷ ∀ v, on_val v -∗
+      WP subst' x (of_val v) (subst' f (Rec f x e) e) ?{{ on_val }}
+    | LocV l => Ψ l
+    | LitV _ | UnitV => True
+    | PairV v1 v2 => ▷(on_val v1 ∗ on_val v2)
+    | InjLV v | InjRV v => ▷(on_val v)
+    end%I.
+  Proof. rewrite on_val_eq on_val_unfold. by destruct v. Qed.
+
+  Lemma on_val_rec f x e `{!Closed (f :b: x :b: []) e} :
+    on_val (RecV f x e) ⊣⊢
+    □ ▷ ∀ v Φ, on_val v -∗ (∀ v', on_val v' -∗ Φ v') -∗
+    WP subst' x (of_val v) (subst' f (Rec f x e) e) ?{{ Φ }}.
+  Proof.
+    rewrite on_val_elim. iSplit.
+    - iIntros "#Hv !#". iNext. iIntros (v2 Φ) "Hv2". rewrite -wp_wand.
+      by iApply ("Hv" with "[$Hv2]").
+    - iIntros "#Hv !#". iNext. iIntros (v2) "Hv2".
+      iApply ("Hv" with "[$Hv2] []"). by iIntros.
+  Qed.
+
+  Section persistent.
+    Context (HΨ : ∀ l, PersistentP (Ψ l)).
+
+    Global Instance on_val_persistent v : PersistentP (on_val v).
+    Proof.
+      iIntros "Hv". iLöb as "IH" forall (v).
+      rewrite on_val_eq on_val_unfold. destruct v;
+      try by iDestruct "Hv" as "#Hv".
+      - rewrite always_later. iNext. iDestruct "Hv" as "(Hv1&Hv2)".
+        iDestruct ("IH" with "* Hv1") as "#Hv1'". iClear "Hv1".
+        iDestruct ("IH" with "* Hv2") as "#Hv2'". iClear "Hv2".
+        iAlways. by iFrame "#".
+      - rewrite always_later. iNext. by iSpecialize ("IH" with "* Hv").
+      - rewrite always_later. iNext. by iSpecialize ("IH" with "* Hv").
+    Qed.
+  End persistent.
+
+  Section timeless.
+    Context (HΨ : ∀ l, TimelessP (Ψ l)).
+
+    Global Instance on_val_lit_timeless lit : TimelessP (on_val (LitV lit)).
+    Proof.
+      by rewrite /TimelessP on_val_eq on_val_unfold pure_timeless.
+    Qed.
+  End timeless.
+End definition.
+
+Section compat.
+  Context `{irisG heap_lang Σ}.
+
+  Instance on_val_pre_ne n :
+    Proper (ext (dist n) ==> (=) ==> ext (dist n)) on_val_pre.
+  Proof. solve_proper. Qed.
+
+  Global Instance on_val_ne n :
+    Proper (ext (dist n) ==> (=) ==> dist n) on_val_pre.
+  Proof. solve_proper. Qed.
+
+  Global Instance on_val_pre_proper :
+    Proper (ext (≡) ==> (=) ==> (≡)) on_val_pre.
+  Proof. solve_proper. Qed.
+End compat.
+
+(**
+	We register no instances that unfold [on_val Ψ] functions.
+	Such reasoning is important and should be explicit.
+*)
+
+Section proofmode.
+  Context `{irisG heap_lang Σ} (Ψ : loc → iProp Σ).
+
+  Global Instance into_and_on_val p v1 v2 :
+    IntoAnd p (on_val Ψ (PairV v1 v2)) (▷ on_val Ψ v1) (▷ on_val Ψ v2).
+  Proof. apply mk_into_and_sep. by rewrite on_val_elim later_sep. Qed.
+
+  Global Instance from_sep_on_val v1 v2 :
+    FromSep (on_val Ψ (PairV v1 v2)) (▷ on_val Ψ v1) (▷ on_val Ψ v2).
+  Proof. by rewrite/FromSep (on_val_elim _ (PairV _ _)) later_sep. Qed.
+
+  Global Instance from_assumption_on_val_loc p l Q :
+    FromAssumption p (Ψ l) Q → FromAssumption p (on_val Ψ (LocV l)) Q.
+  Proof. by rewrite /FromAssumption on_val_elim. Qed.
+  Global Instance from_assumption_on_val_inl p v Q :
+    FromAssumption p (▷ on_val Ψ v) Q → FromAssumption p (on_val Ψ (InjLV v)) Q.
+  Proof. by rewrite /FromAssumption (on_val_elim _ (InjLV _)). Qed.
+  Global Instance from_assumption_on_val_inr p v Q :
+    FromAssumption p (▷ on_val Ψ v) Q → FromAssumption p (on_val Ψ (InjRV v)) Q.
+  Proof. by rewrite /FromAssumption (on_val_elim _ (InjRV _)). Qed.
+
+  Global Instance into_laterN_on_val_pair n v1 v2 Q1 Q2 :
+    IntoLaterN n (on_val Ψ v1) Q1 → IntoLaterN n (on_val Ψ v2) Q2 →
+    IntoLaterN (S n) (on_val Ψ (PairV v1 v2)) (Q1 ∗ Q2).
+  Proof.
+    rewrite /IntoLaterN (on_val_elim _ (PairV _ _))=>->->.
+    by rewrite -laterN_sep.
+  Qed.
+  Global Instance into_laterN_on_val_inl n v Q :
+    IntoLaterN n (on_val Ψ v) Q → IntoLaterN (S n) (on_val Ψ (InjLV v)) Q.
+  Proof. by rewrite /IntoLaterN (on_val_elim _ (InjLV _))=>->. Qed.
+  Global Instance into_laterN_on_val_inr n v Q :
+    IntoLaterN n (on_val Ψ v) Q → IntoLaterN (S n) (on_val Ψ (InjRV v)) Q.
+  Proof. by rewrite /IntoLaterN (on_val_elim _ (InjRV _))=>->. Qed.
+
+  Global Instance from_laterN_on_val_pair v1 v2 :
+    FromLaterN 1 (on_val Ψ (PairV v1 v2)) (on_val Ψ v1 ∗ on_val Ψ v2).
+  Proof. by rewrite /FromLaterN (on_val_elim _ (PairV _ _)). Qed.
+  Global Instance from_laterN_on_val_inl v :
+    FromLaterN 1 (on_val Ψ (InjLV v)) (on_val Ψ v).
+  Proof. by rewrite /FromLaterN (on_val_elim _ (InjLV _)). Qed.
+  Global Instance from_laterN_on_val_inr v :
+    FromLaterN 1 (on_val Ψ (InjRV v)) (on_val Ψ v).
+  Proof. by rewrite /FromLaterN (on_val_elim _ (InjRV _)). Qed.
+
+  Section loc_except_0.
+    Context (HΨ : ∀ l, IsExcept0 (Ψ l)).
+
+    Global Instance on_val_loc_except_0 l : IsExcept0 (on_val Ψ (LocV l)).
+    Proof. by rewrite /IsExcept0 on_val_elim is_except_0. Qed.
+  End loc_except_0.
+
+  Global Instance on_val_rec_except_0 f x e `{!Closed (f :b: x :b: []) e} :
+    IsExcept0 (on_val Ψ (RecV f x e)).
+  Proof.
+    by rewrite /IsExcept0 on_val_eq on_val_unfold except_0_always
+      except_0_later.
+  Qed.
+  Global Instance on_val_pair_except_0 v1 v2 :
+    IsExcept0 (on_val Ψ (PairV v1 v2)).
+  Proof. by rewrite /IsExcept0 on_val_eq on_val_unfold except_0_later. Qed.
+  Global Instance on_val_inl_except_0 v : IsExcept0 (on_val Ψ (InjLV v)).
+  Proof. by rewrite /IsExcept0 on_val_eq on_val_unfold except_0_later. Qed.
+  Global Instance on_val_inr_except_0 v : IsExcept0 (on_val Ψ (InjRV v)).
+  Proof. by rewrite /IsExcept0 on_val_eq on_val_unfold except_0_later. Qed.
+End proofmode.
+
+Typeclasses Opaque on_val.
+
+(** There are no ProofMode classes for "P ≡ True". *)
+Ltac simpl_on_val :=
+  repeat match goal with
+  | |- context [on_val ?Ψ (LocV ?l)] => rewrite (on_val_elim Ψ (LocV l))
+  | |- context [on_val ?Ψ (LitV ?lit)] => rewrite (on_val_elim Ψ (LitV lit))
+  | |- context [on_val ?Ψ UnitV] => rewrite (on_val_elim Ψ UnitV)
+  | |- context [on_val ?Ψ (PairV ?v1 ?v2)] => rewrite (on_val_elim Ψ (PairV v1 v2))
+  | |- context [on_val ?Ψ (InjLV ?v)] => rewrite (on_val_elim Ψ (InjLV v))
+  | |- context [on_val ?Ψ (InjRV ?v)] => rewrite (on_val_elim Ψ (InjRV v))
+  | |- context [(▷ True)%I] => rewrite later_True
+  end.
+(* Making these pervasive could be a bad idea. *)
+Local Hint Extern 5 => simpl_on_val.
+Local Hint Extern 1 (uPred_valid True) => unfold uPred_valid.
+
+(** * Eliminating lifted values *)
+(**
+	These lemmas are useful at the boundary between verified and
+	adversarial code.
 *)
 Section wp_on_val.
-  Context `{heapG Σ} (Ψ : loc → iProp Σ).
+  Context `{ownPG heap_lang Σ} (Ψ : loc → iProp Σ).
   Implicit Types e : expr.
   Implicit Types v : val.
 
@@ -235,64 +440,3 @@ Section wp_on_val.
     by iApply ("Hcas" with "Hv0 Hv2").
   Qed.
 End wp_on_val.
-
-(**
-  By the heap invariant, we can always inspect or modify the heap
-  on low values.
-*)
-Section wp_low_val.
-  Context `{heapG Σ}.
-  Implicit Types e : expr.
-  Implicit Types v : val.
-
-  Lemma wp_low_alloc E e :
-    ↑heapN ⊆ E →
-    heap_ctx -∗
-    WP e @ E ?{{ low }} -∗
-    WP Alloc e @ E ?{{ low }}.
-  Proof.
-    iIntros (?) "Hh He".
-    iApply (wp_on_val_alloc with "He [Hh]"). iIntros (v) "Hv".
-    iApply (wp_alloc_low with "[$Hh Hv]"); auto.
-    iNext. iIntros. by simpl_on_val.
-  Qed.
-
-  Lemma wp_low_load E e :
-    ↑heapN ⊆ E →
-    heap_ctx -∗
-    WP e @ E ?{{ low }} -∗
-    WP Load e @ E ?{{ low }}.
-  Proof.
-    iIntros (?) "Hh He".
-    iApply (wp_on_val_load with "He [Hh]"). iIntros (l) "Hl".
-    by iApply (wp_load_low with "[$Hh Hl]"); auto.
-  Qed.
-
-  Lemma wp_low_store E e1 e2:
-    ↑heapN ⊆ E →
-    heap_ctx -∗
-    WP e1 @ E ?{{ low }} -∗
-    WP e2 @ E ?{{ low }} -∗
-    WP Store e1 e2 @ E ?{{ low }}.
-  Proof.
-    iIntros (?) "Hh He1 He2".
-    iApply (wp_on_val_store with "He1 He2 [Hh]"). iIntros (l1 v2) "Hl1 Hv2".
-    iApply (wp_store_low with "[$Hh Hl1 Hv2]"); try auto.
-    iNext. iIntros. by simpl_on_val.
-  Qed.
-
-  Lemma wp_low_cas E e0 e1 e2 Φ1 :
-    ↑heapN ⊆ E →
-    heap_ctx -∗
-    WP e0 @ E ?{{ low }} -∗
-    WP e1 @ E ?{{ Φ1 }} -∗
-    WP e2 @ E ?{{ low }} -∗
-    WP CAS e0 e1 e2 @ E ?{{ low }}.
-  Proof.
-    iIntros (?) "Hh He0 He1 He2".
-    iApply (wp_on_val_cas with "He0 He1 He2 [Hh]").
-    iIntros (l0 v1 v2) "Hl0 Hv2".
-    iApply (wp_cas_low with "[$Hh Hl0 Hv2]"); try auto.
-    iNext. iIntros. by simpl_on_val.
-  Qed.
-End wp_low_val.

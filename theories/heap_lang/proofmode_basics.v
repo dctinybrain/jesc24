@@ -1,5 +1,4 @@
 From iris.program_logic Require Export weakestpre.
-From iris.proofmode Require Import coq_tactics.
 From iris.proofmode Require Export tactics.
 From iris.heap_lang Require Export tactics lifting.
 Import uPred.
@@ -175,4 +174,12 @@ Tactic Notation "wp_bind" open_constr(efoc) :=
     | efoc => unify e' efoc; wp_bind_core K
     end) || fail "wp_bind: cannot find" efoc "in" e
   | _ => fail "wp_bind: not a 'wp'"
+  end.
+
+Tactic Notation "wp_apply" open_constr(lem) :=
+  iStartProof;
+  lazymatch goal with
+  | |- _ ⊢ wp ?p ?E ?e ?Q => reshape_expr e ltac:(fun K e' =>
+    wp_bind_core K; iApply lem; wp_finish)
+  | _ => fail "wp_apply: not a 'wp'"
   end.
