@@ -135,12 +135,12 @@ Module counter_1.
 Section code.
   Context (LI : LockImpl) (PI : PubImpl).
 
-(* PDS: Should synchronize as in counter_2. *)
-  Definition get_limit : val := λ: "m" "r",
+  Definition get_limit : val := λ: "m" "f" "r",
     let: "n1" := ! "r" in
     ifint: shadow_read PI "m" "r" as "n2" =>
-      let: "n3" := max "n1" "n2" in
+      let: "n3" := "f" "n1" "n2" in
       let: <> := if: "n1" ≠ "n3" then "r" <- "n3" else () in
+      let: <> := if: "n2" ≠ "n3" then shadow_write PI "m" "r" "n3" else () in
       "n3"
     else (shadow_write PI "m" "r" "n1" ;; "n1").
 
@@ -151,7 +151,7 @@ Section code.
   Definition incr : val := λ: "m" "sync" "count" "limit" <>,
     "sync" (λ: <>,
       let: "n" := (! "count") + #1 in
-      let: "b" := "n" ≤ get_limit "m" "limit" in
+      let: "b" := "n" ≤ get_limit "m" max "limit" in
       let: <> := if: "b" then "count" <- "n" else () in
       "b"
     ).
@@ -177,24 +177,38 @@ Section proof.
   Implicit Types f g : val.
   Implicit Types n : Z.
 
-  Lemma get_limit_spec γ m l n1 :
-    {{{ heap_ctx ∗ is_membrane P Nm γ m ∗ is_pub P γ l ∗ l ↦ #n1 }}}
-      get_limit PI m l
-    ?{{{ n2, RET #(Z.max n1 n2); l ↦ #(Z.max n1 n2) }}}.
+  Lemma get_limit_spec γ m :
+    {{{ heap_ctx ∗ is_membrane P Nm γ m }}} get_limit PI m
+    ?{{{ g, RET g; ∀ f F l n1,
+      {{{ ⌜F n1 n1 = n1⌝ ∗ is_mix f F ∗ is_pub P γ l ∗ l ↦ #n1 }}} g f l
+      ?{{{ n2, RET #(F n1 n2); l ↦ #(F n1 n2) }}}
+    }}}.
   Proof.
-    iIntros (Φ) "(#Hh & #Hm & #Hpub & Hl) HΦ". do 2!wp_lam.
-      wp_load. wp_let.
+    iIntros (Φ) "#(Hh & Hm) HΦ". wp_lam.
+    iApply "HΦ". clear Φ. iIntros (f F l n1) "!#".
+      iIntros (Φ) "(HF & #Hf & #Hpub & Hl) HΦ". iDestruct "HF" as %HF.
+      do 2!wp_lam. wp_load. wp_let.
     wp_apply (shadow_read_spec with "[$Hm $Hpub]"). iIntros (v2) "Hv2".
     wp_apply (wp_forget_progress progress).
     wp_typecast Hint; wp_match.
     - destruct (is_int_val _ Hint) as (n2&->). wp_finish.
-      wp_apply (max_spec $! n1 n2 with "[]"); first done. iIntros "_". wp_let.
-      wp_op=>[EQ|?]; wp_op; wp_if.
-      + iApply "HΦ". by case: EQ=><-.
-      + wp_store. by iApply "HΦ".
+      wp_apply ("Hf" $! n1 n2 with "[]"); first done. iIntros "_". wp_let.
+      wp_op=>[EQ1|?]; wp_op; wp_if.
+      + wp_op=>[EQ2|?]; wp_op; wp_if.
+        * iApply "HΦ". by case: EQ1=><-.
+        * wp_apply (shadow_write_spec _ _ _ _ _ (#(F n1 n2))
+            with "[$Hm $Hpub]"); first by simpl_on_val. iIntros "_". wp_seq.
+            case: EQ1=>EQ1. rewrite {1}EQ1.
+          by iApply "HΦ".
+      + wp_store. wp_op=>[EQ2|?]; wp_op; wp_if.
+        * by iApply "HΦ".
+        * wp_apply (shadow_write_spec _ _ _ _ _ (#(F n1 n2))
+            with "[$Hm $Hpub]"); first by simpl_on_val. iIntros "_".
+            wp_seq.
+          by iApply "HΦ".
     - wp_apply (shadow_write_spec _ _ _ _ _ (#n1) with "[$Hm $Hpub]");
         first by simpl_on_val. iIntros "_". wp_seq.
-      rewrite -{1 4}(Z.max_id n1). by iApply "HΦ".
+      rewrite -{1 4}HF. by iApply "HΦ".
   Qed.
 
   Definition counter_res (γ : name P) (c hi : loc) : iProp Σ :=
@@ -230,7 +244,9 @@ Section proof.
     wp_apply ("Hsync" with "[%]"). iClear "Hsync". iIntros (Ψ) "HR HΨ".
       iDestruct "HR" as (n1 n2) "(Hc & Hhi & #Hphi & %)".
       wp_load. wp_op. wp_let.
-    wp_apply (get_limit_spec with "[$Hh $Hm $Hphi $Hhi]").
+    wp_apply (get_limit_spec with "[$Hh $Hm]"). iIntros (g) "Hg".
+    wp_apply ("Hg" $! _ Z.max _ n2 with "[$Hphi $Hhi]").
+    { iSplit. by rewrite (Z.max_id n2). by rewrite -max_spec. }
     iIntros (hi') "Hhi". wp_op=>?; wp_let; wp_if.
     - wp_store. iApply ("HΨ" with "[Hc Hhi]");
         last by iApply "HΦ"; simpl_low.
@@ -279,15 +295,7 @@ End counter_1.
 Module counter_2.
 Section code.
   Context (LI : LockImpl) (PI : PubImpl).
-
-  Definition get_limit : val := λ: "m" "f" "r",
-    let: "n1" := ! "r" in
-    ifint: shadow_read PI "m" "r" as "n2" =>
-      let: "n3" := "f" "n1" "n2" in
-      let: <> := if: "n1" ≠ "n3" then "r" <- "n3" else () in
-      let: <> := if: "n2" ≠ "n3" then shadow_write PI "m" "r" "n3" else () in
-      "n3"
-    else (shadow_write PI "m" "r" "n1" ;; "n1").
+  Let get_limit : val := counter_1.get_limit PI.
 
   Definition pick_lo : val := λ: "n" "lo1" "lo2",
     if: "lo2" ≤ "n" then "lo2" else "lo1".
@@ -349,40 +357,6 @@ Section proof.
   Implicit Types f g : val.
   Implicit Types n : Z.
 
-  Lemma get_limit_spec γ m :
-    {{{ heap_ctx ∗ is_membrane P Nm γ m }}} get_limit PI m
-    ?{{{ g, RET g; ∀ f F l n1,
-      {{{ ⌜F n1 n1 = n1⌝ ∗ is_mix f F ∗ is_pub P γ l ∗ l ↦ #n1 }}} g f l
-      ?{{{ n2, RET #(F n1 n2); l ↦ #(F n1 n2) }}}
-    }}}.
-  Proof.
-    iIntros (Φ) "#(Hh & Hm) HΦ". wp_lam.
-    iApply "HΦ". clear Φ. iIntros (f F l n1) "!#".
-      iIntros (Φ) "(HF & #Hf & #Hpub & Hl) HΦ". iDestruct "HF" as %HF.
-      do 2!wp_lam. wp_load. wp_let.
-    wp_apply (shadow_read_spec with "[$Hm $Hpub]"). iIntros (v2) "Hv2".
-    wp_apply (wp_forget_progress progress).
-    wp_typecast Hint; wp_match.
-    - destruct (is_int_val _ Hint) as (n2&->). wp_finish.
-      wp_apply ("Hf" $! n1 n2 with "[]"); first done. iIntros "_". wp_let.
-      wp_op=>[EQ1|?]; wp_op; wp_if.
-      + wp_op=>[EQ2|?]; wp_op; wp_if.
-        * iApply "HΦ". by case: EQ1=><-.
-        * wp_apply (shadow_write_spec _ _ _ _ _ (#(F n1 n2))
-            with "[$Hm $Hpub]"); first by simpl_on_val. iIntros "_". wp_seq.
-            case: EQ1=>EQ1. rewrite {1}EQ1.
-          by iApply "HΦ".
-      + wp_store. wp_op=>[EQ2|?]; wp_op; wp_if.
-        * by iApply "HΦ".
-        * wp_apply (shadow_write_spec _ _ _ _ _ (#(F n1 n2))
-            with "[$Hm $Hpub]"); first by simpl_on_val. iIntros "_".
-            wp_seq.
-          by iApply "HΦ".
-    - wp_apply (shadow_write_spec _ _ _ _ _ (#n1) with "[$Hm $Hpub]");
-        first by simpl_on_val. iIntros "_". wp_seq.
-      rewrite -{1 4}HF. by iApply "HΦ".
-  Qed.
-
   Definition PickLo (n lo1 lo2 : Z) : Z :=
     if decide (lo2 ≤ n) then lo2 else lo1.
   Definition PickHi (n hi1 hi2 : Z) : Z :=
@@ -422,12 +396,12 @@ Section proof.
     iIntros (Φ) "#(Hh & Hm & Hplo & Hphi) HΦ". do 4!wp_lam.
     iApply "HΦ". clear Φ. iIntros (n1 n n2) "!#".
       iIntros (Φ) "(Hlo & Hc & Hhi & %) HΦ". wp_lam. wp_load. wp_let.
-    wp_apply (get_limit_spec with "[$Hh $Hm]"). iIntros (g) "Hg".
+    wp_apply (counter_1.get_limit_spec with "[$Hh $Hm]"). iIntros (g) "Hg".
     wp_apply pick_lo_spec. iIntros (f) "Hf".
     wp_apply ("Hg" $! f (PickLo n) lo n1 with "[$Hf $Hplo $Hlo]");
       first by rewrite/PickLo; iPureIntro; case_decide.
       clear f g. iIntros (n'1) "Hlo". wp_let.
-    wp_apply (get_limit_spec with "[$Hh $Hm]"). iIntros (g) "Hg".
+    wp_apply (counter_1.get_limit_spec with "[$Hh $Hm]"). iIntros (g) "Hg".
     wp_apply pick_hi_spec. iIntros (f) "Hf".
     wp_apply ("Hg" $! f (PickHi n) hi n2 with "[$Hf $Hphi $Hhi]");
       first by rewrite/PickHi; iPureIntro; case_decide.
