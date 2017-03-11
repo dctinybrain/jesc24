@@ -8,8 +8,6 @@ From iris.proofmode Require Import tactics.
 From iris.heap_lang Require Import proofmode notation.
 Import uPred addenda.algebra_auth.
 
-(* PDS: Heap should actually define [lowval]. *)
-
 (** * Public membrane interface *)
 (**
 	As a matter of policy, we use [pub_ref] to "declare" _public
@@ -43,7 +41,6 @@ Arguments shadow_write _ : clear implicits.
 
 Section spec.
   Context `{heapG Σ} {PI : PubImpl}.
-  Notation lowval := (low : val → iProp Σ).
   Implicit Types v f : val.
 
   Structure pub := Pub {
@@ -138,6 +135,7 @@ Module counter_1.
 Section code.
   Context (LI : LockImpl) (PI : PubImpl).
 
+(* PDS: Should synchronize as in counter_2. *)
   Definition get_limit : val := λ: "m" "r",
     let: "n1" := ! "r" in
     ifint: shadow_read PI "m" "r" as "n2" =>
@@ -585,7 +583,7 @@ Module code.
 Section code.
   Context (LI : LockImpl).
 
-  Definition make_pub : val := λ: "locin",
+  Definition make_pub : val := λ: <>,
     let: "tbl" := ref bij_empty in
     let: "sync" := make_sync LI () in
     ("sync", "tbl").
@@ -599,13 +597,11 @@ Section code.
   Definition pub_unwrap : val := λ: "m", membrane (locin "m") (locout "m").
   Definition pub_ref : val := λ: "m" "x1",
     let: "x2" := pub_wrap "m" "x1" in
+    let: "r1" := ref "x1" in
+    let: "r2" := ref "x2" in
     let: "sync" := Fst "m" in let: "tbl" := Snd "m" in
-    "sync" (λ: <>,
-      let: "r1" := ref "x1" in
-      let: "r2" := ref "x2" in
-      "tbl" <- bij_insert_new (! "tbl") "r1" "r2";;
-      "r1"
-    ).
+    "sync" (λ: <>, "tbl" <- bij_insert_new (! "tbl") "r1" "r2") ;;
+    "r1".
   Definition shadow_read : val := λ: "m" "l",
     pub_unwrap "m" (! (locout "m" "l")).
   Definition shadow_write : val := λ: "m" "l" "x",
@@ -625,16 +621,11 @@ End code.
 Module proof.
 (** The CMRA we need. *)
 Local Notation locset := (gsetUR loc).
-Class pubG Σ := PubG { pub_locsG : inG Σ (authR locset) }.
+Class pubG Σ := PubG { pub_locsG :> inG Σ (authR locset) }.
 Definition pubΣ : gFunctors := #[ GFunctor (constRF (authR locset)) ].
-(*
- * Lower priority than [heapG]'s instance of [authR locset] so that
- * [liveloc l] cannot incorrectly refer to our instance.
- *)
-Existing Instance pub_locsG | 30.
 
 Instance subG_pubΣ {Σ} : subG pubΣ Σ → pubG Σ.
-Proof. intros [??]%subG_inv; constructor; apply _. Qed.
+Proof. intros [??]%subG_inv. constructor; apply _. Qed.
 
 Section proof.
   Context `{heapG Σ, pubG Σ, LI : LockImpl} (L : lock Σ) (N : namespace).
@@ -650,7 +641,7 @@ Section proof.
     (own γ (● (dom (gset loc) m1)) ∗ live (dom _ m1))%I.
 
   Definition publow (m2 : gmap loc val) : iProp Σ :=
-    ([∗ set] l2 ∈ dom (gset loc) m2, low l2)%I.
+    ([∗ set] l2 ∈ dom (gset loc) m2, low l2 ∗ liveloc l2)%I.
 
   Definition tbl_res (t : loc) (γ : gname) : iProp Σ := (
     ∃ bij m1 m2, t ↦ bij ∗ ⌜is_bij bij m1 m2⌝ ∗ pubhigh γ m1 ∗ publow m2
@@ -694,22 +685,12 @@ Section proof.
     apply auth_frag_alloc; try apply _. by apply to_gset_included.
   Qed.
 
-  Lemma pub_insert_dom {A} m (l : loc) (x : A) (Φ : loc → iProp Σ) :
-    m !! l = None →
-    ([∗ set] l ∈ dom (gset loc) m, Φ l) -∗ Φ l -∗
-    [∗ set] l ∈ dom (gset loc) (<[l := x]> m), Φ l.
-  Proof.
-    iIntros (?) "Hm Hl". rewrite dom_insert_L big_sepS_union;
-      last by rewrite disjoint_singleton_l not_elem_of_dom.
-    rewrite big_sepS_singleton. by iFrame "Hm Hl".
-  Qed.
-
-  Lemma pubhigh_alloc γ m1 l1 l2 :
+  Lemma pubhigh_alloc γ (m1 : gmap loc val) l1 l2 :
     m1 !! l1 = None →
-    pubhigh γ m1 -∗ liveloc l1 ==∗ pubhigh γ (<[l1:=l2]> m1).
+    own γ (● (dom (gset loc) m1)) -∗ live ({[l1]} ∪ dom _ m1) ==∗
+    pubhigh γ (<[l1:=l2]> m1).
   Proof.
-    iIntros (?) "(Hp&Ha) Ha1". rewrite/pubhigh.
-    iSplitL "Hp"; last by iApply (pub_insert_dom with "Ha Ha1").
+    iIntros (?) "Hp Ha". iSplitL "Hp"; last by rewrite dom_insert_L.
     rewrite -(own_mono _ _ (● dom (gset loc) (insert _ _ _)));
       last eapply cmra_included_l. iApply (own_update with "Hp").
     by eapply auth_update_alloc, gset_local_update,
@@ -718,8 +699,17 @@ Section proof.
 
   Lemma publow_alloc m2 l1 l2 :
     m2 !! l2 = None →
-    publow m2 -∗ low l2 -∗ publow (<[l2:=l1]> m2).
-  Proof. exact: pub_insert_dom. Qed.
+    low l2 -∗ ([∗ set] l ∈ dom (gset loc) m2, low l) -∗
+    live ({[l2]} ∪ dom (gset loc) m2) -∗
+    publow (<[l2:=l1]> m2).
+  Proof.
+    iIntros (?) "Hl2 Hlo Hlive". rewrite /publow dom_insert_L.
+    rewrite !big_sepS_union;
+      try by rewrite disjoint_singleton_l not_elem_of_dom.
+    rewrite !big_sepS_singleton. iFrame "Hl2".
+    iDestruct "Hlive" as "[Hlive2 Hlive]". iFrame "Hlive2".
+    by iCombine "Hlo" "Hlive" as "?".
+  Qed.
 
   (** Operations *)
 
@@ -733,7 +723,7 @@ Section proof.
     wp_apply (make_sync_spec L _ _ (tbl_res t γ) with "[$Hh Ht Hγ]").
     - solve_ndisj.
     - iExists bij_empty, ∅, ∅.
-      rewrite /pubhigh /publow /live dom_empty_L 2!big_sepS_empty.
+      rewrite /pubhigh /publow dom_empty_L 2!big_sepS_empty.
       iFrame "Ht Hγ". iPureIntro. exact: bij_empty_spec.
     iIntros (sync) "#Hsync". wp_let. iModIntro.
     iApply ("HΦ" $! _ γ). iExists t, sync. by iFrame "% Hh Hsync".
@@ -755,7 +745,7 @@ Section proof.
         [(v1&?)%to_gset_included ?]%auth_valid_discrete_2.
     wp_apply (bij_lookup_partial_Some_spec _ _ _ _ _ l1 with "Hbij")=>//.
       iIntros (l2) "[%%]". subst.
-      iDestruct (big_sepS_elem_of _ _ l2 with "Hlo") as "Hl2";
+      iDestruct (big_sepS_elem_of _ _ l2 with "Hlo") as "[Hl2 _]";
         first by apply elem_of_dom; exists l1.
     iApply ("HΨ" with "[Ht Hp Ha]");
       first by iExists bij, m1, m2; iFrame "Ht Hbij Hp Ha Hlo".
@@ -817,28 +807,26 @@ Section proof.
       rewrite monP_triple.
     wp_apply ("Hwrap" $! v with "Hv"). iIntros (v2) "Hv2". wp_let.
       iDestruct "Hm" as (t sync) "(% & Hh & % & Hsync)". subst.
-      do 2!(wp_proj; wp_let). rewrite/is_sync.
+    wp_apply (wp_alloc_fresh with "Hh"); auto.
+      iIntros (l1) "[Hl1 Hf1]". wp_let.
+    wp_apply (wp_alloc_low_fresh with "[$Hh $Hv2]"); auto.
+      iIntros (l2) "[Hl2 Hf2]". wp_let. do 2!(wp_proj; wp_let). rewrite/is_sync.
     wp_apply ("Hsync" with "[%]"). iClear "Hsync".
       iIntros (Ψ) "HR HΨ".
-      iDestruct "HR" as (bij m1 m2) "(Ht & #Hbij & (Hp & #Ha) & #Hlo)".
-    wp_apply (wp_alloc_live with "[$Hh $Ha]"); auto.
-      iIntros (l1) "(Hl1&Hm1)". iDestruct "Hm1" as %Hm1.
-      wp_let.
-    wp_apply (wp_alloc_low_live _ _ _ _ (dom (gset loc) m2)
-      with "[$Hh Hlo $Hv2]"); auto;
-      first by iApply (big_sepS_mono' _ _ _ low_live with "Hlo").
-      iIntros (l2) "(#Hl2&Hm2)". iDestruct "Hm2" as %Hm2.
-      wp_let. wp_load. rewrite -> not_elem_of_dom in Hm1, Hm2.
+      iDestruct "HR" as (bij m1 m2) "(Ht & #Hbij & [Hp Ha1] & [Hlo Ha2])".
+    iMod (heap_mark_live with "Hh Hf1 Ha1") as "[Hm1 Ha1]"; first done.
+      iDestruct "Hm1" as %?%not_elem_of_dom.
+    iMod (heap_mark_live with "Hh Hf2 Ha2") as "[Hm2 Ha2]"; first done.
+      iDestruct "Hm2" as %?%not_elem_of_dom. wp_load.
     wp_apply (bij_insert_new_spec _ _ _ l1 l2 with "* [$Hbij]"); auto.
       iIntros (bij') "{Hbij} #Hbij". rewrite -wp_fupd. wp_store.
-      iDestruct (mapsto_live with "Hl1") as "#Ha1".
-      iMod (pubhigh_alloc _ _ _ l2 with "[$Hp $Ha] Ha1") as "Hhi"=>//.
-      iMod (pubhigh_obs with "Hhi") as "(Hhi & Hpub)";
-        first by rewrite lookup_insert; exists l2. iModIntro.
-      iDestruct (publow_alloc _ l1 with "Hlo Hl2") as "Hlo2"=>//.
-    iApply ("HΨ" with "[Ht Hhi Hlo2]");
-      first by iExists _, _, _; iFrame "Ht Hbij Hhi Hlo2".
-    by iApply ("HΦ" with "[$Hpub $Hl1]").
+    iMod (pubhigh_alloc _ _ _ l2 with "Hp Ha1") as "Hhi"=>//.
+    iMod (pubhigh_obs _ _ l1 with "Hhi") as "(Hhi & Hpub)";
+      first by exists l2; rewrite lookup_insert.
+    iDestruct (publow_alloc _ l1 with "Hl2 Hlo Ha2") as "Hlo"=>//.
+    iApply ("HΨ" with "[Ht Hhi Hlo]");
+      first by iExists _, _, _; iFrame "Ht Hbij Hhi Hlo".
+     wp_seq. by iApply ("HΦ" with "[$Hl1 $Hpub]").
   Qed.
 
   Lemma shadow_write_spec γ m l v :
