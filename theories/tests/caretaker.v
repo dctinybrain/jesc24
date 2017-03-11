@@ -24,7 +24,6 @@ End loc_ct_code.
 
 Section loc_ct_proof.
   Context `{heapG Σ, CI : CaretakerImpl} (C : caretaker Σ).
-  Notation lowval := (low : val → iProp Σ).
 
   Definition is_rmon (p1 : pbit) (v : val) (Ψ : val → iProp Σ) : iProp Σ :=
     is_mon p1 v Ψ (λ v1 v2, (lowval v2 ∗ Ψ v1)%I).
@@ -224,7 +223,7 @@ Section even_proof.
       [done | iSplitL; clear Φ |].
     - iIntros (v) "!#". iIntros (Φ) "#Hv HΦ".
       wp_apply (assert_even_spec with "Hv"). iIntros "_".
-      iApply "HΦ". rewrite -is_even_low. by iFrame "Hv".
+      iApply "HΦ". rewrite -low_val_eq -is_even_low. by iFrame "Hv".
     - iIntros (v) "!#". iIntros (Φ) "_ HΦ".
       wp_apply assume_even_spec. iIntros "Hv".
       iApply "HΦ". by iFrame.
