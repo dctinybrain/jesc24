@@ -195,8 +195,6 @@ Section inert.
   Implicit Types l : loc.
   Implicit Types f g : val.
 
-  Notation lowval := (low : val → iProp Σ).
-
   Lemma inert_wrap_spec p0 E0 p1 vout :
     {{{ is_monP p1 vout (const True) low }}}
       membrane vout @ p0; E0
