@@ -570,9 +570,8 @@ Section code.
   Definition pub_wrap : val := λ: "m", membrane (locout "m") (locin "m").
   Definition pub_unwrap : val := λ: "m", membrane (locin "m") (locout "m").
   Definition pub_ref : val := λ: "m" "x1",
-    let: "x2" := pub_wrap "m" "x1" in
     let: "r1" := ref "x1" in
-    let: "r2" := ref "x2" in
+    let: "r2" := ref (pub_wrap "m" "x1") in
     let: "sync" := Fst "m" in let: "tbl" := Snd "m" in
     "sync" (λ: <>, "tbl" <- bij_insert_new (! "tbl") "r1" "r2") ;;
     "r1".
@@ -777,12 +776,13 @@ Section proof.
     {{{ l, RET LocV l; is_pub γ l ∗ l ↦ v }}}.
   Proof.
     iIntros (Φ) "#(Hm & Hv) HΦ". wp_lam. wp_lam.
-    wp_apply (pub_wrap_spec with "Hm"). iIntros (wrap) "Hwrap".
-      rewrite monP_triple.
-    wp_apply ("Hwrap" $! v with "Hv"). iIntros (v2) "Hv2". wp_let.
-      iDestruct "Hm" as (t sync) "(% & Hh & % & Hsync)". subst.
+      iDestruct(persistentP with "Hm") as "#Hm2".
+      iDestruct "Hm2" as (t sync) "(% & Hh & % & Hsync)". subst.
     wp_apply (wp_alloc_fresh with "Hh"); auto.
       iIntros (l1) "[Hl1 Hf1]". wp_let.
+    wp_apply (pub_wrap_spec with "Hm"). iIntros (wrap) "Hwrap".
+      rewrite monP_triple.
+    wp_apply ("Hwrap" $! v with "Hv"). iIntros (v2) "Hv2".
     wp_apply (wp_alloc_low_fresh with "[$Hh $Hv2]"); auto.
       iIntros (l2) "[Hl2 Hf2]". wp_let. do 2!(wp_proj; wp_let). rewrite/is_sync.
     wp_apply ("Hsync" with "[%]"). iClear "Hsync".
