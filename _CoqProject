@@ -120,11 +120,13 @@ theories/heap_lang/lib/caretaker.v
 theories/heap_lang/lib/constructor.v
 theories/heap_lang/lib/monitor.v
 theories/heap_lang/lib/membrane.v
+theories/heap_lang/lib/maps.v
+theories/heap_lang/lib/sealing.v
 theories/heap_lang/adequacy.v
 theories/tests/readonly.v
 theories/tests/caretaker.v
-theories/tests/maps.v
 theories/tests/membrane.v
+theories/tests/sealing.v
 theories/tests/lock.v
 theories/tests/on_val.v
 theories/tests/heap_lang.v

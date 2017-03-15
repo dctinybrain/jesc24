@@ -2,8 +2,8 @@ From iris.algebra Require Import auth gmap coPset.
 From iris.heap_lang Require addenda.
 From iris.heap_lang Require Import heap adequacy.
 From iris.heap_lang.lib Require Import membrane abort assume lock.
+From iris.heap_lang.lib Require Import maps.
 From iris.heap_lang.lib Require spin_lock.
-From iris.tests Require Import maps.
 From iris.proofmode Require Import tactics.
 From iris.heap_lang Require Import proofmode notation.
 Import uPred addenda.algebra_auth.
