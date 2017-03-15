@@ -14,8 +14,17 @@ From iris.heap_lang Require Import proofmode notation.
 *)
 Definition map_empty : val := InjLV ().
 
-Definition map_insert_new: val := λ: "map" "k" "v",
+Definition map_insert_new : val := λ: "map" "k" "v",
   InjR ("k", "v", "map").
+
+Definition map_insert : val := rec: "insert" "map" "k" "v" :=
+  match: "map" with
+    InjL "x" => InjR ("k", "v", InjL ())
+  | InjR "cons" =>
+    let: "kv" := Fst "cons" in
+    let: "map" := "insert" (Snd "cons") "k" "v" in
+    if: Fst "kv" = "k" then "map" else InjR ("kv", "map")
+  end.
 
 Definition map_lookup : val := rec: "lookup" "map" "k" :=
   match: "map" with
@@ -66,6 +75,30 @@ Section map.
     iApply "HΦ". iDestruct "Hm" as (kvs) "[%%]". subst.
     iExists ((k,v) :: kvs). iSplitL; iPureIntro.
     by exists map. by rewrite map_of_list_cons.
+  Qed.
+
+  Lemma map_insert_spec map p E m k v :
+    {{{ is_map map m }}}
+      map_insert map (fK k) v @ p; E
+    {{{ map', RET map'; is_map map' (<[k:=v]>m) }}}.
+  Proof.
+    iIntros (Φ) "Hm HΦ".
+    iLöb as "IH" forall (map m Φ) "Hm HΦ". wp_rec. do 2!wp_lam.
+      iDestruct "Hm" as (kvs) "[Hrep %]". iDestruct "Hrep" as %Hrep. subst.
+    case: kvs Hrep=>/=[->|[k' v'] kvs [] map' [] -> Hrep].
+    - wp_match. iApply "HΦ". iExists [(k, v)]. iSplitL; iPureIntro.
+      by exists (InjLV ()). by rewrite map_of_list_cons.
+    wp_finish. wp_match. wp_proj. wp_let. wp_proj.
+    wp_bind (map_insert _ _ _).
+    wp_apply ("IH" $! map' (map_of_list kvs) with "[]").
+    - by iExists kvs; auto.
+    clear map. iIntros (map) "Hm". wp_let. wp_proj.
+    wp_op=>[/(inj fK)EQ|NEQ]; wp_if.
+    - subst. iApply "HΦ". rewrite insert_insert. by iFrame.
+    - iApply "HΦ". iDestruct "Hm" as (kvs') "[% EQ]". iDestruct "EQ" as %EQ.
+      iExists ((k', v') :: kvs'). iSplitL; iPureIntro; first by exists map.
+      have {NEQ}?: k' ≠ k by move=>?; subst.
+      by rewrite insert_commute // map_of_list_cons -EQ.
   Qed.
 
   Lemma map_lookup_None map p E m k Φ :

@@ -5,20 +5,6 @@ Import uPred.
 
 Local Notation ext R := (pointwise_relation _ R).
 
-(* PDS: Missing map ops. *)
-Definition map_insert : val := ().
-Section map_insert.
-  Context `{heapG Σ} `{EqDecision K, Countable K, fK : constructor K}.
-  Implicit Types k : K.
-  Implicit Types v : val.
-
-  Lemma map_insert_spec map p E m k v :
-    {{{ is_map map m }}}
-      map_insert map (fK k) v @ p; E
-    {{{ map', RET map'; is_map map' (<[k:=v]>m) }}}.
-  Admitted.
-End map_insert.
-
 (** * Dynamic sealing interface *)
 (**
 	Dynamic sealing offers protection analogous to the static
