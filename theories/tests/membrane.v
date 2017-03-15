@@ -617,7 +617,7 @@ Section proof.
     ([∗ set] l2 ∈ dom (gset loc) m2, low l2 ∗ liveloc l2)%I.
 
   Definition tbl_res (t : loc) (γ : gname) : iProp Σ := (
-    ∃ bij m1 m2, t ↦ bij ∗ ⌜is_bij bij m1 m2⌝ ∗ pubhigh γ m1 ∗ publow m2
+    ∃ bij m1 m2, t ↦ bij ∗ is_bij bij m1 m2 ∗ pubhigh γ m1 ∗ publow m2
   )%I.
 
   Definition is_membrane (γ : gname) (m : val) : iProp Σ := (
@@ -697,7 +697,7 @@ Section proof.
     - solve_ndisj.
     - iExists bij_empty, ∅, ∅.
       rewrite /pubhigh /publow dom_empty_L 2!big_sepS_empty.
-      iFrame "Ht Hγ". iPureIntro. exact: bij_empty_spec.
+      iFrame "Ht Hγ". by auto.
     iIntros (sync) "#Hsync". wp_let. iModIntro.
     iApply ("HΦ" $! _ γ). iExists t, sync. by iFrame "% Hh Hsync".
   Qed.

@@ -13,9 +13,9 @@ Section map_insert.
   Implicit Types v : val.
 
   Lemma map_insert_spec map p E m k v :
-    {{{ ⌜is_map map m⌝ }}}
+    {{{ is_map map m }}}
       map_insert map (fK k) v @ p; E
-    {{{ map', RET map'; ⌜is_map map' (<[k:=v]>m)⌝ }}}.
+    {{{ map', RET map'; is_map map' (<[k:=v]>m) }}}.
   Admitted.
 End map_insert.
 
@@ -160,7 +160,7 @@ Section proof.
   Notation ext R := (pointwise_relation _ R).
 
   Definition tbl_res (l : loc) (φ : val → iProp Σ) : iProp Σ := (
-    ∃ map m, l ↦ map ∗ ⌜is_map (K:=loc) map m⌝ ∗ □ [∗ map] v ∈ m, φ v
+    ∃ map m, l ↦ map ∗ is_map (K:=loc) map m ∗ □ [∗ map] v ∈ m, φ v
   )%I.
 
   Definition is_sealer_unsealer (l : loc) (v : val) (φ : val → iProp Σ) : iProp Σ := (
@@ -193,9 +193,8 @@ Section proof.
   Proof.
     iIntros (? Φ) "#Hh HΦ". wp_lam. wp_alloc l as "Hl". wp_let.
     wp_apply (make_sync_spec L _ N (tbl_res l φ) with "[$Hh Hl]")=>//.
-    { iExists map_empty, ∅. iFrame "Hl". iSplitL.
-      - iPureIntro. exact: map_empty_spec.
-      - iAlways. by rewrite big_sepM_empty. }
+    { iExists map_empty, ∅. iFrame "Hl". iSplitL; auto. iAlways.
+      by rewrite big_sepM_empty. }
     iIntros (sync) "Hsync". wp_let.
     iApply "HΦ". iExists sync. by iFrame "% Hh Hsync".
   Qed.
@@ -252,11 +251,11 @@ Section proof.
     (* PDS: End hack. *)
     rewrite/is_sync.
     wp_apply ("Hsync" with "[%]"). iIntros (Ψ) "HR HΨ".
-      iDestruct "HR" as (map m) "(Hl & % & #Hrng)". wp_load.
-    wp_apply (map_lookup_partial_spec _ _  _ k with "[%]")=>//.
+      iDestruct "HR" as (map m) "(Hl & #Hm & #Hrng)". wp_load.
+    wp_apply (map_lookup_partial_spec _ _  _ k with "Hm")=>//.
       iIntros (v'') "%".
     iApply ("HΨ" with "[Hl]").
-    - iExists map, m. iFrame "% Hl". iAlways. by iFrame "Hrng".
+    - iExists map, m. iFrame "Hl Hm". iAlways. by iFrame "Hrng".
     - iApply "HΦ". by rewrite -(big_sepM_lookup (λ k v, φ v) m k v'').
   Qed.
 End proof.

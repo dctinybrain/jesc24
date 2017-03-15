@@ -46,63 +46,68 @@ Section map.
 	the finite partial function [m]. These proofs aren't tricky;
 	they amount to boring bookkeeping lemmas.
   *)
-  Definition is_map (map : val) (m : gmap K val) : Prop :=
-    ∃ kvs, map_rep map kvs ∧ m = map_of_list kvs.
+  Definition is_map (v : val) (m : gmap K val) : iProp Σ :=
+    (∃ kvs, ⌜map_rep v kvs⌝ ∗ ⌜m = map_of_list kvs⌝)%I.
+
+  Global Instance is_map_timeless v m : TimelessP (is_map v m).
+  Proof. apply _. Qed.
+  Global Instance is_map_persistent v m : PersistentP (is_map v m).
+  Proof. apply _. Qed.
 
   Lemma map_empty_spec : is_map map_empty ∅.
-  Proof. exists []. by simplify_map_eq. Qed.
+  Proof. iExists []. by iSplitL; simplify_map_eq. Qed.
 
   Lemma map_insert_new_spec map p E m k v :
-    {{{ ⌜is_map map m⌝ ∗ ⌜m !! k = None⌝ }}}
+    {{{ is_map map m ∗ ⌜m !! k = None⌝ }}}
       map_insert_new map (fK k) v @ p; E
-    {{{ map', RET map'; ⌜is_map map' (<[k:=v]>m)⌝ }}}.
+    {{{ map', RET map'; is_map map' (<[k:=v]>m) }}}.
   Proof.
     iIntros (Φ) "(Hm&%) HΦ". wp_rec. wp_lam. wp_lam.
-    iApply "HΦ". iDestruct "Hm" as %(kvs&?&?). iPureIntro.
-    subst. exists ((k,v) :: kvs). split.
+    iApply "HΦ". iDestruct "Hm" as (kvs) "[%%]". subst.
+    iExists ((k,v) :: kvs). iSplitL; iPureIntro.
     by exists map. by rewrite map_of_list_cons.
   Qed.
 
   Lemma map_lookup_None map p E m k Φ :
     m !! k = None →
-    ⌜is_map map m⌝ -∗ ▷ Φ NONEV -∗
+    is_map map m -∗ ▷ Φ NONEV -∗
     WP map_lookup map (fK k) @ p; E {{ Φ }}.
   Proof.
     iIntros (Hdom) "Hm HΦ".
     iLöb as "IH" forall (map m Hdom). wp_rec. wp_lam.
-      iDestruct "Hm" as %(kvs&Hrep&?). subst.
+      iDestruct "Hm" as (kvs) "[Hrep %]". iDestruct "Hrep" as %Hrep. subst.
     case: kvs Hrep Hdom=>/=[->|[k' v] kvs [] map' [] -> Hrep] Hdom.
     - wp_match. wp_apply wp_assert. wp_op=>?//.
       iSplit; first done. iNext. by wp_seq.
     wp_finish. wp_match. wp_proj. wp_let. wp_proj. wp_op=>[EQ|NEQ].
     - exfalso. move: EQ Hdom => /(inj fK)->. by simplify_map_eq.
     wp_if. wp_proj.
-    wp_apply ("IH" with "[%] [%] [$HΦ]"); last by exists kvs.
+    wp_apply ("IH" with "[%] [] [$HΦ]"); last by iExists kvs; iSplit.
     rewrite /= lookup_insert_ne // in Hdom=>?. by subst.
   Qed.
 
   Lemma map_lookup_Some map p E m k v Φ :
     m !! k = Some v →
-    ⌜is_map map m⌝ -∗ ▷ Φ (SOMEV v) -∗
+    is_map map m -∗ ▷ Φ (SOMEV v) -∗
     WP map_lookup map (fK k) @ p; E {{ Φ }}.
   Proof.
     iIntros (Hdom) "Hm HΦ".
     iLöb as "IH" forall (map m Hdom). wp_rec. wp_lam.
-      iDestruct "Hm" as %(kvs&Hrep&?). subst.
+      iDestruct "Hm" as (kvs) "[Hrep %]". iDestruct "Hrep" as %Hrep. subst.
     case: kvs Hrep Hdom=>/=[->|[k' v'] kvs [] map' [] -> Hrep] Hdom.
     - exfalso. by simplify_map_eq.
     wp_finish. wp_match. wp_proj. wp_let. wp_proj. wp_op=>[EQ|NEQ].
     - wp_if. wp_proj. move: EQ Hdom => /(inj fK)->Hdom.
       simplify_map_eq. iExact "HΦ".
     wp_if. wp_proj.
-    wp_apply ("IH" with "[%] [%] [$HΦ]"); last by exists kvs.
+    wp_apply ("IH" with "[%] [] [$HΦ]"); last by iExists kvs; iSplit.
     rewrite /= lookup_insert_ne // in Hdom=>?. by subst.
   Qed.
 
   Lemma map_lookup_spec map p E m k P Φ :
     (m !! k = None → P ⊢ ▷ Φ NONEV) →
     (∀ v, m !! k = Some v → P ⊢ ▷ Φ (SOMEV v)) →
-    P ⊢ ⌜is_map map m⌝ -∗ WP map_lookup map (fK k) @ p; E {{ Φ }}.
+    P ⊢ is_map map m -∗ WP map_lookup map (fK k) @ p; E {{ Φ }}.
   Proof.
     iIntros (Hn Hs) "Hp Hm". destruct (m !! k) as [v|] eqn:?.
     - iApply (map_lookup_Some with "Hm"). done. by iApply (Hs with "Hp").
@@ -110,7 +115,7 @@ Section map.
   Qed.
 
   Lemma map_lookup_partial_spec map E m k :
-    {{{ ⌜is_map map m⌝ }}} map_lookup_partial map (fK k) @ E
+    {{{ is_map map m }}} map_lookup_partial map (fK k) @ E
     ?{{{ v, RET v; ⌜m !! k = Some v⌝ }}}.
   Proof.
     iIntros (Φ) "Hm HΦ". wp_lam. wp_lam.
@@ -121,7 +126,7 @@ Section map.
 
   Lemma map_lookup_partial_Some_spec p E map m k v :
     m !! k = Some v →
-    {{{ ⌜is_map map m⌝ }}} map_lookup_partial map (fK k) @ p; E
+    {{{ is_map map m }}} map_lookup_partial map (fK k) @ p; E
     {{{ RET v; True }}}.
   Proof.
     iIntros (? Φ) "Hm HΦ". wp_lam. wp_lam.
@@ -129,7 +134,8 @@ Section map.
     by iApply "HΦ".
   Qed.
 End map.
-Hint Resolve map_empty_spec.
+Typeclasses Opaque is_map.
+Hint Extern 1 (_ ⊢ is_map map_empty ∅) => rewrite -map_empty_spec.
 
 (** * Partial bijections *)
 (**
@@ -163,30 +169,33 @@ Section bij.
 	The proposition [is_bij v m1 m2] means that value [v]
 	represents the partial bijection [m1, m2]. These proofs aren't
 	tricky; they amount to boring bookkeeping lemmas.
-
-	TODO: It would be nice to write simply [is_bij v m] with a
-	side-conditon [m] a partial bijection.
   *)
   Definition identity (m1 m2 : gmap K val) : Prop :=
     ∀ k1 v2, m1 !! k1 = Some v2 → ∃ k2, v2 = fK k2 ∧ m2 !! k2 = Some (fK k1).
 
-  Definition is_bij (bij : val) (m1 m2 : gmap K val) : Prop :=
-    ∃ v1 v2, bij = (v1, v2)%V ∧ is_map v1 m1 ∧ is_map v2 m2 ∧
-    identity m1 m2 ∧ identity m2 m1.
+  Definition is_bij (v : val) (m1 m2 : gmap K val) : iProp Σ := (
+    ∃ v1 v2, ⌜v = (v1, v2)%V⌝ ∗ is_map v1 m1 ∗ is_map v2 m2 ∗
+    ⌜identity m1 m2⌝ ∗ ⌜identity m2 m1⌝
+  )%I.
+
+  Global Instance is_bij_timeless v m1 m2 : TimelessP (is_bij v m1 m2).
+  Proof. apply _. Qed.
+  Global Instance is_bij_persistent v m1 m2 : PersistentP (is_bij v m1 m2).
+  Proof. apply _. Qed.
 
   Lemma empty_id : identity ∅ ∅.
   Proof. rewrite/identity. intros. by simplify_map_eq. Qed.
   Hint Resolve empty_id.
 
   Lemma bij_empty_spec : is_bij bij_empty ∅ ∅.
-  Proof. by eexists _, _; auto. Qed.
+  Proof. iExists map_empty, map_empty. by auto. Qed.
 
   Lemma bij_invert_spec p E bij m1 m2 :
-    {{{ ⌜is_bij bij m1 m2⌝ }}} bij_invert bij @ p; E
-    {{{ bij', RET bij'; ⌜is_bij bij' m2 m1⌝ }}}.
+    {{{ is_bij bij m1 m2 }}} bij_invert bij @ p; E
+    {{{ bij', RET bij'; is_bij bij' m2 m1 }}}.
   Proof.
     iIntros (Φ) "Hm HΦ". wp_lam.
-      iDestruct "Hm" as (v1 v2) "(Hv&%&%&%&%)".
+      iDestruct "Hm" as (v1 v2) "(Hv&?&?&%&%)".
       iDestruct "Hv" as %->. wp_proj. wp_proj.
     iApply "HΦ". iExists v2, v1. by auto.
   Qed.
@@ -202,19 +211,20 @@ Section bij.
   Qed.
 
   Lemma bij_insert_new_spec p E bij k1 k2 m1 m2 :
-    {{{ ⌜is_bij bij m1 m2⌝ ∗ ⌜m1 !! k1 = None⌝ ∗ ⌜m2 !! k2 = None⌝ }}}
+    {{{ is_bij bij m1 m2 ∗ ⌜m1 !! k1 = None⌝ ∗ ⌜m2 !! k2 = None⌝ }}}
       bij_insert_new bij (fK k1) (fK k2) @ p; E
-    {{{ bij', RET bij'; ⌜is_bij bij' (<[k1:=fK k2]>m1) (<[k2:=fK k1]>m2)⌝ }}}.
+    {{{ bij', RET bij'; is_bij bij' (<[k1:=fK k2]>m1) (<[k2:=fK k1]>m2) }}}.
   Proof.
     iIntros (Φ) "(Hm & #Hdom1 & #Hdom2) HΦ". wp_lam. wp_let. wp_let.
       iDestruct "Hm" as (v1 v2) "(Hv&Hm1&Hm2&%&%)".
       iDestruct "Hv" as %->. wp_proj.
     wp_apply (map_insert_new_spec with "[$Hm1 $Hdom1]").
-      iIntros (v'1) "%". wp_let. wp_proj.
+      iIntros (v'1) "?". wp_let. wp_proj.
     wp_apply (map_insert_new_spec with "[$Hm2 $Hdom2]").
-      iIntros (v'2) "%". wp_let.
+      iIntros (v'2) "?". wp_let.
     iApply "HΦ". iDestruct "Hdom1" as "%". iDestruct "Hdom2" as "%".
-    iPureIntro. eexists _, _. naive_solver auto using insert_id.
+    iExists v'1, v'2. iFrame. iSplitL; [| iSplitL]; iPureIntro;
+      naive_solver auto using insert_id.
   Qed.
 
   Lemma lookup_id k1 v2 m1 m2 :
@@ -226,7 +236,7 @@ Section bij.
     (m1 !! k1 = None → P ⊢ ▷ Φ NONEV) →
     (∀ k2, m1 !! k1 = Some (fK k2) → m2 !! k2 = Some (fK k1) →
      P ⊢ ▷ Φ (SOMEV (fK k2))) →
-    P ⊢ ⌜is_bij bij m1 m2⌝ -∗ WP bij_lookup bij (fK k1) @ p; E {{ Φ }}.
+    P ⊢ is_bij bij m1 m2 -∗ WP bij_lookup bij (fK k1) @ p; E {{ Φ }}.
   Proof.
     iIntros (? Hfound) "Hp Hm". wp_lam. wp_lam.
       iDestruct "Hm" as (v1 v2) "(Hv&Hm1&_&%&%)".
@@ -238,7 +248,7 @@ Section bij.
   Qed.
 
   Lemma bij_lookup_partial_spec E bij m1 m2 k1 :
-    {{{ ⌜is_bij bij m1 m2⌝ }}} bij_lookup_partial bij (fK k1) @ E
+    {{{ is_bij bij m1 m2 }}} bij_lookup_partial bij (fK k1) @ E
     ?{{{ k2, RET fK k2; ⌜m1 !! k1 = Some (fK k2)⌝ ∗ ⌜m2 !! k2 = Some (fK k1)⌝ }}}.
   Proof.
     iIntros (Φ) "Hm HΦ". wp_lam. wp_lam.
@@ -251,7 +261,7 @@ Section bij.
 
   Lemma bij_lookup_partial_Some_spec p E bij m1 m2 k1 v2 :
     m1 !! k1 = Some v2 →
-    {{{ ⌜is_bij bij m1 m2⌝ }}} bij_lookup_partial bij (fK k1) @ p; E
+    {{{ is_bij bij m1 m2 }}} bij_lookup_partial bij (fK k1) @ p; E
     {{{ k2, RET v2; ⌜v2 = fK k2⌝ ∗ ⌜m2 !! k2 = Some (fK k1)⌝ }}}.
   Proof.
     iIntros (? Φ) "Hm HΦ". wp_lam. wp_lam.
@@ -263,3 +273,5 @@ Section bij.
     iApply ("HΦ" $! k2). by iFrame "%".
   Qed.
 End bij.
+Typeclasses Opaque is_bij.
+Hint Extern 1 (_ ⊢ is_bij bij_empty ∅ ∅) => rewrite -bij_empty_spec.
