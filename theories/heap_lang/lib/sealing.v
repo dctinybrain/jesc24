@@ -42,8 +42,10 @@ Section spec.
   Context `{heapG Σ} {SI : SealingImpl}.
   Implicit Types v f : val.
 
-  Definition low_integrity (φ : val → iProp Σ) : iProp Σ :=
+  Definition to_low (φ : val → iProp Σ) : iProp Σ :=
     (□ ∀ v, φ v -∗ low v)%I.
+  Definition from_low (φ : val → iProp Σ) : iProp Σ :=
+    (□ ∀ v, low v -∗ φ v)%I.
 
   Structure sealing := Sealing {
     (** Predicates. *)
@@ -66,7 +68,7 @@ Section spec.
       {{{ v γ, RET v; is_sealer_unsealer N γ v φ }}};
     seal_spec N p γ s φ `{Hφ : ∀ v, PersistentP (φ v)} :
       {{{ is_sealer_unsealer N γ s φ }}} seal SI s @ p; ⊤ {{{ f, RET f;
-        (*low f ∗*) ∀ p v,
+        (from_low φ -∗ low f) ∗ ∀ p v,
         {{{ φ v }}} f v @ p; ⊤ {{{ v', RET v'; low v' ∗ is_sealed N γ v v' }}}
       }}};
     unseal_sealed_spec N p γ s φ :
@@ -75,7 +77,7 @@ Section spec.
       }}};
     unseal_low_spec N p γ s φ :
       {{{ is_sealer_unsealer N γ s φ }}} unseal SI s @ p; ⊤ {{{ f, RET f;
-        (low_integrity φ -∗ low f) ∗
+        (to_low φ -∗ low f) ∗
         ∀ v', {{{ low v' }}} f v' ?{{{ v, RET v; φ v }}}
       }}}
   }.
@@ -88,14 +90,18 @@ Section lemmas.
   Context `{heapG Σ, SI : SealingImpl} (S : sealing Σ).
   Implicit Types v : val.
 
-  Global Instance low_integrity_persistent φ :
-    PersistentP (low_integrity φ).
+  Global Instance to_low_persistent φ : PersistentP (to_low φ).
   Proof. apply _. Qed.
-  Global Instance low_integrity_ne n :
-    Proper (ext (dist n) ==> dist n) low_integrity.
+  Global Instance to_low_ne n : Proper (ext (dist n) ==> dist n) to_low.
   Proof. solve_proper. Qed.
-  Global Instance low_integrity_proper :
-    Proper (ext (≡) ==> (≡)) low_integrity.
+  Global Instance to_low_proper : Proper (ext (≡) ==> (≡)) to_low.
+  Proof. solve_proper. Qed.
+
+  Global Instance from_low_persistent φ : PersistentP (from_low φ).
+  Proof. apply _. Qed.
+  Global Instance from_low_ne n : Proper (ext (dist n) ==> dist n) from_low.
+  Proof. solve_proper. Qed.
+  Global Instance from_low_proper : Proper (ext (≡) ==> (≡)) from_low.
   Proof. solve_proper. Qed.
 
   Global Instance is_sealer_unsealer_proper N γ v :
@@ -110,7 +116,7 @@ Section lemmas.
     {{{ v', RET v'; low v' ∗ is_sealed S N γ v v' }}}.
   Proof.
     iIntros (Φ) "#[Hs Hv] HΦ".
-    wp_apply (seal_spec with "Hs"). iIntros (f) "Hf".
+    wp_apply (seal_spec with "Hs"). iIntros (f) "[_ Hf]".
     wp_apply ("Hf" with "* Hv"). iIntros (v') "Hv'".
     by iApply ("HΦ" with "Hv'").
   Qed.
@@ -134,7 +140,7 @@ Section lemmas.
     by wp_apply ("Hf" with "* Hv'").
   Qed.
 End lemmas.
-Typeclasses Opaque low_integrity.
+Typeclasses Opaque to_low from_low.
 End intf.
 
 (** * Morris' dynamic sealing implementation *)
@@ -380,19 +386,19 @@ Section proof.
 
   Lemma seal_spec p γ s φ `{Hφ : ∀ v, PersistentP (φ v)} :
     {{{ is_sealer_unsealer γ s φ }}} seal SI s @ p; ⊤ {{{ f, RET f;
-      (*low f ∗*) ∀ p v,
+      (from_low φ -∗ low f) ∗ ∀ p v,
       {{{ φ v }}} f v @ p; ⊤ {{{ v', RET v'; low v' ∗ is_sealed γ v v' }}}
     }}}.
   Proof.
-    iIntros (Φ) "#Hs HΦ". wp_lam.
-    iApply "HΦ". clear p Φ.
-(*
-    iSplitL.
-    (** Sealing is low. *)
-    { rewrite low_rec. iAlways. iNext. iIntros (v Φ) "#Hv HΦ".
-        simpl_subst. wp_value.
-      iApply "HΦ". clear Φ. rewrite low_rec. iAlways. iNext.
-        iIntros (vk Φ) "#Hk HΦ". simpl_subst.
+    assert (Hbodylow : ∀ (v vk : val),
+      {{{ is_sealer_unsealer γ s φ ∗ φ v ∗ low vk }}}
+        let: "sync" := Fst s in let: "tbl" := Snd s in
+        ifloc: vk as "k" =>
+          "sync" (λ: <>, "tbl" <- ((map_insert ! "tbl") "k") v)
+        else abort
+      ?{{{ v', RET v'; low v' }}}
+    ).
+    { iIntros (v vk Φ) "#(Hs & Hv & Hk) HΦ".
         iDestruct "Hs" as (sync) "(%&#Hh&%&Hsync)". subst.
         do 2!(wp_proj; wp_let).
       wp_typecast Hloc; wp_match; last by wp_apply wp_abort.
@@ -405,26 +411,25 @@ Section proof.
       iExists map', (<[k:=v]> m). iFrame "Hl Hm'". iSplitL.
       - rewrite (low_val k). by iApply (witness_low with "Hw Hk").
       - by iApply (tbl_inv_insert with "Hinv Hv"). }
-*)
+    iIntros (Φ) "#Hs HΦ". wp_lam.
+    iApply "HΦ". clear p Φ. iSplitL.
+
+    (** Sealing can be low. *)
+    { iIntros "#Hφ". rewrite low_rec. iAlways. iNext.
+        iIntros (v Φ) "#Hv HΦ". simpl_subst. wp_value.
+      iApply "HΦ". clear Φ. rewrite low_rec. iAlways. iNext.
+        iIntros (vk Φ) "#Hk HΦ". simpl_subst.
+      wp_apply (Hbodylow with "[$Hs Hφ Hv $Hk] [$HΦ]").
+        rewrite/from_low.
+      by iApply ("Hφ" with "Hv"). }
     iIntros (p v) "!#". iIntros (Φ) "#Hv HΦ". wp_lam.
     iApply "HΦ". clear Φ. iSplitL.
 
     (** Sealed values are low. *)
     { rewrite low_rec. iAlways. iNext. iIntros (vk Φ) "#Hk HΦ". simpl_subst.
-        iDestruct "Hs" as (sync) "(%&#Hh&%&Hsync)". subst.
-        do 2!(wp_proj; wp_let).
-      wp_typecast Hloc; wp_match; last by wp_apply wp_abort.
-        destruct (is_loc_val _ Hloc) as (k&->). rewrite/is_sync.
-      wp_apply ("Hsync" with "[%]"). iClear "Hsync". iIntros (Ψ) "HR HΨ".
-        iDestruct "HR" as (map m) "(Hl & Hm & Hw & #Hinv)". wp_load.
-      wp_apply (map_insert_spec _ _ _ m with "Hm").
-        iIntros (map') "Hm'". wp_store.
-      iApply ("HΨ" with "[Hl Hm' Hw]"); last by iApply "HΦ"; simpl_low.
-      iExists map', (<[k:=v]> m). iFrame "Hl Hm'". iSplitL.
-      - rewrite (low_val k). by iApply (witness_low with "Hw Hk").
-      - by iApply (tbl_inv_insert with "Hinv Hv"). }
+      by wp_apply (Hbodylow with "[$Hs $Hv $Hk]"). }
 
-    (** Sealed valus satisfy [is_sealed]. *)
+    (** Sealed values satisfy [is_sealed]. *)
     clear p. iIntros (p k) "!#". iIntros (Φ) "[Hk Hf] HΦ". wp_lam.
       iDestruct "Hs" as (sync) "(%&#Hh&%&Hsync)". subst.
       do 2!(wp_proj; wp_let).
@@ -465,7 +470,7 @@ Section proof.
 
   Lemma unseal_low_spec p γ s φ :
     {{{ is_sealer_unsealer γ s φ }}} unseal SI s @ p; ⊤ {{{ f, RET f;
-      (low_integrity φ -∗ low f) ∗
+      (to_low φ -∗ low f) ∗
       ∀ v', {{{ low v' }}} f v' ?{{{ v, RET v; φ v }}}
     }}}.
   Proof.
@@ -507,7 +512,7 @@ Section proof.
     - iIntros "#Hφ". rewrite low_rec. iAlways. iNext.
         iIntros (v' Φ) "Hv' HΦ". simpl_subst.
         wp_apply (Hbody with "[$Hs $Hv']"). iIntros (v'') "Hv''".
-        iApply "HΦ". rewrite/low_integrity. by iApply "Hφ".
+        iApply "HΦ". rewrite/to_low. by iApply "Hφ".
     - iIntros (v') "!#". iIntros (Φ) "#Hv' HΦ". wp_lam.
       wp_apply (Hbody with "[$Hs $Hv'] [$HΦ]").
   Qed.
