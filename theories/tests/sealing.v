@@ -24,9 +24,14 @@ Section intervals_code.
       let: "j" := unseal' "s" "y" in
       seal SI "s" (Fst "i" + Fst "j", Snd "i" + Snd "j").
 
+  Definition use : val := λ: "s" <>,
+    let: "i" := unseal' "s" (make_interval "s" #0 #10) in
+    assert: Fst "i" = #0 ;;
+    assert: Snd "i" = #10.
+
   Definition intervals : expr :=
     let: "s" := make_sealer_unsealer SI () in
-    (make_interval "s", min "s", max "s", sum "s").
+    (use "s", make_interval "s", min "s", max "s", sum "s").
 End intervals_code.
 
 (**
@@ -100,17 +105,29 @@ Section intervals_proof.
       by iIntros (?) "[? _]"; iApply "HΦ"; iFrame.
   Qed.
 
-  Lemma unseal'_spec p γ s n1 n2 v' :
-    {{{ is_interval_sealer γ s ∗ is_interval γ n1 n2 v' }}}
-      unseal' SI s v' @ p; ⊤
-    {{{ RET (#n1, #n2); ⌜n1 ≤ n2⌝ }}}.
+  Lemma unseal'_spec p γ s :
+    {{{ is_interval_sealer γ s }}} unseal' SI s @ p; ⊤ {{{ f, RET f; ∀ p n1 n2 v',
+      {{{ is_interval γ n1 n2 v' }}} f v' @ p; ⊤ {{{ RET (#n1, #n2); ⌜n1 ≤ n2⌝ }}}
+    }}}.
   Proof.
-    iIntros (Φ) "#[Hs Hv'] HΦ". do 2!wp_lam.
-    wp_apply (unseal_sealed_val with "[$Hs $Hv']").
+    iIntros (Φ) "#Hs HΦ". wp_lam.
+    iApply "HΦ". clear p Φ. iIntros (p n1 n2 v') "!#". iIntros (Φ) "Hv' HΦ".
+      wp_lam.
+   wp_apply (unseal_sealed_val with "[$Hs $Hv']").
       iDestruct 1 as (n'1 n'2) "[EQ %]". iDestruct "EQ" as %[=<-<-]. wp_let.
       do 2!wp_proj. wp_op=>?; last by exfalso; lia.
     wp_apply wp_assert. iSplit; first done. iNext. wp_seq.
     by iApply ("HΦ" with "[%]").
+  Qed.
+
+  Lemma unseal'_val_spec p γ s n1 n2 v' :
+    {{{ is_interval_sealer γ s ∗ is_interval γ n1 n2 v' }}}
+      unseal' SI s v' @ p; ⊤
+    {{{ RET (#n1, #n2); ⌜n1 ≤ n2⌝ }}}.
+  Proof.
+    iIntros (Φ) "#[Hs Hv'] HΦ".
+    wp_apply (unseal'_spec with "Hs"). iIntros (f) "Hf".
+    by wp_apply ("Hf" with "* Hv' [$HΦ]").
   Qed.
 
   Lemma unseal'_low_spec γ s v' :
@@ -134,7 +151,7 @@ Section intervals_proof.
     iIntros (Φ) "#Hs HΦ". wp_lam.
     iApply "HΦ". clear p Φ. iIntros (p n1 n2 v') "!#". iIntros (Φ) "Hv' HΦ".
       wp_lam.
-    wp_apply (unseal'_spec with "[$Hs $Hv']"). iIntros "%". wp_proj.
+    wp_apply (unseal'_val_spec with "[$Hs $Hv']"). iIntros "%". wp_proj.
     by iApply "HΦ".
   Qed.
 
@@ -163,7 +180,7 @@ Section intervals_proof.
     iIntros (Φ) "#Hs HΦ". wp_lam.
     iApply "HΦ". clear p Φ. iIntros (p n1 n2 v') "!#". iIntros (Φ) "Hv' HΦ".
       wp_lam.
-    wp_apply (unseal'_spec with "[$Hs $Hv']"). iIntros "%". wp_proj.
+    wp_apply (unseal'_val_spec with "[$Hs $Hv']"). iIntros "%". wp_proj.
     by iApply "HΦ".
   Qed.
 
@@ -198,8 +215,8 @@ Section intervals_proof.
       wp_lam.
     iApply "HΦ". clear p Φ. iIntros (p n'1 n'2 v2) "!#". iIntros (Φ) "Hv2 HΦ".
       wp_lam.
-    wp_apply (unseal'_spec with "[$Hs $Hv1]"). iIntros "%". wp_let.
-    wp_apply (unseal'_spec with "[$Hs $Hv2]"). iIntros "%". wp_let.
+    wp_apply (unseal'_val_spec with "[$Hs $Hv1]"). iIntros "%". wp_let.
+    wp_apply (unseal'_val_spec with "[$Hs $Hv2]"). iIntros "%". wp_let.
     wp_apply (seal_spec with "Hs"). iIntros (f) "Hf".
       do 2!wp_proj. wp_op. do 2!wp_proj. wp_op. wp_value.
     wp_apply ("Hf" with "* [] [$HΦ]"). iExists _, _. iSplitL; first done.
@@ -251,6 +268,25 @@ Section intervals_proof.
     by iApply "HΦ".
   Qed.
 
+  Lemma use_spec p γ s :
+    {{{ is_interval_sealer γ s }}} use SI s @ p; ⊤ {{{ f, RET f; low f }}}.
+  Proof.
+    iIntros (Φ) "#Hs HΦ". wp_lam.
+    iApply "HΦ". clear p Φ. rewrite low_rec. iAlways. iNext.
+      iIntros (v Φ) "_ HΦ". simpl_subst.
+    wp_apply (unseal'_spec with "Hs"). iIntros (k) "Hk".
+    wp_apply (make_interval_spec with "Hs"). iIntros (k1) "Hk1".
+    wp_apply ("Hk1" with "* []"); first done. iIntros (k2) "Hk2".
+    wp_apply ("Hk2" with "* []"); first done. iIntros (v') "[_ Hv']".
+    wp_apply ("Hk" with "* Hv'"). iIntros "%". wp_let.
+      rewrite (Z.min_l 0) // (Z.max_r _ 10) //.
+    wp_apply wp_assert. wp_proj. wp_op=>Hlo; last by case: Hlo.
+      iSplit; first done. iNext. wp_seq.
+    wp_apply wp_assert. wp_proj. wp_op=>Hhi; last by case: Hhi.
+      iSplit; first done. iNext.
+    iApply "HΦ". by simpl_low.
+  Qed.
+
   Lemma intervals_spec :
     heapN ⊥ N →
     {{{ heap_ctx }}} intervals SI {{{ v, RET v; low v }}}.
@@ -259,12 +295,13 @@ Section intervals_proof.
     set φ : val → iProp Σ := λ v, (∃ n1 n2, is_interval' n1 n2 v)%I.
     wp_apply (make_sealer_unsealer_spec S N _ φ with "Hh");
       first done. iIntros (s γ) "#Hs". wp_let.
+    wp_apply (use_spec with "Hs"). iIntros (use) "Huse".
     wp_apply (make_interval_low_spec with "Hs"). iIntros (mk) "Hmk".
     wp_apply (min_low_spec with "Hs"). iIntros (min) "[Hmin _]".
     wp_apply (max_low_spec with "Hs"). iIntros (max) "[Hmax _]".
     wp_apply (sum_low_spec with "Hs"). iIntros (sum) "[Hsum _]".
       wp_value.
-    iApply "HΦ". simpl_low. by iFrame.
+    iApply "HΦ". simpl_low. by iFrame "Huse Hmk Hmin Hmax Hsum".
   Qed.
 End intervals_proof.
 
