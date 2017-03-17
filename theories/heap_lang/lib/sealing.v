@@ -44,7 +44,7 @@ Section spec.
 
   Structure sealing := Sealing {
     (** Predicates. *)
-    (** Name separates ties [is_sealer_unsealer] to [is_sealed]. *)
+    (** Name ties [is_sealer_unsealer] to [is_sealed]. *)
     name : Type;
     is_sealer_unsealer (N : namespace) (γ : name) (v : val)
       (φ : val → iProp Σ) : iProp Σ;

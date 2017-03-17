@@ -29,33 +29,62 @@ Section intervals_code.
     (make_interval "s", min "s", max "s", sum "s").
 End intervals_code.
 
+(**
+	We prove a pair of triples for each operation, for use with
+	high- and low-integrity code. For each pair, we could factor
+	out a shared verification condition, but that's not worth
+	doing with proofs this short.
+*)
 Section intervals_proof.
-  Context `{heapG Σ, SI : SealingImpl} (S : sealing Σ).
+  Context `{heapG Σ, SI : SealingImpl} (S : sealing Σ) (N : namespace).
   Implicit Types f v : val.
   Implicit Types n : Z.
 
-  Definition is_interval (v : val) : iProp Σ :=
-    (∃ n1 n2, ⌜v = (#n1, #n2)%V⌝ ∗ ⌜n1 ≤ n2⌝)%I.
+  Definition is_interval' (n1 n2 : Z) (v : val) : iProp Σ :=
+    (⌜v = (#n1, #n2)%V⌝ ∗ ⌜n1 ≤ n2⌝)%I.
 
-  Global Instance is_interval_persistent v : PersistentP (is_interval v).
+  Global Instance is_interval'_persistent n1 n2 v :
+    PersistentP (is_interval' n1 n2 v).
   Proof. apply _. Qed.
 
-STOP. Reconsider these interfaces.
+  Definition is_interval_sealer (γ : name S) (s : val) : iProp Σ :=
+    is_sealer_unsealer S N γ s (λ v, (∃ n1 n2, is_interval' n1 n2 v))%I.
 
-  Lemma make_interval_spec N γ s :
-    {{{ is_sealer_unsealer S N γ s is_interval }}}
-      make_interval SI s
+  Definition is_interval (γ : name S) (n1 n2 : Z) (v : val) : iProp Σ :=
+    is_sealed S N γ (#n1, #n2)%V v.
+
+  Lemma make_interval_spec p γ s :
+    {{{ is_interval_sealer γ s }}} make_interval SI s @ p; ⊤
+    {{{ f1, RET f1; ∀ p n1,
+      {{{ True }}} f1 #n1 @ p; ⊤ {{{ f2, RET f2; ∀ p n2,
+        {{{ True }}} f2 #n2 @ p; ⊤
+        {{{ v, RET v; low v ∗ is_interval γ (Z.min n1 n2) (Z.max n1 n2) v }}}
+      }}}
+    }}}.
+  Proof.
+    iIntros (Φ) "#Hs HΦ". wp_lam.
+    iApply "HΦ". clear p Φ. iIntros (p n1) "!#". iIntros (Φ) "_ HΦ". wp_lam.
+    iApply "HΦ". clear p Φ. iIntros (p n2) "!#". iIntros (Φ) "_ HΦ". wp_lam.
+    wp_apply (seal_spec with "Hs"). iIntros (f) "Hf".
+    rewrite/is_interval/is_interval'. wp_op=>[?|/Z.lt_le_incl ?]; wp_if.
+    - rewrite (Z.min_l n1) // (Z.max_r _ n2) //.
+      wp_apply ("Hf" with "* [] [$HΦ]"). by iExists n1, n2; auto.
+    - rewrite (Z.min_r _ n2) // (Z.max_l n1) //.
+      wp_apply ("Hf" with "* [] [$HΦ]"). by iExists n2, n1; auto.
+  Qed.
+
+  Lemma make_interval_low_spec p γ s :
+    {{{ is_interval_sealer γ s }}} make_interval SI s @ p; ⊤
     {{{ f, RET f; low f }}}.
   Proof.
     iIntros (Φ) "#Hs HΦ". wp_lam.
-    iApply "HΦ". clear Φ. rewrite low_rec. iAlways. iNext.
+    iApply "HΦ". clear p Φ. rewrite low_rec. iAlways. iNext.
     iIntros (v1 Φ) "#Hv1 HΦ". simpl_subst. wp_value.
     iApply "HΦ". clear Φ. rewrite low_rec. iAlways. iNext.
     iIntros (v2 Φ) "#Hv2 HΦ". simpl_subst.
     wp_apply (seal_spec with "Hs"). iIntros (f) "Hf".
     (* Inlining (derived) rules for stuck ≤. *)
-    wp_bind (_ ≤ _)%E.
-    case: (decide (is_int (of_val v1)))=>Hv1; last first.
+    wp_bind (_ ≤ _)%E. case: (decide (is_int (of_val v1)))=>Hv1; last first.
     { iApply wp_stuck_bin_op=>//.
       case: v1 Hv1 => //. case=>//. rewrite/is_int. by naive_solver. }
     destruct (is_int_val _ Hv1) as (n1&->).
@@ -63,75 +92,182 @@ STOP. Reconsider these interfaces.
     { iApply wp_stuck_bin_op=>//.
       case: v2 Hv2 => //. case=>//. rewrite/is_int. by naive_solver. }
     destruct (is_int_val _ Hv2) as (n2&->).
-    wp_op=>Hle; wp_if.
-    - wp_apply ("Hf" with "* [] [$HΦ]"). iExists n1, n2. by iSplitL.
-    - wp_apply ("Hf" with "* [] [$HΦ]"). iExists n2, n1.
-      iSplitL; first done. iPureIntro. exact: Z.lt_le_incl.
+    (* Reasoning about the body. *)
+    rewrite/is_interval/is_interval'. wp_op=>[?|/Z.lt_le_incl ?]; wp_if.
+    - wp_apply ("Hf" with "* [] [HΦ]"). by iExists n1, n2; auto.
+      by iIntros (?) "[? _]"; iApply "HΦ"; iFrame.
+    - wp_apply ("Hf" with "* [] [HΦ]"). by iExists n2, n1; auto.
+      by iIntros (?) "[? _]"; iApply "HΦ"; iFrame.
   Qed.
 
-  Lemma unseal'_spec N γ s v' :
-    {{{ is_sealer_unsealer S N γ s is_interval ∗ low v' }}} unseal' SI s v'
-    ?{{{ v, RET v; is_interval v }}}.
+  Lemma unseal'_spec p γ s n1 n2 v' :
+    {{{ is_interval_sealer γ s ∗ is_interval γ n1 n2 v' }}}
+      unseal' SI s v' @ p; ⊤
+    {{{ RET (#n1, #n2); ⌜n1 ≤ n2⌝ }}}.
   Proof.
     iIntros (Φ) "#[Hs Hv'] HΦ". do 2!wp_lam.
-    wp_apply (unseal_val with "[$Hs $Hv']"). iIntros (v) "#Hv". wp_let.
-      iDestruct (persistentP with "Hv") as (n1 n2) ">[%%]". subst.
+    wp_apply (unseal_sealed_val with "[$Hs $Hv']").
+      iDestruct 1 as (n'1 n'2) "[EQ %]". iDestruct "EQ" as %[=<-<-]. wp_let.
       do 2!wp_proj. wp_op=>?; last by exfalso; lia.
     wp_apply wp_assert. iSplit; first done. iNext. wp_seq.
-    by iApply ("HΦ" with "Hv").
+    by iApply ("HΦ" with "[%]").
   Qed.
 
-  Lemma min_spec N γ s :
-    {{{ is_sealer_unsealer S N γ s is_interval }}} min SI s {{{ f, RET f; low f }}}.
+  Lemma unseal'_low_spec γ s v' :
+    {{{ is_interval_sealer γ s ∗ low v' }}} unseal' SI s v'
+    ?{{{ n1 n2, RET (#n1, #n2); ⌜n1 ≤ n2⌝ }}}.
   Proof.
-    iIntros (Φ) "#Hs HΦ". wp_lam.
-    iApply "HΦ". clear Φ. rewrite low_rec. iAlways. iNext.
-      iIntros (v' Φ) "Hv' HΦ". simpl_subst.
-    wp_apply (unseal'_spec with "[$Hs $Hv']"). iIntros (v) "Hv".
-      iDestruct "Hv" as (n1 n2) "[%%]". subst. wp_proj.
-    iApply "HΦ". by simpl_low.
+    iIntros (Φ) "#[Hs Hv'] HΦ". do 2!wp_lam.
+    wp_apply (unseal_low_val with "[$Hs $Hv']"). iIntros (v) "#Hv". wp_let.
+      iDestruct "Hv" as (n1 n2) "Hv".
+      iDestruct (persistentP with "Hv") as ">[%%]". subst.
+      do 2!wp_proj. wp_op=>?; last by exfalso; lia.
+    wp_apply wp_assert. iSplit; first done. iNext. wp_seq.
+    by iApply ("HΦ" with "[%]").
   Qed.
 
-  Lemma max_spec N γ s :
-    {{{ is_sealer_unsealer S N γ s is_interval }}} max SI s {{{ f, RET f; low f }}}.
+  Lemma min_spec p γ s :
+    {{{ is_interval_sealer γ s }}} min SI s @ p; ⊤ {{{ f, RET f; ∀ p n1 n2 v',
+      {{{ is_interval γ n1 n2 v' }}} f v' @ p; ⊤ {{{ RET #n1; True }}}
+    }}}.
   Proof.
     iIntros (Φ) "#Hs HΦ". wp_lam.
-    iApply "HΦ". clear Φ. rewrite low_rec. iAlways. iNext.
-      iIntros (v' Φ) "Hv' HΦ". simpl_subst.
-    wp_apply (unseal'_spec with "[$Hs $Hv']"). iIntros (v) "Hv".
-      iDestruct "Hv" as (n1 n2) "[%%]". subst. wp_proj.
-    iApply "HΦ". by simpl_low.
+    iApply "HΦ". clear p Φ. iIntros (p n1 n2 v') "!#". iIntros (Φ) "Hv' HΦ".
+      wp_lam.
+    wp_apply (unseal'_spec with "[$Hs $Hv']"). iIntros "%". wp_proj.
+    by iApply "HΦ".
   Qed.
 
-  Lemma sum_spec N γ s :
-    {{{ is_sealer_unsealer S N γ s is_interval }}} sum SI s {{{ f, RET f; low f }}}.
+  Lemma min_low_spec p γ s :
+    {{{ is_interval_sealer γ s }}} min SI s @ p; ⊤ {{{ f, RET f;
+      low f ∗ ∀ v', {{{ low v' }}} f v' ?{{{ n1, RET #n1; True }}}
+    }}}.
   Proof.
     iIntros (Φ) "#Hs HΦ". wp_lam.
-    iApply "HΦ". clear Φ. rewrite low_rec. iAlways. iNext.
-      iIntros (v1 Φ) "#Hv1 HΦ". simpl_subst. wp_value.
-    iApply "HΦ". clear Φ. rewrite low_rec. iAlways. iNext.
-      iIntros (v2 Φ) "#Hv2 HΦ". simpl_subst.
-    wp_apply (unseal'_spec with "[$Hs $Hv1]"). iIntros (?) "Hi1".
-      iDestruct "Hi1" as (lo1 hi1) "[%%]". subst. wp_let.
-    wp_apply (unseal'_spec with "[$Hs $Hv2]"). iIntros (?) "Hi2".
-      iDestruct "Hi2" as (lo2 hi2) "[%%]". subst. wp_let.
+    iApply "HΦ". clear p Φ. iSplitL.
+    - rewrite low_rec. iAlways. iNext. iIntros (v' Φ) "Hv' HΦ". simpl_subst.
+      wp_apply (unseal'_low_spec with "[$Hs $Hv']"). iIntros (n1 n2) "%".
+        wp_proj.
+      iApply "HΦ". by simpl_low.
+    - iIntros (v') "!#". iIntros (Φ) "Hv' HΦ". wp_lam.
+      wp_apply (unseal'_low_spec with "[$Hs $Hv']"). iIntros (n1 n2) "%".
+        wp_proj.
+      by iApply "HΦ".
+  Qed.
+
+  Lemma max_spec p γ s :
+    {{{ is_interval_sealer γ s }}} max SI s @ p; ⊤ {{{ f, RET f; ∀ p n1 n2 v',
+      {{{ is_interval γ n1 n2 v' }}} f v' @ p; ⊤ {{{ RET #n2; True }}}
+    }}}.
+  Proof.
+    iIntros (Φ) "#Hs HΦ". wp_lam.
+    iApply "HΦ". clear p Φ. iIntros (p n1 n2 v') "!#". iIntros (Φ) "Hv' HΦ".
+      wp_lam.
+    wp_apply (unseal'_spec with "[$Hs $Hv']"). iIntros "%". wp_proj.
+    by iApply "HΦ".
+  Qed.
+
+  Lemma max_low_spec p γ s :
+    {{{ is_interval_sealer γ s }}} max SI s @ p; ⊤ {{{ f, RET f;
+      low f ∗ ∀ v', {{{ low v' }}} f v' ?{{{ n2, RET #n2; True }}}
+    }}}.
+  Proof.
+    iIntros (Φ) "#Hs HΦ". wp_lam.
+    iApply "HΦ". clear p Φ. iSplitL.
+    - rewrite low_rec. iAlways. iNext. iIntros (v' Φ) "Hv' HΦ". simpl_subst.
+      wp_apply (unseal'_low_spec with "[$Hs $Hv']"). iIntros (n1 n2) "%".
+        wp_proj.
+      iApply "HΦ". by simpl_low.
+    - iIntros (v') "!#". iIntros (Φ) "Hv' HΦ". wp_lam.
+      wp_apply (unseal'_low_spec with "[$Hs $Hv']"). iIntros (n1 n2) "%".
+        wp_proj.
+      by iApply "HΦ".
+  Qed.
+
+  Lemma sum_spec p γ s :
+    {{{ is_interval_sealer γ s }}} sum SI s @ p; ⊤ {{{ f1, RET f1;
+      ∀ p n1 n2 v1, {{{ is_interval γ n1 n2 v1 }}} f1 v1 @ p; ⊤ {{{ f2, RET f2;
+        ∀ p n'1 n'2 v2, {{{ is_interval γ n'1 n'2 v2 }}} f2 v2 @ p; ⊤ {{{
+          v', RET v'; low v' ∗ is_interval γ (n1+n'1) (n2+n'2) v'
+        }}}
+      }}}
+    }}}.
+  Proof.
+    iIntros (Φ) "#Hs HΦ". wp_lam.
+    iApply "HΦ". clear p Φ. iIntros (p n1 n2 v1) "!#". iIntros (Φ) "#Hv1 HΦ".
+      wp_lam.
+    iApply "HΦ". clear p Φ. iIntros (p n'1 n'2 v2) "!#". iIntros (Φ) "Hv2 HΦ".
+      wp_lam.
+    wp_apply (unseal'_spec with "[$Hs $Hv1]"). iIntros "%". wp_let.
+    wp_apply (unseal'_spec with "[$Hs $Hv2]"). iIntros "%". wp_let.
     wp_apply (seal_spec with "Hs"). iIntros (f) "Hf".
       do 2!wp_proj. wp_op. do 2!wp_proj. wp_op. wp_value.
-    wp_apply ("Hf" with "* [] [$HΦ]"). iExists _, _. iSplit; first done.
+    wp_apply ("Hf" with "* [] [$HΦ]"). iExists _, _. iSplitL; first done.
     iPureIntro. by lia.
   Qed.
 
-  Lemma intervals_spec N :
+  Lemma sum_low_spec p γ s :
+    {{{ is_interval_sealer γ s }}} sum SI s @ p; ⊤ {{{ f1, RET f1;
+      low f1 ∗ ∀ v1, {{{ low v1 }}} f1 v1 ?{{{ f2, RET f2;
+        low f2 ∗ ∀ v2, {{{ low v2 }}} f2 v2 ?{{{ n1 n2 v, RET v;
+          is_interval γ n1 n2 v
+        }}}
+      }}}
+    }}}.
+  Proof.
+    iIntros (Φ) "#Hs HΦ". wp_lam.
+    iApply "HΦ". clear p Φ. iSplitL.
+    { rewrite low_rec. iAlways. iNext. iIntros (v1 Φ) "#Hv1 HΦ".
+        simpl_subst. wp_value.
+      iApply "HΦ". clear Φ. rewrite low_rec. iAlways. iNext.
+        iIntros (v2 Φ) "#Hv2 HΦ". simpl_subst.
+      wp_apply (unseal'_low_spec with "[$Hs $Hv1]").
+        iIntros (n1 n2) "%". wp_let.
+      wp_apply (unseal'_low_spec with "[$Hs $Hv2]").
+        iIntros (n'1 n'2) "%". wp_let.
+      wp_apply (seal_spec with "Hs"). iIntros (f) "Hf".
+        do 2!wp_proj. wp_op. do 2!wp_proj. wp_op. wp_value.
+      wp_apply ("Hf" with "* [] [HΦ]").
+      + iExists _, _. iSplit; first done. iPureIntro. by lia.
+      + iIntros (?) "[? _]". by iApply "HΦ". }
+    iIntros (v1) "!#". iIntros (Φ) "#Hv1 HΦ". wp_lam.
+    iApply "HΦ". clear Φ. iSplitL.
+    { rewrite low_rec. iAlways. iNext. iIntros (v2 Φ) "#Hv2 HΦ".
+        simpl_subst.
+      wp_apply (unseal'_low_spec with "[$Hs $Hv1]").
+        iIntros (n1 n2) "%". wp_let.
+      wp_apply (unseal'_low_spec with "[$Hs $Hv2]").
+        iIntros (n'1 n'2) "%". wp_let.
+      wp_apply (seal_spec with "Hs"). iIntros (f) "Hf".
+        do 2!wp_proj. wp_op. do 2!wp_proj. wp_op. wp_value.
+      wp_apply ("Hf" with "* [] [HΦ]").
+      + iExists _, _. iSplit; first done. iPureIntro. by lia.
+      + iIntros (?) "[? _]". by iApply "HΦ". }
+    iIntros (v2) "!#". iIntros (Φ) "#Hv2 HΦ". wp_lam.
+    wp_apply (unseal'_low_spec with "[$Hs $Hv1]").
+      iIntros (n1 n2) "%". wp_let.
+    wp_apply (unseal'_low_spec with "[$Hs $Hv2]").
+      iIntros (n'1 n'2) "%". wp_let.
+    wp_apply (seal_spec with "Hs"). iIntros (f) "Hf".
+      do 2!wp_proj. wp_op. do 2!wp_proj. wp_op. wp_value.
+    wp_apply ("Hf" with "* [] [HΦ]").
+    + iExists _, _. iSplit; first done. iPureIntro. by lia.
+    + iIntros (?) "[_ ?]". by iApply "HΦ".
+  Qed.
+
+  Lemma intervals_spec :
     heapN ⊥ N →
     {{{ heap_ctx }}} intervals SI {{{ v, RET v; low v }}}.
   Proof.
     iIntros (? Φ) "#Hh HΦ". rewrite/intervals.
-    wp_apply (make_sealer_unsealer_spec S N _ is_interval with "Hh");
+    set φ : val → iProp Σ := λ v, (∃ n1 n2, is_interval' n1 n2 v)%I.
+    wp_apply (make_sealer_unsealer_spec S N _ φ with "Hh");
       first done. iIntros (s γ) "#Hs". wp_let.
-    wp_apply (make_interval_spec with "Hs"). iIntros (mk) "Hmk".
-    wp_apply (min_spec with "Hs"). iIntros (min) "Hmin".
-    wp_apply (max_spec with "Hs"). iIntros (max) "Hmax".
-    wp_apply (sum_spec with "Hs"). iIntros (sum) "Hsum". wp_value.
+    wp_apply (make_interval_low_spec with "Hs"). iIntros (mk) "Hmk".
+    wp_apply (min_low_spec with "Hs"). iIntros (min) "[Hmin _]".
+    wp_apply (max_low_spec with "Hs"). iIntros (max) "[Hmax _]".
+    wp_apply (sum_low_spec with "Hs"). iIntros (sum) "[Hsum _]".
+      wp_value.
     iApply "HΦ". simpl_low. by iFrame.
   Qed.
 End intervals_proof.
@@ -140,7 +276,7 @@ Section ClosedProofs.
   Import lock.
 
   Let N : namespace := nroot .@ "example".
-  Let Σ : gFunctors := #[ heapΣ; spin_lock.lockΣ ].
+  Let Σ : gFunctors := #[ heapΣ; proof.sealingΣ; spin_lock.lockΣ ].
   Let lock : LockImpl := spin_lock.spin.
   Let sealing : SealingImpl := code.sealing lock.
   Let intervals : expr := intervals sealing.
@@ -161,6 +297,7 @@ End ClosedProofs.
 Print Assumptions intervals_safe.
 
 (*
+— signatures
 	φ v asserts integrity of message v
 		sign ≔ seal s	verify ≔ unseal s
 For adversarial code:
@@ -169,157 +306,13 @@ For verified code:
 	{φ v} sign v {v', low v'}
 	{low v'} verify v' ?{v. φ v}
 
-—
+— encryption
 	φ := low ensures that anyone can sign a message
-
 		encrypt := seal s	decrypt := unseal s
 
 For verified code:
 	{low v} encrypt v {v', low v' ∗ is_ctext v v'}
-	{is_ctext v v'} decrypt v' ?{RET v; True}	(* this should require fresh *)
+	{is_ctext v v'} decrypt v' ?{RET v; True}
 
-To support this interface, we want to extend
-the sealing interface with is_sealed v v' and define is_ctext ≔ is_sealed.
-We probably want [is_sealed v v'] anyway, since we can hang invariants
-off v.
-*)
-
-
-(*
-
-
-  Definition sealer_res (l : loc) (γ : gname) : iProp Σ :=
-    (∃ v log, l ↦ v ∗ is_env M v log ∗ own γ (● to_log log))%I.
-
-  Definition is_ptext (γ : gname) (v : val) : iProp Σ :=
-    (∃ k, own γ (◯ {[k, v]}))%I.
-  Definition is_ctext (γ : gname) (v c : val) : iProp Σ :=
-    (∀ k : loc, {{{ True }}} c #k {{{ RET #(); is_ptext γ v }}})%I.
-  Definition is_sealer (γ : gname) (seal : val) : iProp Σ :=
-    (low seal ∗
-     ∀ v, {{{ True }}} seal v {{{ c, RET c; is_ctext γ v c}}})%I.
-  Definition is_unsealer (γ : gname) (unseal : val) : iProp Σ :=
-    (∀ c : val, {{{ low c }}} unseal c ?{{{ v, RET v; is_ptext γ v }}})%I.
-
-  (** Ghost moves *)
-
-  Lemma to_log_obs γ k v log :
-    (k, v) ∈ log →
-    own γ (● to_log log) ==∗ own γ (● to_log log) ∗ own γ (◯ {[k, v]}).
-  Proof.
-    move=>?. rewrite -own_op. apply own_update.
-    apply auth_frag_alloc; try apply _.
-    apply gset_included, elem_of_subseteq_singleton.
-    rewrite/to_log. by induction log; set_solver.
-  Qed.
-
-  Lemma to_log_cons γ k v log log' :
-    log' = (k, v) :: log →
-    own γ (● to_log log) ==∗ own γ (● to_log log') ∗ own γ (◯ {[k, v]}).
-  Proof.
-    move=>->. rewrite -(own_mono _ (◯ to_log ((k, v) :: log)) (◯ {[k, v]})).
-    - rewrite -own_op.
-      apply own_update, auth_update_alloc, gset_local_update.
-      by set_solver.
-    - apply auth_included. split; first done. simpl.
-      apply gset_included. by set_solver.
-  Qed.
-
-  (** Structure *)
-
-  Global Instance is_ptext_persistent γ v : PersistentP (is_ptext γ v).
-  Proof. apply _. Qed.
-  Global Instance is_ptext_timeless γ v : TimelessP (is_ptext γ v).
-  Proof. apply _. Qed.
-  Global Instance is_sealer_persistent γ v : PersistentP (is_sealer γ v).
-  Proof. apply _. Qed.
-  Global Instance is_unsealer_persistent γ v : PersistentP (is_unsealer γ v).
-  Proof. apply _. Qed.
-  Global Instance is_ctext_persistent γ v c : PersistentP (is_ctext γ v c).
-  Proof. apply _. Qed.
-
-  (** Main proof *)
-
-  Lemma sealer_low γ seal : is_sealer γ seal -∗ low seal.
-  Proof. by iIntros "(?&_)". Qed.
-
-  Lemma sealer_spec γ seal v :
-    {{{ is_sealer γ seal }}} seal v {{{ c, RET c; is_ctext γ v c }}}.
-  Proof.
-    iIntros (Φ) "(_&Hseal) HΦ". rewrite/is_sealer.
-    by wp_apply ("Hseal" $! v with "[] [$HΦ]").
-  Qed.
-
-  Lemma ctext_low γ v c : is_ctext γ v c -∗ low c.
-  Admitted.
-
-  Lemma ctext_spec γ v c (k : loc) :
-    {{{ is_ctext γ v c }}} c #k {{{ RET #(); is_ptext γ v }}}.
-  Admitted.
-
-  Lemma unsealer_spec γ unseal (c : val) :
-    {{{ is_unsealer γ unseal ∗ low c }}} unseal c ?{{{ v, RET v; is_ptext γ v }}}.
-  Admitted.
-
-  Lemma make_pair_spec :
-    heapN ⊥ N →
-    {{{ heap_ctx }}} make_pair L M #()
-    {{{ v1 v2 γ, RET (v1, v2); is_sealer γ v1 ∗ is_unsealer γ v2 }}}.
-  Proof.
-    iIntros (? Φ) "#Hh HΦ". wp_lam.
-    wp_alloc l as "Hl". iDestruct (empty_spec _ M) as "Henv". wp_let.
-    iMod (own_alloc (● to_log [])) as (γ) "Hγa";
-      first exact: auth_auth_valid.
-    set res := (sealer_res l γ)%I. iAssert res with "[Hl Henv Hγa]" as "Hres".
-    { iExists (empty M), []. iFrame. by iFrame "#". }
-    wp_apply (make_sync_spec _ _ _ res with "[$Hh $Hres]"); first done.
-      iIntros (sync) "#Hsync". wp_let. wp_let. wp_let.
-    iApply ("HΦ" $! _ _ γ). iClear (Φ) "Henv". iSplitL.
-    (* Sealer *)
-    - rewrite/is_sealer. iSplitL.
-(* PDS: The sealer, and ciphertexts are low.
-We're baking this into the sealer proof because
-we didn't want to state is_sealer in terms of β reduced functions.
-*)
-      + rewrite low_val. iAlways. iNext. iIntros (v Φ) "#Hv HΦ". simpl_subst.
-          wp_value.
-        iApply "HΦ". clear Φ.
-        rewrite (low_val (LamV _ _)). iAlways. iNext. iIntros (k Φ) "#Hk HΦ".
-          simpl_subst.
-        wp_typecast Hloc.
-        wp_value. wp_lam.
-
-      iIntros (v) "!#". iIntros (Φ) "_ HΦ". wp_lam.
-      iApply "HΦ". clear Φ.
-      iIntros (k) "!#". iIntros (Φ) "_ HΦ". wp_lam.
-      wp_typecast Hloc; last by exfalso; apply Hloc; exists k.
-      wp_match.
-      rewrite/is_sync. wp_apply ("Hsync" with "[%]"). iClear "Hsync".
-        iIntros (Ψ) "Hres HΨ".
-        iDestruct "Hres" as (vlog log) "(Hl & #Henv & Hγa)".
-      wp_load.
-      wp_apply (insert_spec with "[$Henv]"). iIntros (vlog') "#Henv'".
-      rewrite -wp_fupd. wp_store.
-      iMod (to_log_cons _ k v with "Hγa") as "[Hγa Hγf]"; first done.
-      iModIntro. iApply ("HΨ" with "[Hl Henv' Hγa]").
-      { iExists vlog', _. iFrame. by iFrame "#". }
-      iApply "HΦ". by iExists k.
-    (* Unsealer *)
-    - iIntros (c) "!#". iIntros (Φ) "#Hc HΦ". wp_lam.
-      wp_alloc k as "Hk". wp_let.
-      iMod (heap_mark_low with "[$Hh] [$Hk] []") as "Hk";
-        [done | by simpl_low |].
-      wp_apply (wp_on_val_app _ _ (#k) with "[$Hc Hk]");
-        first by simpl_on_val. iIntros (v0) "_". wp_seq. clear v0.
-      rewrite/is_sync. wp_apply ("Hsync" with "[%]"). iClear "Hsync".
-        iIntros (Ψ) "Hres HΨ".
-        iDestruct "Hres" as (vlog log) "(Hl & #Henv & Hγa)".
-      wp_load. rewrite -wp_fupd.
-      wp_apply (lookup_spec with "[$Henv]"). iIntros (x) "%".
-      iMod (to_log_obs with "Hγa") as "[Hγa Hγf]"; first done.
-      iModIntro. iApply ("HΨ" with "[Hl Henv Hγa]").
-      { iExists vlog, log. iFrame. by iFrame "#". }
-      iApply "HΦ". by iExists k.
-  Qed.
-End proof.
+To support this interface, we want to define is_ctext ≔ is_sealed.
 *)
