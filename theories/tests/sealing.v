@@ -305,6 +305,87 @@ Section intervals_proof.
   Qed.
 End intervals_proof.
 
+(** * Public-key interfaces for sealer-unsealer pairs *)
+(**
+	When instantiated with suitable representation invariants,
+	sealer-unsealer pairs satisfy specifications for asymmetric
+	signature and encryption schemes.
+*)
+Section pk_code.
+  Context {SI : SealingImpl}.
+
+  Definition signature_scheme : expr :=
+    let: "k" := make_sealer_unsealer SI () in
+    let: "sign" := seal SI "k" in
+    let: "verify" := unseal SI "k" in
+    ("sign", "verify").
+
+  Definition encryption_scheme : expr :=
+    let: "k" := make_sealer_unsealer SI () in
+    let: "encrypt" := seal SI "k" in
+    let: "decrypt" := unseal SI "k" in
+    ("encrypt", "decrypt").
+End pk_code.
+
+Section pk_proof.
+  Context `{heapG Σ, SI : SealingImpl} (S : sealing Σ) (N : namespace).
+  Implicit Types f v : val.
+  Implicit Types n : Z.
+
+  Definition is_sign (φ : val → iProp Σ) (sign : val) : iProp Σ :=
+    (∀ p v, {{{ φ v }}} sign v @ p; ⊤ {{{ v', RET v'; low v' }}})%I.
+  Definition is_verify (φ : val → iProp Σ) (verify : val) : iProp Σ :=
+    (∀ v', {{{ low v' }}} verify v' ?{{{ v, RET v; φ v }}})%I.
+
+  Lemma signature_scheme_spec p φ `{Hφ : ∀ v, PersistentP (φ v)} :
+    heapN ⊥ N →
+    {{{ heap_ctx ∗ low_integrity φ }}} signature_scheme @ p; ⊤
+    {{{ v1 v2, RET (v1, v2); is_sign φ v1 ∗ is_verify φ v2 ∗ low v2 }}}.
+  Proof.
+    iIntros (? Φ) "#[Hh Hφ] HΦ". rewrite/signature_scheme.
+    wp_apply (make_sealer_unsealer_spec S N _ φ with "Hh");
+      first done. iIntros (k γ) "#Hk". wp_let.
+    wp_apply (seal_spec with "Hk"). iIntros (sign) "#Hsign". wp_let.
+    wp_apply (unseal_low_spec with "Hk").
+      iIntros (verify) "[Hvlow Hverify]". wp_let.
+    iApply ("HΦ" with "[$Hverify Hvlow]").
+    iSplitR; last by iApply ("Hvlow" with "Hφ").
+    clear p Φ. iIntros (p v) "!#". iIntros (Φ) "Hv HΦ".
+    wp_apply ("Hsign" with "* Hv"). iIntros (?) "[? _]".
+    by iApply "HΦ".
+  Qed.
+
+  Definition plaintext (φ : val → iProp Σ) (v : val) : iProp Σ :=
+    (low v ∨ φ v)%I.
+  Definition is_encrypt (φ : val → iProp Σ) (encrypt : val) : iProp Σ :=
+    (∀ p v, {{{ φ v }}} encrypt v @ p; ⊤ {{{ v', RET v'; low v' }}})%I.
+  Definition is_decrypt (φ : val → iProp Σ) (decrypt : val) : iProp Σ :=
+    (∀ v', {{{ low v' }}} decrypt v' ?{{{ v, RET v; plaintext φ v }}})%I.
+(*
+  Lemma encryption_scheme_spec p φ `{Hφ : ∀ v, PersistentP (φ v)} :
+    heapN ⊥ N →
+    {{{ heap_ctx }}} encryption_scheme @ p; ⊤
+    {{{ v1 v2, RET (v1, v2); is_encrypt φ v1 ∗ is_decrypt φ v2 ∗ low v1 }}}.
+  Proof.
+    iIntros (? Φ) "#Hh HΦ". rewrite/encryption_scheme.
+    wp_apply (make_sealer_unsealer_spec S N _ (plaintext φ)
+      with "Hh"); first done. iIntros (k γ) "#Hk". wp_let.
+    wp_apply (seal_spec with "Hk"). iIntros (sign) "#Hsign". wp_let.
+*)
+End pk_proof.
+
+(*
+— encryption
+	φ := low ensures that anyone can sign a message
+		encrypt := seal s	decrypt := unseal s
+
+For verified code:
+	{low v} encrypt v {v', low v' ∗ is_ctext v v'}
+	{is_ctext v v'} decrypt v' ?{RET v; True}
+
+To support this interface, we want to define is_ctext ≔ is_sealed.
+*)
+
 Section ClosedProofs.
   Import lock.
 
@@ -328,24 +409,3 @@ Section ClosedProofs.
 End ClosedProofs.
 
 Print Assumptions intervals_safe.
-
-(*
-— signatures
-	φ v asserts integrity of message v
-		sign ≔ seal s	verify ≔ unseal s
-For adversarial code:
-	always(∀ v', φ v' -∗ low v') ⊢ low verify
-For verified code:
-	{φ v} sign v {v', low v'}
-	{low v'} verify v' ?{v. φ v}
-
-— encryption
-	φ := low ensures that anyone can sign a message
-		encrypt := seal s	decrypt := unseal s
-
-For verified code:
-	{low v} encrypt v {v', low v' ∗ is_ctext v v'}
-	{is_ctext v v'} decrypt v' ?{RET v; True}
-
-To support this interface, we want to define is_ctext ≔ is_sealed.
-*)
