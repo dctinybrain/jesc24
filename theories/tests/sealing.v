@@ -215,44 +215,40 @@ Section intervals_proof.
       }}}
     }}}.
   Proof.
+    assert (Hbody :
+      ∀ v1 v2,
+      {{{ is_interval_sealer γ s ∗ low v1 ∗ low v2 }}}
+        let: "i" := unseal' SI s v1 in let: "j" := unseal' SI s v2 in
+        seal SI s (Fst "i" + Fst "j", Snd "i" + Snd "j")
+      ?{{{ n1 n2 v, RET v; low v ∗ is_interval γ n1 n2 v }}}
+    ).
+    { iIntros (v1 v2 Φ) "#(Hs & Hv1 & Hv2) HΦ".
+      wp_apply (unseal'_low_spec with "[$Hs $Hv1]").
+        iIntros (n1 n2) "%". wp_let.
+      wp_apply (unseal'_low_spec with "[$Hs $Hv2]").
+        iIntros (n'1 n'2) "%". wp_let.
+      wp_apply (seal_spec with "Hs"). iIntros (f) "Hf".
+        do 2!wp_proj. wp_op. do 2!wp_proj. wp_op. wp_value.
+      wp_apply ("Hf" with "* [] [HΦ]").
+      + iExists _, _. iSplit; first done. iPureIntro. by lia.
+      + iIntros (?) "?". iApply "HΦ". by iFrame. }
     iIntros (Φ) "#Hs HΦ". wp_lam.
     iApply "HΦ". clear p Φ. iSplitL.
     { rewrite low_rec. iAlways. iNext. iIntros (v1 Φ) "#Hv1 HΦ".
         simpl_subst. wp_value.
       iApply "HΦ". clear Φ. rewrite low_rec. iAlways. iNext.
         iIntros (v2 Φ) "#Hv2 HΦ". simpl_subst.
-      wp_apply (unseal'_low_spec with "[$Hs $Hv1]").
-        iIntros (n1 n2) "%". wp_let.
-      wp_apply (unseal'_low_spec with "[$Hs $Hv2]").
-        iIntros (n'1 n'2) "%". wp_let.
-      wp_apply (seal_spec with "Hs"). iIntros (f) "Hf".
-        do 2!wp_proj. wp_op. do 2!wp_proj. wp_op. wp_value.
-      wp_apply ("Hf" with "* [] [HΦ]").
-      + iExists _, _. iSplit; first done. iPureIntro. by lia.
-      + iIntros (?) "[? _]". by iApply "HΦ". }
+      wp_apply (Hbody with "* [$Hs $Hv1 $Hv2]"). iIntros (???) "[? _]".
+      by iApply "HΦ". }
     iIntros (v1) "!#". iIntros (Φ) "#Hv1 HΦ". wp_lam.
     iApply "HΦ". clear Φ. iSplitL.
     { rewrite low_rec. iAlways. iNext. iIntros (v2 Φ) "#Hv2 HΦ".
         simpl_subst.
-      wp_apply (unseal'_low_spec with "[$Hs $Hv1]").
-        iIntros (n1 n2) "%". wp_let.
-      wp_apply (unseal'_low_spec with "[$Hs $Hv2]").
-        iIntros (n'1 n'2) "%". wp_let.
-      wp_apply (seal_spec with "Hs"). iIntros (f) "Hf".
-        do 2!wp_proj. wp_op. do 2!wp_proj. wp_op. wp_value.
-      wp_apply ("Hf" with "* [] [HΦ]").
-      + iExists _, _. iSplit; first done. iPureIntro. by lia.
-      + iIntros (?) "[? _]". by iApply "HΦ". }
+      wp_apply (Hbody with "* [$Hs $Hv1 $Hv2]"). iIntros (???) "[? _]".
+      by iApply "HΦ". }
     iIntros (v2) "!#". iIntros (Φ) "#Hv2 HΦ". wp_lam.
-    wp_apply (unseal'_low_spec with "[$Hs $Hv1]").
-      iIntros (n1 n2) "%". wp_let.
-    wp_apply (unseal'_low_spec with "[$Hs $Hv2]").
-      iIntros (n'1 n'2) "%". wp_let.
-    wp_apply (seal_spec with "Hs"). iIntros (f) "Hf".
-      do 2!wp_proj. wp_op. do 2!wp_proj. wp_op. wp_value.
-    wp_apply ("Hf" with "* [] [HΦ]").
-    + iExists _, _. iSplit; first done. iPureIntro. by lia.
-    + iIntros (?) "[_ ?]". by iApply "HΦ".
+    wp_apply (Hbody with "* [$Hs $Hv1 $Hv2]"). iIntros (???) "[_ ?]".
+    by iApply "HΦ".
   Qed.
 
   Lemma intervals_spec :
