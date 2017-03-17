@@ -40,6 +40,8 @@ Section intervals_proof.
   Global Instance is_interval_persistent v : PersistentP (is_interval v).
   Proof. apply _. Qed.
 
+STOP. Reconsider these interfaces.
+
   Lemma make_interval_spec N γ s :
     {{{ is_sealer_unsealer S N γ s is_interval }}}
       make_interval SI s
@@ -158,7 +160,29 @@ End ClosedProofs.
 
 Print Assumptions intervals_safe.
 
+(*
+	φ v asserts integrity of message v
+		sign ≔ seal s	verify ≔ unseal s
+For adversarial code:
+	always(∀ v', φ v' -∗ low v') ⊢ low verify
+For verified code:
+	{φ v} sign v {v', low v'}
+	{low v'} verify v' ?{v. φ v}
 
+—
+	φ := low ensures that anyone can sign a message
+
+		encrypt := seal s	decrypt := unseal s
+
+For verified code:
+	{low v} encrypt v {v', low v' ∗ is_ctext v v'}
+	{is_ctext v v'} decrypt v' ?{RET v; True}	(* this should require fresh *)
+
+To support this interface, we want to extend
+the sealing interface with is_sealed v v' and define is_ctext ≔ is_sealed.
+We probably want [is_sealed v v'] anyway, since we can hang invariants
+off v.
+*)
 
 
 (*
