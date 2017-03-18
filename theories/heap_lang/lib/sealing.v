@@ -59,8 +59,7 @@ Section spec.
       PersistentP (is_sealer_unsealer N γ v φ);
     is_sealer_unsealer_ne N γ v n :
       Proper (ext (dist n) ==> dist n) (is_sealer_unsealer N γ v);
-    is_sealed_persistent N γ v v' :
-      PersistentP (is_sealed N γ v v');
+    is_sealed_persistent N γ v v' : PersistentP (is_sealed N γ v v');
     (** Operations *)
     make_sealer_unsealer_spec N p φ `{Hφ : ∀ v, PersistentP (φ v)} :
       heapN ⊥ N →
@@ -68,7 +67,7 @@ Section spec.
       {{{ v γ, RET v; is_sealer_unsealer N γ v φ }}};
     seal_spec N p γ s φ `{Hφ : ∀ v, PersistentP (φ v)} :
       {{{ is_sealer_unsealer N γ s φ }}} seal SI s @ p; ⊤ {{{ f, RET f;
-        (from_low φ -∗ low f) ∗ ∀ p v,
+        □ (from_low φ -∗ low f) ∗ ∀ p v,
         {{{ φ v }}} f v @ p; ⊤ {{{ v', RET v'; low v' ∗ is_sealed N γ v v' }}}
       }}};
     unseal_sealed_spec N p γ s φ :
@@ -77,8 +76,7 @@ Section spec.
       }}};
     unseal_low_spec N p γ s φ :
       {{{ is_sealer_unsealer N γ s φ }}} unseal SI s @ p; ⊤ {{{ f, RET f;
-        (to_low φ -∗ low f) ∗
-        ∀ v', {{{ low v' }}} f v' ?{{{ v, RET v; φ v }}}
+        □ (to_low φ -∗ low f) ∗ ∀ v', {{{ low v' }}} f v' ?{{{ v, RET v; φ v }}}
       }}}
   }.
 End spec.
@@ -386,7 +384,7 @@ Section proof.
 
   Lemma seal_spec p γ s φ `{Hφ : ∀ v, PersistentP (φ v)} :
     {{{ is_sealer_unsealer γ s φ }}} seal SI s @ p; ⊤ {{{ f, RET f;
-      (from_low φ -∗ low f) ∗ ∀ p v,
+      □ (from_low φ -∗ low f) ∗ ∀ p v,
       {{{ φ v }}} f v @ p; ⊤ {{{ v', RET v'; low v' ∗ is_sealed γ v v' }}}
     }}}.
   Proof.
@@ -415,7 +413,7 @@ Section proof.
     iApply "HΦ". clear p Φ. iSplitL.
 
     (** Sealing can be low. *)
-    { iIntros "#Hφ". rewrite low_rec. iAlways. iNext.
+    { iIntros "!# #Hφ". rewrite low_rec. iAlways. iNext.
         iIntros (v Φ) "#Hv HΦ". simpl_subst. wp_value.
       iApply "HΦ". clear Φ. rewrite low_rec. iAlways. iNext.
         iIntros (vk Φ) "#Hk HΦ". simpl_subst.
@@ -470,8 +468,7 @@ Section proof.
 
   Lemma unseal_low_spec p γ s φ :
     {{{ is_sealer_unsealer γ s φ }}} unseal SI s @ p; ⊤ {{{ f, RET f;
-      (to_low φ -∗ low f) ∗
-      ∀ v', {{{ low v' }}} f v' ?{{{ v, RET v; φ v }}}
+      □ (to_low φ -∗ low f) ∗ ∀ v', {{{ low v' }}} f v' ?{{{ v, RET v; φ v }}}
     }}}.
   Proof.
     assert (Hbody : ∀ v',
@@ -509,7 +506,7 @@ Section proof.
         by rewrite -(big_sepM_lookup (λ _, φ) m k v''). }
     iIntros (Φ) "#Hs HΦ". wp_lam.
     iApply "HΦ". clear Φ. iSplitL.
-    - iIntros "#Hφ". rewrite low_rec. iAlways. iNext.
+    - iIntros "!# #Hφ". rewrite low_rec. iAlways. iNext.
         iIntros (v' Φ) "Hv' HΦ". simpl_subst.
         wp_apply (Hbody with "[$Hs $Hv']"). iIntros (v'') "Hv''".
         iApply "HΦ". rewrite/to_low. by iApply "Hφ".

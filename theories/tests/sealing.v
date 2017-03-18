@@ -70,7 +70,7 @@ Section intervals_proof.
     iIntros (Φ) "#Hs HΦ". wp_lam.
     iApply "HΦ". clear p Φ. iIntros (p n1) "!#". iIntros (Φ) "_ HΦ". wp_lam.
     iApply "HΦ". clear p Φ. iIntros (p n2) "!#". iIntros (Φ) "_ HΦ". wp_lam.
-    wp_apply (seal_spec with "Hs"). iIntros (f) "Hf".
+    wp_apply (seal_spec with "Hs"). iIntros (f) "[_ Hf]".
     rewrite/is_interval/is_interval'. wp_op=>[?|/Z.lt_le_incl ?]; wp_if.
     - rewrite (Z.min_l n1) // (Z.max_r _ n2) //.
       wp_apply ("Hf" with "* [] [$HΦ]"). by iExists n1, n2; auto.
@@ -87,7 +87,7 @@ Section intervals_proof.
     iIntros (v1 Φ) "#Hv1 HΦ". simpl_subst. wp_value.
     iApply "HΦ". clear Φ. rewrite low_rec. iAlways. iNext.
     iIntros (v2 Φ) "#Hv2 HΦ". simpl_subst.
-    wp_apply (seal_spec with "Hs"). iIntros (f) "Hf".
+    wp_apply (seal_spec with "Hs"). iIntros (f) "[_ Hf]".
     (* Inlining (derived) rules for stuck ≤. *)
     wp_bind (_ ≤ _)%E. case: (decide (is_int (of_val v1)))=>Hv1; last first.
     { iApply wp_stuck_bin_op=>//.
@@ -217,7 +217,7 @@ Section intervals_proof.
       wp_lam.
     wp_apply (unseal'_val_spec with "[$Hs $Hv1]"). iIntros "%". wp_let.
     wp_apply (unseal'_val_spec with "[$Hs $Hv2]"). iIntros "%". wp_let.
-    wp_apply (seal_spec with "Hs"). iIntros (f) "Hf".
+    wp_apply (seal_spec with "Hs"). iIntros (f) "[_ Hf]".
       do 2!wp_proj. wp_op. do 2!wp_proj. wp_op. wp_value.
     wp_apply ("Hf" with "* [] [$HΦ]"). iExists _, _. iSplitL; first done.
     iPureIntro. by lia.
@@ -244,7 +244,7 @@ Section intervals_proof.
         iIntros (n1 n2) "%". wp_let.
       wp_apply (unseal'_low_spec with "[$Hs $Hv2]").
         iIntros (n'1 n'2) "%". wp_let.
-      wp_apply (seal_spec with "Hs"). iIntros (f) "Hf".
+      wp_apply (seal_spec with "Hs"). iIntros (f) "[_ Hf]".
         do 2!wp_proj. wp_op. do 2!wp_proj. wp_op. wp_value.
       wp_apply ("Hf" with "* [] [HΦ]").
       + iExists _, _. iSplit; first done. iPureIntro. by lia.
@@ -308,23 +308,15 @@ End intervals_proof.
 (** * Public-key interfaces for sealer-unsealer pairs *)
 (**
 	When instantiated with suitable representation invariants,
-	sealer-unsealer pairs satisfy specifications for asymmetric
-	signature and encryption schemes.
+	sealer-unsealer pairs satisfy natural interfaces for
+	asymmetric signature and encryption schemes.
 *)
 Section pk_code.
   Context {SI : SealingImpl}.
 
-  Definition signature_scheme : expr :=
+  Definition make_key_pair : val := λ: <>,
     let: "k" := make_sealer_unsealer SI () in
-    let: "sign" := seal SI "k" in
-    let: "verify" := unseal SI "k" in
-    ("sign", "verify").
-
-  Definition encryption_scheme : expr :=
-    let: "k" := make_sealer_unsealer SI () in
-    let: "encrypt" := seal SI "k" in
-    let: "decrypt" := unseal SI "k" in
-    ("encrypt", "decrypt").
+    (seal SI "k", unseal SI "k").
 End pk_code.
 
 Section pk_proof.
@@ -339,51 +331,48 @@ Section pk_proof.
 
   Lemma signature_scheme_spec p φ `{Hφ : ∀ v, PersistentP (φ v)} :
     heapN ⊥ N →
-    {{{ heap_ctx ∗ low_integrity φ }}} signature_scheme @ p; ⊤
-    {{{ v1 v2, RET (v1, v2); is_sign φ v1 ∗ is_verify φ v2 ∗ low v2 }}}.
+    {{{ heap_ctx ∗ to_low φ }}} make_key_pair () @ p; ⊤
+    {{{ v1 v2, RET (v1, v2); low v2 ∗ is_sign φ v1 ∗ is_verify φ v2 }}}.
   Proof.
-    iIntros (? Φ) "#[Hh Hφ] HΦ". rewrite/signature_scheme.
+    iIntros (? Φ) "#[Hh Hφ] HΦ". wp_lam.
     wp_apply (make_sealer_unsealer_spec S N _ φ with "Hh");
       first done. iIntros (k γ) "#Hk". wp_let.
-    wp_apply (seal_spec with "Hk"). iIntros (sign) "#Hsign". wp_let.
+    wp_apply (seal_spec with "Hk"). iIntros (sign) "[_ #Hsign]".
     wp_apply (unseal_low_spec with "Hk").
-      iIntros (verify) "[Hvlow Hverify]". wp_let.
-    iApply ("HΦ" with "[$Hverify Hvlow]").
-    iSplitR; last by iApply ("Hvlow" with "Hφ").
+      iIntros (verify) "[Hvlow #Hverify]". wp_value.
+    iApply "HΦ". iFrame "Hverify".
+    iSplitL; first by iApply ("Hvlow" with "Hφ").
     clear p Φ. iIntros (p v) "!#". iIntros (Φ) "Hv HΦ".
     wp_apply ("Hsign" with "* Hv"). iIntros (?) "[? _]".
     by iApply "HΦ".
   Qed.
 
-  Definition plaintext (φ : val → iProp Σ) (v : val) : iProp Σ :=
-    (low v ∨ φ v)%I.
   Definition is_encrypt (φ : val → iProp Σ) (encrypt : val) : iProp Σ :=
     (∀ p v, {{{ φ v }}} encrypt v @ p; ⊤ {{{ v', RET v'; low v' }}})%I.
   Definition is_decrypt (φ : val → iProp Σ) (decrypt : val) : iProp Σ :=
-    (∀ v', {{{ low v' }}} decrypt v' ?{{{ v, RET v; plaintext φ v }}})%I.
-(*
+    (∀ v', {{{ low v' }}} decrypt v' ?{{{ v, RET v; low v ∨ φ v }}})%I.
+
   Lemma encryption_scheme_spec p φ `{Hφ : ∀ v, PersistentP (φ v)} :
     heapN ⊥ N →
-    {{{ heap_ctx }}} encryption_scheme @ p; ⊤
-    {{{ v1 v2, RET (v1, v2); is_encrypt φ v1 ∗ is_decrypt φ v2 ∗ low v1 }}}.
+    {{{ heap_ctx }}} make_key_pair () @ p; ⊤
+    {{{ v1 v2, RET (v1, v2); low v1 ∗ is_encrypt φ v1 ∗ is_decrypt φ v2 }}}.
   Proof.
-    iIntros (? Φ) "#Hh HΦ". rewrite/encryption_scheme.
-    wp_apply (make_sealer_unsealer_spec S N _ (plaintext φ)
+    iIntros (? Φ) "#Hh HΦ". wp_lam.
+    wp_apply (make_sealer_unsealer_spec S N _ (λ v, (low v ∨ φ v)%I)
       with "Hh"); first done. iIntros (k γ) "#Hk". wp_let.
-    wp_apply (seal_spec with "Hk"). iIntros (sign) "#Hsign". wp_let.
-*)
+    wp_apply (seal_spec with "Hk"). iIntros (enc) "[Helow #Henc]".
+    wp_apply (unseal_low_spec with "Hk"). iIntros (dec) "[_ Hdec]".
+      wp_value.
+    iApply "HΦ". iFrame "Hdec".
+    iSplitL; first by iApply "Helow"; iAlways; iIntros; iLeft.
+    clear p Φ. iIntros (p v) "!#". iIntros (Φ) "Hv HΦ".
+    wp_apply ("Henc" with "* [Hv]"); first by iRight. iIntros (?) "[? _]".
+    by iApply "HΦ".
+  Qed.
 End pk_proof.
 
 (*
-— encryption
-	φ := low ensures that anyone can sign a message
-		encrypt := seal s	decrypt := unseal s
-
-For verified code:
-	{low v} encrypt v {v', low v' ∗ is_ctext v v'}
-	{is_ctext v v'} decrypt v' ?{RET v; True}
-
-To support this interface, we want to define is_ctext ≔ is_sealed.
+	PDS: We need a signature/encryption scheme client.
 *)
 
 Section ClosedProofs.
