@@ -55,6 +55,7 @@ Section spec.
     seal_low γ s φ : is_seal γ s φ -∗ □ (∀ v, low v -∗ φ v) -∗ low s;
     unseal_low γ u φ : is_unseal γ u φ -∗ □ (∀ v, φ v -∗ low v) -∗ low u;
     sealed_low γ v v' φ : is_sealed γ v v' φ -∗ low v';
+    sealed_inv γ v v' φ : is_sealed γ v v' φ -∗ φ v;
     (** Operations *)
     make_seal_spec N p φ :
       heapN ⊥ N →
@@ -98,6 +99,50 @@ Section instances.
     by apply equiv_dist.
   Qed.
 End instances.
+
+(** * The reseal operation *)
+(**
+	Unsealing a low value [f] twice need not return the _same_ value
+	[v] because an adversary with access to two sealed values [v'1]
+	and [v'2] may define
+<<
+	f ≔ let r = ref true in λ _, if !r then (r := false; v'1) else v'2
+>>
+	The application [reseal f] applies [f] once and returns a
+	more predictable sealed value [f'].
+*)
+Definition reseal : val := λ: "seal" "unseal" "x", "seal" ("unseal" "x").
+
+Section reseal_proof.
+  Context `{heapG Σ, SI : SealingImpl} (S : sealing Σ).
+  Implicit Types s u f v : val.
+
+  Lemma reseal_spec p γ s φ `{Hφ : ∀ v, PersistentP (φ v)} :
+    {{{ is_seal S γ s φ }}} reseal s @ p; ⊤ {{{ f1, RET f1;
+      ∀ p u, {{{ is_unseal S γ u φ }}} f1 u @ p; ⊤ {{{ f2, RET f2;
+        ∀ v', {{{ low v' }}} f2 v' ?{{{ v'2 v, RET v'2; is_sealed S γ v v'2 φ }}}
+      }}}
+    }}}.
+  Proof.
+    iIntros (Φ) "#Hs HΦ". wp_lam.
+    iApply "HΦ". clear p Φ. iIntros (p u) "!#". iIntros (Φ) "#Hu HΦ". wp_lam.
+    iApply "HΦ". clear Φ. iIntros (v') "!#". iIntros (Φ) "Hv' HΦ". wp_lam.
+    wp_apply (unseal_low_spec with "[$Hu $Hv']"). iIntros (v) "Hv".
+    wp_apply (seal_spec with "[$Hs $Hv]"). iIntros (v'2) "Hv'2".
+    by iApply ("HΦ" with "Hv'2").
+  Qed.
+
+  Lemma reseal_val γ s u v' φ `{Hφ : ∀ v, PersistentP (φ v)} :
+    {{{ is_seal S γ s φ ∗ is_unseal S γ u φ ∗ low v' }}} reseal s u v'
+    ?{{{  v'2 v, RET v'2; is_sealed S γ v v'2 φ }}}.
+  Proof.
+    iIntros (Φ) "(Hs & Hu & Hv') HΦ".
+    wp_apply (reseal_spec with "Hs"). iIntros (f1) "Hf1".
+    wp_apply ("Hf1" with "* Hu"). iIntros (f2) "Hf2".
+    by wp_apply ("Hf2" with "* Hv'").
+  Qed.
+End reseal_code.
+
 End intf.
 
 (** * Dynamic sealing implementation *)
@@ -352,6 +397,9 @@ Section proof.
     by iApply (tbl_inv_insert with "Hinv Hv").
   Qed.
 
+  Lemma sealed_inv γ v v' φ : is_sealed γ v v' φ -∗ φ v.
+  Proof. iIntros "(_ &#Hv&_)". by iFrame "Hv". Qed.
+
   Lemma sealed_low γ v v' φ : is_sealed γ v v' φ -∗ low v'.
   Proof.
     iIntros "(#[Hh Hsync] & #Hv & %)". subst. rewrite low_rec.
@@ -480,6 +528,7 @@ Section proof.
     intf.seal_low := seal_low;
     intf.unseal_low := unseal_low;
     intf.sealed_low := sealed_low;
+    intf.sealed_inv := sealed_inv;
     intf.make_seal_spec := make_seal_spec;
     intf.seal_spec := seal_spec;
     intf.unseal_spec := unseal_spec;
