@@ -41,54 +41,63 @@ Section spec.
     (** Predicates. *)
     (** Name ties together the abstract predicates. *)
     name : Type;
-    is_sealing (γ : name) (φ : val → iProp Σ) : iProp Σ;
-    is_seal (γ : name) (v : val) : iProp Σ;
-    is_unseal (γ : name) (v : val) : iProp Σ;
-    is_sealed (γ : name) (v v' : val) : iProp Σ;
+    is_seal (γ : name) (v : val) (φ : val → iProp Σ) : iProp Σ;
+    is_unseal (γ : name) (v : val) (φ : val → iProp Σ) : iProp Σ;
+    is_sealed (γ : name) (v v' : val) (φ : val → iProp Σ) : iProp Σ;
     (** Structure *)
-    is_sealing_persistent γ φ : PersistentP (is_sealing γ φ);
-    is_sealing_ne γ n : Proper (ext (dist n) ==> dist n) (is_sealing γ);
-    is_seal_persistent γ v : PersistentP (is_seal γ v);
-    is_unseal_persistent γ v : PersistentP (is_unseal γ v);
-    is_sealed_persistent γ v v' : PersistentP (is_sealed γ v v');
-    (** Properties of sealing *)
-    is_seal_low γ s φ :
-      is_sealing γ φ -∗ □ (∀ v, low v -∗ φ v) -∗ is_seal γ s -∗ low s;
-    (** Properties of unsealing *)
-    is_unseal_low γ u φ :
-      is_sealing γ φ -∗ □ (∀ v, φ v -∗ low v) -∗ is_unseal γ u -∗ low u;
+    is_seal_persistent γ v φ : PersistentP (is_seal γ v φ);
+    is_seal_ne γ v n : Proper (ext (dist n) ==> dist n) (is_seal γ v);
+    is_unseal_persistent γ v φ : PersistentP (is_unseal γ v φ);
+    is_unseal_ne γ v n : Proper (ext (dist n) ==> dist n) (is_unseal γ v);
+    is_sealed_persistent γ v v' φ : PersistentP (is_sealed γ v v' φ);
+    is_sealed_ne γ v v' n : Proper (ext (dist n) ==> dist n) (is_sealed γ v v');
+    (** Low seal, unseal, and sealed values *)
+    seal_low γ s φ : is_seal γ s φ -∗ □ (∀ v, low v -∗ φ v) -∗ low s;
+    unseal_low γ u φ : is_unseal γ u φ -∗ □ (∀ v, φ v -∗ low v) -∗ low u;
+    sealed_low γ v v' φ : is_sealed γ v v' φ -∗ low v';
     (** Operations *)
     make_seal_spec N p φ :
       heapN ⊥ N →
       {{{ heap_ctx }}} make_seal () @ p; ⊤
-      {{{ v1 v2 γ, RET (v1, v2); is_sealing γ φ ∗ is_seal γ v1 ∗ is_unseal γ v2
-      }}};
+      {{{ v1 v2 γ, RET (v1, v2); is_seal γ v1 φ ∗ is_unseal γ v2 φ }}};
     seal_spec p γ s v φ `{!PersistentP (φ v)} :
-      {{{ is_sealing γ φ ∗ is_seal γ s ∗ φ v }}} s v @ p; ⊤
-      {{{ v', RET v'; low v' ∗ is_sealed γ v v' }}};
+      {{{ is_seal γ s φ ∗ φ v }}} s v @ p; ⊤
+      {{{ v', RET v'; is_sealed γ v v' φ }}};
     unseal_spec p γ u v v' φ :
-      {{{ is_sealing γ φ ∗ is_unseal γ u ∗ is_sealed γ v v' }}}
-        u v' @ p; ⊤
+      {{{ is_unseal γ u φ ∗ is_sealed γ v v' φ }}} u v' @ p; ⊤
       {{{ RET v; φ v }}};
     unseal_low_spec γ u v' φ :
-      {{{ is_sealing γ φ ∗ is_unseal γ u ∗ low v' }}} u v'
-      ?{{{ v, RET v; φ v }}}
+      {{{ is_unseal γ u φ ∗ low v' }}} u v' ?{{{ v, RET v; φ v }}}
   }.
 End spec.
 Arguments sealing _ {_ _}.
-Existing Instances is_sealing_persistent is_sealing_ne
-  is_seal_persistent is_unseal_persistent is_sealed_persistent.
+Existing Instances is_seal_persistent is_seal_ne
+  is_unseal_persistent is_unseal_ne
+  is_sealed_persistent is_sealed_ne.
 
-Section theory.
+Section instances.
   Context `{heapG Σ, SI : SealingImpl} (S : sealing Σ).
 
-  Global Instance is_sealing_proper γ :
-    Proper (ext (≡) ==> (≡)) (is_sealing S γ).
+  Global Instance is_seal_proper γ v : Proper (ext (≡) ==> (≡)) (is_seal S γ v).
   Proof.
-    move=>???. apply equiv_dist=>?. apply is_sealing_ne=>?.
+    move=>???. apply equiv_dist=>?. apply is_seal_ne=>?.
     by apply equiv_dist.
   Qed.
-End theory.
+
+  Global Instance is_unseal_proper γ v :
+    Proper (ext (≡) ==> (≡)) (is_unseal S γ v).
+  Proof.
+    move=>???. apply equiv_dist=>?. apply is_unseal_ne=>?.
+    by apply equiv_dist.
+  Qed.
+
+  Global Instance is_sealed_proper γ v v' :
+    Proper (ext (≡) ==> (≡)) (is_sealed S γ v v').
+  Proof.
+    move=>???. apply equiv_dist=>?. apply is_sealed_ne=>?.
+    by apply equiv_dist.
+  Qed.
+End instances.
 End intf.
 
 (** * Dynamic sealing implementation *)
@@ -190,25 +199,27 @@ Section proof.
   )%I.
 
   Record name : Type := { sync : val; tbl : loc; ghost : gname }.
-  Definition is_sealing (γ : name) φ : iProp Σ :=
+  Definition ctx (γ : name) φ : iProp Σ :=
     (heap_ctx ∗ is_sync (sync γ) (tbl_res (tbl γ) (ghost γ) φ))%I.
 
-  Definition is_seal (γ : name) (v : val) : iProp Σ := (
+  Definition is_seal γ v φ : iProp Σ := (
+    ctx γ φ ∗
     ⌜v = LamV "v" (λ: "x",
       ifloc: "x" as "k" =>
         (sync γ) (λ: <>, tbl γ <- map_insert (! (tbl γ)) "k" "v")
       else abort)⌝
   )%I.
 
-  Definition is_unseal (γ : name) (v : val) : iProp Σ := (
+  Definition is_unseal γ v φ : iProp Σ := (
+    ctx γ φ ∗
     ⌜v = LamV "f" (
       let: "k" := ref () in
       "f" "k" ;;
       (sync γ) (λ: <>, map_lookup_partial (! (tbl γ)) "k"))⌝
   )%I.
 
-  Definition is_sealed (γ : name) (v v' : val) : iProp Σ := (
-    ∃ φ, is_sealing γ φ ∗ □ φ v ∗
+  Definition is_sealed γ v v' φ : iProp Σ := (
+    ctx γ φ ∗ □ φ v ∗
     ⌜v' = LamV "x" (
       ifloc: "x" as "k" =>
         (sync γ) (λ: <>, tbl γ <- map_insert (! (tbl γ)) "k" v)
@@ -225,24 +236,27 @@ Section proof.
   Instance tbl_res_ne l γ n : Proper (ext (dist n) ==> dist n) (tbl_res l γ).
   Proof. solve_proper. Qed.
 
-  Instance is_sealing_persistent γ φ : PersistentP (is_sealing γ φ).
+  Instance ctx_persistent γ φ : PersistentP (ctx γ φ).
   Proof. apply _. Qed.
-  Instance is_sealing_ne γ n :
-    Proper (ext (dist n) ==> dist n) (is_sealing γ).
+  Instance ctx_ne γ n : Proper (ext (dist n) ==> dist n) (ctx γ).
   Proof. solve_proper. Qed.
 
-  Instance is_seal_persistent γ v : PersistentP (is_seal γ v).
+  Instance is_seal_persistent γ v φ : PersistentP (is_seal γ v φ).
   Proof. apply _. Qed.
-  Instance is_seal_timeless γ v : TimelessP (is_seal γ v).
-  Proof. apply _. Qed.
+  Instance is_seal_ne γ v n : Proper (ext (dist n) ==> dist n) (is_seal γ v).
+  Proof. solve_proper. Qed.
 
-  Instance is_unseal_persistent γ v : PersistentP (is_unseal γ v).
+  Instance is_unseal_persistent γ v φ : PersistentP (is_unseal γ v φ).
   Proof. apply _. Qed.
-  Instance is_unseal_timeless γ v : TimelessP (is_unseal γ v).
-  Proof. apply _. Qed.
+  Instance is_unseal_ne γ v n :
+    Proper (ext (dist n) ==> dist n) (is_unseal γ v).
+  Proof. solve_proper. Qed.
 
-  Instance is_sealed_persistent γ v v' : PersistentP (is_sealed γ v v').
+  Instance is_sealed_persistent γ v v' φ : PersistentP (is_sealed γ v v' φ).
   Proof. apply _. Qed.
+  Instance is_sealed_ne γ v v' n :
+    Proper (ext (dist n) ==> dist n) (is_sealed γ v v').
+  Proof. solve_proper. Qed.
 
   (** Ghosts *)
 
@@ -315,18 +329,17 @@ Section proof.
     - rewrite big_sepM_insert //. iFrame "Hinv". iAlways. by iFrame "Hv".
   Qed.
 
-  (** Properties of sealing. *)
+  (** Properties of sealing *)
 
-  Lemma is_sealed_agree γ v1 v2 v' :
-    is_sealed γ v1 v' -∗ is_sealed γ v2 v' -∗ ⌜v1 = v2⌝.
-  Proof. do 2!iDestruct 1 as (?) "(_&_&%)". by naive_solver. Qed.
+  Lemma sealed_agree γ v1 v2 v' φ :
+    is_sealed γ v1 v' φ -∗ is_sealed γ v2 v' φ -∗ ⌜v1 = v2⌝.
+  Proof. iIntros "(_&_&%) (_&_&%)". by naive_solver. Qed.
 
-  Lemma sealed_high p γ v v' k :
-    {{{ is_sealed γ v v' ∗ k ↦ () ∗ fresh k }}} v' k @ p; ⊤
+  Lemma sealed_high p γ v v' k φ :
+    {{{ is_sealed γ v v' φ ∗ k ↦ () ∗ fresh k }}} v' k @ p; ⊤
     {{{ RET (); is_witness (ghost γ) k v }}}.
   Proof.
-    iIntros (Φ) "(Hv' & Hk & Hf) HΦ".
-      iDestruct "Hv'" as (φ) "(#[Hh Hsync] & Hv & %)". subst. wp_lam.
+    iIntros (Φ) "((#[Hh Hsync] & Hv & %) & Hk & Hf) HΦ". subst. wp_lam.
     wp_typecast Hloc; last by exfalso; apply Hloc; exists k.
       wp_match. rewrite/is_sync.
     wp_apply ("Hsync" with "[%]"). iClear "Hsync". iIntros (Ψ) "HR HΨ".
@@ -339,9 +352,9 @@ Section proof.
     by iApply (tbl_inv_insert with "Hinv Hv").
   Qed.
 
-  Lemma is_sealed_low γ v v' : is_sealed γ v v' -∗ low v'.
+  Lemma sealed_low γ v v' φ : is_sealed γ v v' φ -∗ low v'.
   Proof.
-    iDestruct 1 as (φ) "(#[Hh Hsync] & #Hv & %)". subst. rewrite low_rec.
+    iIntros "(#[Hh Hsync] & #Hv & %)". subst. rewrite low_rec.
       iAlways. iNext. iIntros (vk Φ) "#Hk HΦ". simpl_subst.
     wp_typecast Hloc; wp_match; last by wp_apply wp_abort.
       destruct (is_loc_val _ Hloc) as (k&->). rewrite/is_sync.
@@ -355,20 +368,19 @@ Section proof.
     - by iApply (tbl_inv_insert with "Hinv [Hv]").
   Qed.
 
-  Lemma is_seal_low γ s φ :
-    is_sealing γ φ -∗ □ (∀ v, low v -∗ φ v) -∗ is_seal γ s -∗ low s.
+  Lemma seal_low γ s φ : is_seal γ s φ -∗ □ (∀ v, low v -∗ φ v) -∗ low s.
   Proof.
-    iIntros "#Hs #Hφ %". subst. rewrite low_rec.
+    iIntros "[#Hctx %] #Hφ". subst. rewrite low_rec.
       iAlways. iNext. iIntros (v Φ) "#Hv HΦ". simpl_subst. wp_value.
     iApply "HΦ".
-    iApply (is_sealed_low γ v with "[]"). iExists φ. iFrame "Hs".
+    iApply (sealed_low γ v with "[]"). iFrame "Hctx".
     iSplitL; last done. iAlways. by iApply ("Hφ" with "Hv").
   Qed.
 
   (** Properties of unsealing. *)
 
   Lemma unseal_body_low γ v' φ :
-    {{{ is_sealing γ φ ∗ low v' }}}
+    {{{ ctx γ φ ∗ low v' }}}
       let: "k" := ref () in
       v' "k" ;;
       (sync γ) (λ: <>, (map_lookup_partial ! (tbl γ)) "k")
@@ -399,12 +411,12 @@ Section proof.
       by rewrite -(big_sepM_lookup (λ _, φ) m k v'').
   Qed.
 
-  Lemma is_unseal_low γ u φ :
-    is_sealing γ φ -∗ □ (∀ v, φ v -∗ low v) -∗ is_unseal γ u -∗ low u.
+  Lemma unseal_low γ u φ :
+    is_unseal γ u φ -∗ □ (∀ v, φ v -∗ low v) -∗ low u.
   Proof.
-    iIntros "#Hs #Hφ %". subst. rewrite low_rec.
+    iIntros "[#Hctx %] #Hφ". subst. rewrite low_rec.
       iAlways. iNext. iIntros (v' Φ) "#Hv' HΦ". simpl_subst.
-    wp_apply (unseal_body_low with "[$Hs $Hv']"). iIntros (v) "Hv".
+    wp_apply (unseal_body_low with "[$Hctx $Hv']"). iIntros (v) "Hv".
     iApply "HΦ". by iApply ("Hφ" with "Hv").
   Qed.
 
@@ -413,8 +425,7 @@ Section proof.
   Lemma make_seal_spec N p φ :
     heapN ⊥ N →
     {{{ heap_ctx }}} code.make_seal () @ p; ⊤
-    {{{ v1 v2 γ, RET (v1, v2); is_sealing γ φ ∗ is_seal γ v1 ∗ is_unseal γ v2
-    }}}.
+    {{{ v1 v2 γ, RET (v1, v2); is_seal γ v1 φ ∗ is_unseal γ v2 φ }}}.
   Proof.
     iIntros (? Φ) "#Hh HΦ". wp_lam. wp_alloc l as "Hl". wp_let.
       rewrite -wp_fupd. set h := to_heap ∅.
@@ -426,27 +437,23 @@ Section proof.
     wp_apply (make_sync_spec L _ N (tbl_res l γh φ) with "[$Hh Hl Hw]");
       first done.
     { iExists map_empty, ∅. iFrame "Hl Hw". rewrite big_sepM_empty. by auto. }
-    iIntros (sync) "#Hsync". set γ := {| sync := sync; tbl := l; ghost := γh |}.
-      do 3!wp_let.
-    iApply ("HΦ" $! _ _ γ). iFrame "Hh Hsync". by auto.
+    iIntros (sync) "#Hsync". iCombine "Hh" "Hsync" as "Hctx".
+      set γ := {| sync := sync; tbl := l; ghost := γh |}. do 3!wp_let.
+    iApply ("HΦ" $! _ _ γ). iFrame "Hctx Hctx". by auto.
   Qed.
 
   Lemma seal_spec p γ s v φ `{!PersistentP (φ v)} :
-    {{{ is_sealing γ φ ∗ is_seal γ s ∗ φ v }}} s v @ p; ⊤
-    {{{ v', RET v'; low v' ∗ is_sealed γ v v' }}}.
+    {{{ is_seal γ s φ ∗ φ v }}} s v @ p; ⊤
+    {{{ v', RET v'; is_sealed γ v v' φ }}}.
   Proof.
-    iIntros (Φ) "(#Hs & % & #Hv) HΦ". subst. wp_lam. set v' := LamV _ _.
-    iAssert (is_sealed γ v v') as "#Hv'".
-    { iExists φ. iFrame "Hs". iSplitL. by iAlways. done. }
-    iApply "HΦ". iFrame "Hv'".
-    by iApply (is_sealed_low with "Hv'").
+    iIntros (Φ) "[[#Hctx %] #Hv] HΦ". subst. wp_lam.
+    iApply "HΦ". iFrame "Hctx". iSplitL. by iAlways. done.
   Qed.
 
   Lemma unseal_spec p γ u v v' φ :
-    {{{ is_sealing γ φ ∗ is_unseal γ u ∗ is_sealed γ v v' }}} u v' @ p; ⊤
-    {{{ RET v; φ v }}}.
+    {{{ is_unseal γ u φ ∗ is_sealed γ v v' φ }}} u v' @ p; ⊤ {{{ RET v; φ v }}}.
   Proof.
-    iIntros (Φ) "(#[Hh Hsync] & % & #Hv') HΦ". subst. wp_lam.
+    iIntros (Φ) "[[#[Hh Hsync] %] Hv'] HΦ". subst. wp_lam.
     wp_apply (wp_alloc_fresh with "Hh"); auto.
       iIntros (k) "[Hk Hf]". wp_let.
     wp_apply (sealed_high with "[$Hv' $Hk $Hf]"). iIntros "Hwk". wp_seq.
@@ -463,15 +470,16 @@ Section proof.
   Qed.
 
   Lemma unseal_low_spec γ u v' φ :
-    {{{ is_sealing γ φ ∗ is_unseal γ u ∗ low v' }}} u v' ?{{{ v, RET v; φ v }}}.
+    {{{ is_unseal γ u φ ∗ low v' }}} u v' ?{{{ v, RET v; φ v }}}.
   Proof.
-    iIntros (Φ) "(#Hs & % & #Hv') HΦ". subst. wp_lam.
-    by wp_apply (unseal_body_low with "[$Hs $Hv'] [$HΦ]").
+    iIntros (Φ) "[[Hctx %] Hv'] HΦ". subst. wp_lam.
+    by wp_apply (unseal_body_low with "[$Hctx $Hv'] [$HΦ]").
   Qed.
 
   Definition sealing : sealing Σ := {|
-    intf.is_seal_low := is_seal_low;
-    intf.is_unseal_low := is_unseal_low;
+    intf.seal_low := seal_low;
+    intf.unseal_low := unseal_low;
+    intf.sealed_low := sealed_low;
     intf.make_seal_spec := make_seal_spec;
     intf.seal_spec := seal_spec;
     intf.unseal_spec := unseal_spec;
