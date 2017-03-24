@@ -40,13 +40,13 @@ Section intervals_code.
     let: "make_int" := λ: "n1" "n2",
       "seal" (if: "n1" ≤ "n2" then ("n1", "n2") else ("n2", "n1"))
     in
-    let: "snap" := λ: "x", "seal" ("unseal" "x") in
-    let: "min" := λ: "x", Fst ("unseal" "x") in
-    let: "max" := λ: "x", Snd ("unseal" "x") in
+    let: "snap" := λ: "i", "seal" ("unseal" "i") in
+    let: "min" := λ: "i", Fst ("unseal" "i") in
+    let: "max" := λ: "i", Snd ("unseal" "i") in
     let: "sum" :=
-      λ: "x", let: "i" := "unseal" "x" in
-      λ: "y", let: "j" := "unseal" "y" in
-      "seal" (Fst "i" + Fst "j", Snd "i" + Snd "j")
+      λ: "i", let: "x" := "unseal" "i" in
+      λ: "j", let: "y" := "unseal" "j" in
+      "seal" (Fst "x" + Fst "y", Snd "x" + Snd "y")
     in ("make_int", "snap", "min", "max", "sum").
 End intervals_code.
 
@@ -56,9 +56,9 @@ Section intervals_proof.
   Implicit Types n : Z.
 
   (** Definitions *)
-  Definition is_interval' (n1 n2 : Z) (v : val) : iProp Σ :=
-    (⌜v = (#n1, #n2)%V⌝ ∗ ⌜n1 ≤ n2⌝)%I.
-  Notation intφ := (λ v, (∃ n1 n2, is_interval' n1 n2 v)%I) (only parsing).
+
+  Definition intφ (v : val) : iProp Σ :=
+    (∃ n1 n2, ⌜v = (#n1, #n2)%V⌝ ∗ ⌜n1 ≤ n2⌝)%I.
 
   Record name : Type := { nameS : intf.name S; seal : val; unseal : val }.
 
@@ -75,49 +75,47 @@ Section intervals_proof.
     ⌜v = LamV "n1" (λ: "n2",
       (seal γ) (if: "n1" ≤ "n2" then ("n1", "n2") else ("n2", "n1")))⌝
   )%I.
-  Definition is_make_int_2 γ n1 v : iProp Σ := (
+  Definition is_make_int' γ n1 v : iProp Σ := (
     ctx γ ∗
     ⌜v = LamV "n2" (
       (seal γ) (if: #n1 ≤ "n2" then (#n1, "n2") else ("n2", #n1)))%E⌝
   )%I.
 
   Definition is_snap γ v : iProp Σ :=
-    (ctx γ ∗ ⌜v = LamV "x" ((seal γ) ((unseal γ) "x"))⌝)%I.
+    (ctx γ ∗ ⌜v = LamV "i" ((seal γ) ((unseal γ) "i"))⌝)%I.
   Definition is_min γ v : iProp Σ :=
-    (ctx γ ∗ ⌜v = LamV "x" (Fst ((unseal γ) "x"))⌝)%I.
+    (ctx γ ∗ ⌜v = LamV "i" (Fst ((unseal γ) "i"))⌝)%I.
   Definition is_max γ v : iProp Σ :=
-    (ctx γ ∗ ⌜v = LamV "x" (Snd ((unseal γ) "x"))⌝)%I.
+    (ctx γ ∗ ⌜v = LamV "i" (Snd ((unseal γ) "i"))⌝)%I.
 
   Definition is_sum γ v : iProp Σ := (
     ctx γ ∗
-    ⌜v = LamV "x" (
-      let: "i" := (unseal γ) "x" in
-      λ: "y", let: "j" := (unseal γ) "y" in
-      (seal γ) (Fst "i" + Fst "j", Snd "i" + Snd "j"))⌝
+    ⌜v = LamV "i" (
+      let: "x" := (unseal γ) "i" in
+      λ: "j", let: "y" := (unseal γ) "j" in
+      (seal γ) (Fst "x" + Fst "y", Snd "x" + Snd "y"))⌝
   )%I.
-  Definition is_sum_2 γ n1 n2 v : iProp Σ := (
+  Definition is_sum' γ n1 n2 v : iProp Σ := (
     ctx γ ∗ ⌜n1 ≤ n2⌝ ∗
-    ⌜v = LamV "y" (
-      let: "j" := (unseal γ) "y" in
-      (seal γ) (Fst (#n1, #n2) + Fst "j", Snd (#n1, #n2) + Snd "j"))⌝
+    ⌜v = LamV "j" (
+      let: "y" := (unseal γ) "j" in
+      (seal γ) (Fst (#n1, #n2) + Fst "y", Snd (#n1, #n2) + Snd "y"))⌝
   )%I.
 
   (** Structure *)
 
-  Instance is_interval'_persistent n1 n2 v : PersistentP (is_interval' n1 n2 v).
-  Proof. apply _. Qed.
-
   Instance intφ_persistent v : PersistentP (intφ v).
   Proof. apply _. Qed.
-
   Global Instance is_interval_persistent γ n1 n2 v :
     PersistentP (is_interval γ n1 n2 v).
   Proof. apply _. Qed.
   Global Instance is_make_int_persistent γ v :
     PersistentP (is_make_int γ v).
   Proof. apply _. Qed.
-  Global Instance is_make_int_2_persistent γ v :
+  Global Instance is_make_int'_persistent γ v :
     PersistentP (is_make_int γ v).
+  Proof. apply _. Qed.
+  Global Instance is_snap_persistent γ v : PersistentP (is_snap γ v).
   Proof. apply _. Qed.
   Global Instance is_min_persistent γ v : PersistentP (is_min γ v).
   Proof. apply _. Qed.
@@ -125,11 +123,11 @@ Section intervals_proof.
   Proof. apply _. Qed.
   Global Instance is_sum_persistent γ v : PersistentP (is_sum γ v).
   Proof. apply _. Qed.
-  Global Instance is_sum_2_persistent γ n1 n2 v :
-    PersistentP (is_sum_2 γ n1 n2 v).
+  Global Instance is_sum'_persistent γ n1 n2 v :
+    PersistentP (is_sum' γ n1 n2 v).
   Proof. apply _. Qed.
 
-  (** Operations *)
+  (** The [intervals] function *)
 
   Lemma intervals_spec N p :
     heapN ⊥ N →
@@ -137,7 +135,7 @@ Section intervals_proof.
     {{{ (make_int snap min max sum : val) γ,
         RET (make_int, snap, min, max, sum);
       is_make_int γ make_int ∗ is_snap γ snap ∗
-      is_min γ min ∗ is_max γ max ∗is_sum γ sum }}}.
+      is_min γ min ∗ is_max γ max ∗ is_sum γ sum }}}.
   Proof.
     iIntros (? Φ) "#Hh HΦ". wp_lam.
     wp_apply (make_seal_spec S N _ intφ with "Hh"); first done.
@@ -147,7 +145,7 @@ Section intervals_proof.
     iFrame "Hctx Hctx Hctx Hctx Hctx". by auto.
   Qed.
 
-  (** Intervals *)
+  (** Trivial properties of [is_interval] *)
 
   Lemma interval_inv γ n1 n2 v : is_interval γ n1 n2 v -∗ ⌜n1 ≤ n2⌝.
   Proof.
@@ -158,109 +156,79 @@ Section intervals_proof.
   Lemma interval_low γ n1 n2 v : is_interval γ n1 n2 v -∗ low v.
   Proof. iIntros "[_ Hv]". by iApply (sealed_low with "Hv"). Qed.
 
-  Lemma unseal_interval p γ n1 n2 v' :
-    {{{ is_interval γ n1 n2 v' }}} (unseal γ) v' @ p; ⊤
-    {{{ RET (#n1, #n2); ⌜n1 ≤ n2⌝ }}}.
-  Proof.
-    iIntros (Φ) "[[_ Hu] Hv'] HΦ".
-    wp_apply (unseal_spec with "[$Hu $Hv']").
-      iDestruct 1 as (??) "[EQ %]"; iDestruct "EQ" as %[=<-<-].
-    by iApply ("HΦ" with "[%]").
-  Qed.
-
-  Lemma unseal_interval_low γ v' :
-    {{{ ctx γ ∗ low v' }}} (unseal γ) v' ?{{{ n1 n2, RET (#n1, #n2); ⌜n1 ≤ n2⌝ }}}.
-  Proof.
-    iIntros (Φ) "[[_ Hu] Hv'] HΦ".
-    wp_apply (unseal_low_spec with "[$Hu $Hv']").
-      iIntros (v). iDestruct 1 as (n1 n2) "[%%]". subst.
-    by iApply ("HΦ" with "[%]").
-  Qed.
-
-  (** The make interval function. *)
-
-  Definition make_int_body γ (e1 e2 : expr) : expr :=
-    ((seal γ) (if: e1 ≤ e2 then (e1, e2) else (e2, e1)))%E.
-  Notation MkInt γ v n1 n2 := (
-    is_interval γ (Z.min n1 n2) (Z.max n1 n2) v
-  )%I (only parsing).
-
-  Lemma make_int_body_nn p γ n1 n2 :
-    {{{ ctx γ }}} make_int_body γ (#n1) (#n2) @ p; ⊤
-    {{{ v, RET v; MkInt γ v n1 n2 }}}.
-  Proof.
-    iIntros (Φ) "#Hctx HΦ". iDestruct (persistentP with "Hctx") as "[#Hs _]".
-      rewrite/make_int_body/is_interval/is_interval'.
-    wp_op=>[?|/Z.lt_le_incl ?]; wp_if.
-    - wp_apply (seal_spec with "[$Hs]"); first by iExists n1, n2; auto.
-        iIntros (v') "#Hv'".
-      iApply ("HΦ" with "[$Hctx]"). by rewrite (Z.min_l n1) // (Z.max_r _ n2).
-    - wp_apply (seal_spec with "[$Hs]"); first by iExists n2, n1; auto.
-        iIntros (v') "#Hv'".
-      iApply ("HΦ" with "[$Hctx]"). by rewrite (Z.min_r _ n2) // (Z.max_l n1).
-  Qed.
-
-  Lemma make_int_body_nv γ n1 v2 :
-    {{{ ctx γ }}} make_int_body γ (#n1) v2
-    ?{{{ v n2, RET v; MkInt γ v n1 n2 }}}.
-  Proof.
-    iIntros (Φ) "Hctx HΦ". rewrite/make_int_body.
-    case: (decide (is_int (of_val v2)))=>Hv2; last by wp_apply wp_stuck_lt_r.
-      destruct (is_int_val _ Hv2) as (n2&->).
-    wp_apply (make_int_body_nn with "Hctx"). iIntros (v) "Hv".
-    by iApply ("HΦ" $! _ n2 with "Hv").
-  Qed.
-
-  Lemma make_int_body_vv γ v1 v2 :
-    {{{ ctx γ }}} make_int_body γ v1 v2
-    ?{{{ v n1 n2, RET v; MkInt γ v n1 n2 }}}.
-  Proof.
-    iIntros (Φ) "Hctx HΦ". rewrite/make_int_body.
-    case: (decide (is_int (of_val v1)))=>Hv1; last by wp_apply wp_stuck_lt_l.
-      destruct (is_int_val _ Hv1) as (n1&->).
-    wp_apply (make_int_body_nv with "Hctx"). iIntros (v n2) "Hv".
-    by iApply ("HΦ" $! _ n1 with "Hv").
-  Qed.
-
-  Lemma make_int_2_spec p γ mk n1 n2 :
-    {{{ is_make_int_2 γ n1 mk }}} mk #n2 @ p; ⊤
-    {{{ v, RET v; MkInt γ v n1 n2 }}}.
-  Proof.
-    iIntros (Φ) "[Hctx %] HΦ". subst. wp_lam.
-    by wp_apply (make_int_body_nn with "Hctx [$HΦ]").
-  Qed.
-
-  (* PDS: Annoying without [make_int_any]. *)
-  Lemma make_int_2_any γ mk n1 v2 :
-    {{{ is_make_int_2 γ n1 mk }}} mk v2
-    ?{{{ v n2, RET v; MkInt γ v n1 n2 }}}.
-  Proof.
-    iIntros (Φ) "[Hctx %] HΦ". subst. wp_lam.
-    by wp_apply (make_int_body_nv with "Hctx [$HΦ]").
-  Qed.
-
-  Lemma make_int_2_low γ mk n1 : is_make_int_2 γ n1 mk -∗ low mk.
-  Proof.
-    iIntros "[#Hctx %]". subst. rewrite low_rec. iAlways. iNext.
-    iIntros (v2 Φ) "_ HΦ". simpl_subst.
-    wp_apply (make_int_body_nv with "Hctx"). iIntros (v ?) "[_ Hv]".
-    iApply "HΦ". by iApply (sealed_low with "Hv").
-  Qed.
+  (** The make interval function *)
 
   Lemma make_int_spec p γ mk n1 :
     {{{ is_make_int γ mk }}} mk #n1 @ p; ⊤
-    {{{ f, RET f; is_make_int_2 γ n1 f }}}.
+    {{{ f, RET f; is_make_int' γ n1 f }}}.
   Proof.
     iIntros (Φ) "[Hctx %] HΦ". subst. wp_lam.
     by iApply ("HΦ" with "[$Hctx]").
   Qed.
 
-  Lemma make_int_any p γ mk v1 :
-    {{{ is_make_int γ mk }}} mk v1 @ p; ⊤
-    {{{ f n1, RET f; is_make_int_2 γ n1 f }}}.
+  (**
+	With typecasts in make interval, we could show
+<<
+	{{{ is_make_int γ mk }}} mk v1
+	?{{{ f n1, RET f; is_make_int' γ n1 f }}}
+>>
+  *)
+
+  Notation MakeIntPost γ n1 n2 v := (
+    is_interval γ (Z.min n1 n2) (Z.max n1 n2) v
+  )%I (only parsing).
+
+  Lemma make_int'_body p γ n1 n2 :
+    {{{ ctx γ }}}
+      (seal γ) (if: #n1 ≤ #n2 then (#n1, #n2) else (#n2, #n1)) @ p; ⊤
+    {{{ v, RET v; MakeIntPost γ n1 n2 v }}}.
   Proof.
-    iIntros (Φ) "[Hctx %] HΦ". subst. wp_lam. (* no progress *)
-  Abort.
+    iIntros (Φ) "#Hctx HΦ". iDestruct (persistentP with "Hctx") as "[#Hs _]".
+      rewrite/is_interval.
+    wp_op=>[?|/Z.lt_le_incl ?]; wp_if.
+    - wp_apply (seal_spec with "[$Hs]"); first by iAlways; iExists n1, n2; auto.
+        iIntros (v') "#Hv'".
+      iApply ("HΦ" with "[$Hctx]"). by rewrite (Z.min_l n1) // (Z.max_r _ n2).
+    - wp_apply (seal_spec with "[$Hs]"); first by iAlways; iExists n2, n1; auto.
+        iIntros (v') "#Hv'".
+      iApply ("HΦ" with "[$Hctx]"). by rewrite (Z.min_r _ n2) // (Z.max_l n1).
+  Qed.
+
+  Lemma make_int'_spec p γ mk n1 n2 :
+    {{{ is_make_int' γ n1 mk }}} mk #n2 @ p; ⊤
+    {{{ v, RET v; MakeIntPost γ n1 n2 v }}}.
+  Proof.
+    iIntros (Φ) "[Hctx %] HΦ". subst. wp_lam.
+    by wp_apply (make_int'_body with "Hctx [$HΦ]").
+  Qed.
+
+  Lemma make_int'_body_any γ n1 v2 :
+    {{{ ctx γ }}}
+      (seal γ) (if: #n1 ≤ v2 then (#n1, v2) else (v2, #n1))
+    ?{{{ v n2, RET v; MakeIntPost γ n1 n2 v }}}.
+  Proof.
+    iIntros (Φ) "Hctx HΦ".
+    case: (decide (is_int (of_val v2)))=>Hv2; last by wp_apply wp_stuck_lt_r.
+      destruct (is_int_val _ Hv2) as (n2&->).
+    wp_apply (make_int'_body with "Hctx"). iIntros (v) "Hv".
+    by iApply ("HΦ" $! _ n2 with "Hv").
+  Qed.
+
+  Lemma make_int'_any_spec γ mk n1 v2 :
+    {{{ is_make_int' γ n1 mk }}} mk v2
+    ?{{{ v n2, RET v; MakeIntPost γ n1 n2 v }}}.
+  Proof.
+    iIntros (Φ) "[Hctx %] HΦ". subst. wp_lam.
+    by wp_apply (make_int'_body_any with "Hctx [$HΦ]").
+  Qed.
+
+  Lemma make_int'_low γ mk n1 : is_make_int' γ n1 mk -∗ low mk.
+  Proof.
+    iIntros "[#Hctx %]". subst. rewrite low_rec. iAlways. iNext.
+    iIntros (v2 Φ) "_ HΦ". simpl_subst.
+    wp_apply (make_int'_body_any with "Hctx"). iIntros (v ?) "[_ Hv]".
+    iApply "HΦ". by iApply (sealed_low with "Hv").
+  Qed.
 
   Lemma make_int_low γ mk : is_make_int γ mk -∗ low mk.
   Proof.
@@ -268,20 +236,45 @@ Section intervals_proof.
       iIntros (v1 Φ) "_ HΦ". simpl_subst. wp_value.
     iApply "HΦ". clear Φ. rewrite low_rec. iAlways. iNext.
       iIntros (v2 Φ) "_ HΦ". simpl_subst.
-    wp_apply (make_int_body_vv with "Hctx"). iIntros (v ??) "[_ Hv]".
+    case: (decide (is_int (of_val v1)))=>Hv1; last by wp_apply wp_stuck_lt_l.
+      destruct (is_int_val _ Hv1) as (n1&->).
+    wp_apply (make_int'_body_any with "Hctx"). iIntros (v n2) "[_ Hv]".
     iApply "HΦ". by iApply (sealed_low with "Hv").
   Qed.
 
   Lemma make_int_val p γ mk n1 n2 :
   {{{ is_make_int γ mk }}} mk #n1 #n2 @ p; ⊤
-  {{{ v, RET v; MkInt γ v n1 n2 }}}.
+  {{{ v, RET v; MakeIntPost γ n1 n2 v }}}.
   Proof.
     iIntros (Φ) "Hmk HΦ".
     wp_apply (make_int_spec with "Hmk"). iIntros (f) "Hf".
-    wp_apply (make_int_2_spec with "[$Hf] [$HΦ]").
+    wp_apply (make_int'_spec with "[$Hf] [$HΦ]").
   Qed.
 
-  (** The snapshot function. *)
+  (** Internal lemmas for unsealing intervals *)
+
+  Lemma unseal_interval p γ n1 n2 v :
+    {{{ is_interval γ n1 n2 v }}} (unseal γ) v @ p; ⊤
+    {{{ RET (#n1, #n2); ⌜n1 ≤ n2⌝ }}}.
+  Proof.
+    iIntros (Φ) "#[[_ Hu] Hv] HΦ".
+      iDestruct (sealed_inv with "Hv") as (??) "[EQ %]".
+      iDestruct "EQ" as %[=<-<-].
+    wp_apply (unseal_spec with "[$Hu $Hv]"). iIntros "_".
+    by iApply ("HΦ" with "[%]").
+  Qed.
+
+  Lemma unseal_interval_low γ v' :
+    {{{ ctx γ ∗ low v' }}} (unseal γ) v'
+    ?{{{ n1 n2, RET (#n1, #n2); ⌜n1 ≤ n2⌝ }}}.
+  Proof.
+    iIntros (Φ) "[[_ Hu] Hv'] HΦ".
+    wp_apply (unseal_low_spec with "[$Hu $Hv']").
+      iIntros (v). iDestruct 1 as (n1 n2) "[%%]". subst.
+    by iApply ("HΦ" with "[%]").
+  Qed.
+
+  (** The snapshot function *)
 
   Lemma snap_spec p γ snap n1 n2 v :
     {{{ is_snap γ snap ∗ is_interval γ n1 n2 v }}} snap v @ p; ⊤
@@ -290,8 +283,8 @@ Section intervals_proof.
     iIntros (Φ) "[[#Hctx %] Hv] HΦ".
       iDestruct (persistentP with "Hctx") as "[#Hs _]". subst. wp_lam.
     wp_apply (unseal_interval with "Hv"). iIntros "%". wp_value.
-    wp_apply (seal_spec with "[$Hs]"); first by iExists n1, n2; iFrame "%".
-      iIntros (v') "Hv'".
+    wp_apply (seal_spec with "[$Hs]");
+      first by iAlways; iExists n1, n2; iFrame "%". iIntros (v') "Hv'".
     by iApply ("HΦ" with "[$Hctx $Hv']").
   Qed.
 
@@ -303,8 +296,8 @@ Section intervals_proof.
       iDestruct (persistentP with "Hctx") as "[#Hs _]".
     wp_apply (unseal_interval_low with "[$Hctx $Hv]").
       iIntros (n1 n2) "%". wp_value.
-    wp_apply (seal_spec with "[$Hs]"); first by iExists n1, n2; iFrame "%".
-      iIntros (v') "Hv'".
+    wp_apply (seal_spec with "[$Hs]");
+      first by iAlways; iExists n1, n2; iFrame "%". iIntros (v') "Hv'".
     by iApply ("HΦ" with "[$Hctx $Hv']").
   Qed.
 
@@ -324,7 +317,7 @@ Section intervals_proof.
     iApply "HΦ". by iApply (interval_low with "Hv'").
   Qed.
 
-  (** The min function. *)
+  (** The min function *)
 
   Lemma min_spec p γ min n1 n2 v' :
     {{{ is_min γ min ∗ is_interval γ n1 n2 v' }}} min v' @ p; ⊤
@@ -359,7 +352,7 @@ Section intervals_proof.
     iApply "HΦ". by simpl_low.
   Qed.
 
-  (** The max function. *)
+  (** The max function *)
 
   Lemma max_spec p γ max n1 n2 v' :
     {{{ is_max γ max ∗ is_interval γ n1 n2 v' }}} max v' @ p; ⊤
@@ -394,14 +387,14 @@ Section intervals_proof.
     iApply "HΦ". by simpl_low.
   Qed.
 
-  (** The sum function. *)
+  (** The sum function *)
 
   Lemma sum_body p γ n1 n2 :
     n1 ≤ n2 →
     {{{ ctx γ }}}
-      let: "i" := (#n1, #n2) in λ: "y", let: "j" := (unseal γ) "y" in
-      (seal γ) (Fst "i" + Fst "j", Snd "i" + Snd "j") @ p; ⊤
-    {{{ f, RET f; is_sum_2 γ n1 n2 f }}}.
+      let: "x" := (#n1, #n2) in λ: "j", let: "y" := (unseal γ) "j" in
+      (seal γ) (Fst "x" + Fst "y", Snd "x" + Snd "y") @ p; ⊤
+    {{{ f, RET f; is_sum' γ n1 n2 f }}}.
   Proof.
     iIntros (? Φ) "Hctx HΦ". wp_let.
     iApply ("HΦ" with "[$Hctx]"). by iFrame "%".
@@ -409,7 +402,7 @@ Section intervals_proof.
 
   Lemma sum_spec p γ sum n1 n2 v' :
     {{{ is_sum γ sum ∗ is_interval γ n1 n2 v' }}} sum v' @ p; ⊤
-    {{{ f, RET f; is_sum_2 γ n1 n2 f }}}.
+    {{{ f, RET f; is_sum' γ n1 n2 f }}}.
   Proof.
     iIntros (Φ) "[[#Hctx %] Hv'] HΦ". subst. wp_lam.
     wp_apply (unseal_interval with "Hv'"). iIntros "%".
@@ -418,7 +411,7 @@ Section intervals_proof.
 
   Lemma sum_low_spec γ sum v2 :
     {{{ is_sum γ sum ∗ low v2 }}} sum v2
-    ?{{{ f n1 n2, RET f; is_sum_2 γ n1 n2 f }}}.
+    ?{{{ f n1 n2, RET f; is_sum' γ n1 n2 f }}}.
   Proof.
     iIntros (Φ) "[[#Hctx %] Hv2] HΦ". subst. wp_lam.
     wp_apply (unseal_interval_low with "[$Hctx $Hv2]"). iIntros (??) "%".
@@ -426,56 +419,56 @@ Section intervals_proof.
     by iApply ("HΦ" with "Hf").
   Qed.
 
-  Lemma sum_body_2 p γ n1 n2 n'1 n'2 :
+  Lemma sum'_body p γ n1 n2 n'1 n'2 :
     n1 ≤ n2 → n'1 ≤ n'2 →
     {{{ ctx γ }}}
-      let: "j" := (#n'1, #n'2) in
-      (seal γ) (Fst (#n1, #n2) + Fst "j", Snd (#n1, #n2) + Snd "j") @ p; ⊤
+      let: "y" := (#n'1, #n'2) in
+      (seal γ) (Fst (#n1, #n2) + Fst "y", Snd (#n1, #n2) + Snd "y") @ p; ⊤
     {{{ v, RET v; is_interval γ (n1 + n'1) (n2 + n'2) v }}}.
   Proof.
     iIntros (?? Φ) "#[Hs Hu] HΦ". wp_let.
       do 2!wp_proj. wp_op. do 2!wp_proj. wp_op. wp_value.
     wp_apply (seal_spec with "[$Hs]").
-    - iExists _, _. rewrite/is_interval'. iSplit. done. by iPureIntro; lia.
+    - iAlways. iExists _, _. iSplit. done. by iPureIntro; lia.
     - iIntros (v) "Hv". by iApply ("HΦ" with "[$Hs $Hu $Hv]").
   Qed.
 
-  Lemma sum_2_spec p γ n1 n2 sum n'1 n'2 v2 :
-    {{{ is_sum_2 γ n1 n2 sum ∗ is_interval γ n'1 n'2 v2 }}}
+  Lemma sum'_spec p γ n1 n2 sum n'1 n'2 v2 :
+    {{{ is_sum' γ n1 n2 sum ∗ is_interval γ n'1 n'2 v2 }}}
       sum v2 @ p; ⊤
     {{{ v, RET v; is_interval γ (n1 + n'1) (n2 + n'2) v }}}.
   Proof.
     iIntros (Φ) "[(#Hctx & % & %) Hv2] HΦ". subst. wp_lam.
     wp_apply (unseal_interval with "Hv2"). iIntros "%".
-    by wp_apply (sum_body_2 with "Hctx").
+    by wp_apply (sum'_body with "Hctx").
   Qed.
 
-  Lemma sum_2_body_low γ n1 n2 v2 :
+  Lemma sum'_body_low γ n1 n2 v2 :
     n1 ≤ n2 →
     {{{ ctx γ ∗ low v2 }}}
-      let: "j" := (unseal γ) v2 in
-      (seal γ) (Fst (#n1, #n2) + Fst "j", Snd (#n1, #n2) + Snd "j")
+      let: "y" := (unseal γ) v2 in
+      (seal γ) (Fst (#n1, #n2) + Fst "y", Snd (#n1, #n2) + Snd "y")
     ?{{{ v n'1 n'2, RET v; is_interval γ n'1 n'2 v }}}.
   Proof.
     iIntros (? Φ) "[#Hctx Hv2] HΦ".
     wp_apply (unseal_interval_low with "[$Hctx $Hv2]"). iIntros (m1 m2) "%".
-    wp_apply (sum_body_2 with "Hctx")=>//. iIntros (v) "Hv".
+    wp_apply (sum'_body with "Hctx")=>//. iIntros (v) "Hv".
     by iApply ("HΦ" with "Hv").
   Qed.
 
-  Lemma sum_2_low_spec γ n1 n2 sum v2 :
-    {{{ is_sum_2 γ n1 n2 sum ∗ low v2 }}} sum v2
+  Lemma sum'_low_spec γ n1 n2 sum v2 :
+    {{{ is_sum' γ n1 n2 sum ∗ low v2 }}} sum v2
     ?{{{ v n'1 n'2, RET v; is_interval γ n'1 n'2 v }}}.
   Proof.
     iIntros (Φ) "[(#Hctx & % & %) Hv2] HΦ". subst. wp_lam.
-    by wp_apply (sum_2_body_low with "[$Hctx $Hv2]").
+    by wp_apply (sum'_body_low with "[$Hctx $Hv2]").
   Qed.
 
-  Lemma sum_2_low γ n1 n2 sum : is_sum_2 γ n1 n2 sum -∗ low sum.
+  Lemma sum'_low γ n1 n2 sum : is_sum' γ n1 n2 sum -∗ low sum.
   Proof.
     iIntros "(#Hctx & % & %)". subst. rewrite low_rec. iAlways. iNext.
       iIntros (v2 Φ) "Hv2 HΦ". simpl_subst.
-    wp_apply (sum_2_body_low with "[$Hctx $Hv2]")=>//.
+    wp_apply (sum'_body_low with "[$Hctx $Hv2]")=>//.
       iIntros (v n'1 n'2) "Hv".
     iApply "HΦ". by iApply (interval_low with "Hv").
   Qed.
@@ -486,7 +479,7 @@ Section intervals_proof.
       iIntros (v1 Φ) "Hv1 HΦ". simpl_subst.
     wp_apply (unseal_interval_low with "[$Hctx $Hv1]"). iIntros (??) "%".
     wp_apply (sum_body with "Hctx"); first done. iIntros (f) "Hf".
-    rewrite sum_2_low. by iApply "HΦ".
+    rewrite sum'_low. by iApply "HΦ".
   Qed.
 
   Lemma sum_val p γ sum n1 n2 v1 n'1 n'2 v2 :
@@ -496,12 +489,13 @@ Section intervals_proof.
   Proof.
     iIntros (Φ) "(Hsum & Hv1 & Hv2) HΦ".
     wp_apply (sum_spec with "[$Hsum $Hv1]"). iIntros (f) "Hf".
-    by wp_apply (sum_2_spec with "[$Hf $Hv2]").
+    by wp_apply (sum'_spec with "[$Hf $Hv2]").
   Qed.
 End intervals_proof.
-Typeclasses Opaque is_interval is_make_int is_make_int_2
-  is_min is_max is_sum is_sum_2.
+Typeclasses Opaque is_interval is_make_int is_make_int'
+  is_snap is_min is_max is_sum is_sum'.
 
+(** * Simple intervals client *)
 Section intervals_client_code.
   Context {SI : SealingImpl}.
 
@@ -539,7 +533,7 @@ Section intervals_client_proof.
     wp_apply (make_int_val with "Hmk"). iIntros (i1) "Hi1".
     wp_apply (sum_spec with "[$Hsum $Hi1]"). iIntros (f) "Hf".
     wp_apply (make_int_val with "Hmk"). iIntros (i2) "Hi2".
-    wp_apply (sum_2_spec with "[$Hf $Hi2]"). iIntros (i100) "#Hi100". wp_let.
+    wp_apply (sum'_spec with "[$Hf $Hi2]"). iIntros (i100) "#Hi100". wp_let.
     wp_apply (min_spec with "[$Hmin $Hi100]"). iIntros "_".
     wp_apply wp_assert. wp_op=>?; last by exfalso. iSplit; first done.
       iNext. wp_seq.
@@ -601,12 +595,14 @@ Section pk_proof.
       iIntros (sign verify γ) "#[Hsign Hverify]".
     iApply ("HΦ" $! _ _ (λ v v', is_sealed S γ v v' φ)). clear p Φ.
     iSplitL; [| iSplitL; [| iSplitL]].
-    - iIntros (p v) "!#". iIntros (Φ) "Hv HΦ".
-      wp_apply (seal_spec with "[$Hsign $Hv]"). iIntros (v') "#Hv'".
+    - iIntros (p v) "!#". iIntros (Φ) "#Hv HΦ".
+      wp_apply (seal_spec with "[$Hsign Hv]"); first by iAlways.
+        iIntros (v') "#Hv'".
       iApply "HΦ". iSplitL. by iApply sealed_low. by iAlways.
     - by iApply (unseal_low with "Hverify Hφ").
-    - iIntros (p v v') "!#". iIntros (Φ) "Hsig HΦ".
-      by wp_apply (unseal_spec with "[$Hverify $Hsig]").
+    - iIntros (p v v') "!#". iIntros (Φ) "#Hsig HΦ".
+      wp_apply (unseal_spec with "[$Hverify $Hsig]"). iIntros "_".
+      iApply "HΦ". by iApply (sealed_inv with "Hsig").
     - iIntros (v') "!#". iIntros (Φ) "Hsig HΦ".
       by wp_apply (unseal_low_spec with "[$Hverify $Hsig]").
   Qed.
@@ -637,12 +633,13 @@ Section pk_proof.
     iApply ("HΦ" $! _ _ (λ v v', is_sealed S γ v v' φenc)). clear p Φ.
     iSplitL; iSplitL.
     - iApply (seal_low with "Henc []"). iAlways. iIntros (v) "Hv". by iLeft.
-    - iIntros (p v) "!#". iIntros (Φ) "Hv HΦ".
-      wp_apply (seal_spec with "[$Henc Hv]"); first by iRight.
+    - iIntros (p v) "!#". iIntros (Φ) "#Hv HΦ".
+      wp_apply (seal_spec with "[$Henc Hv]"); first by iAlways; iRight.
         iIntros (v') "#Hv'".
       iApply "HΦ". iSplitL. by iApply sealed_low. by iAlways.
-    - iIntros (p v v') "!#". iIntros (Φ) "Hv HΦ".
-      by wp_apply (unseal_spec with "[$Hdec $Hv]").
+    - iIntros (p v v') "!#". iIntros (Φ) "#Hv HΦ".
+      wp_apply (unseal_spec with "[$Hdec $Hv]"). iIntros "_".
+      iApply "HΦ". by iApply (sealed_inv with "Hv").
     - iIntros (v') "!#". iIntros (Φ) "Hv' HΦ".
       by wp_apply (unseal_low_spec with "[$Hdec $Hv']").
   Qed.
