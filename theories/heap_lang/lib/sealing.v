@@ -61,12 +61,12 @@ Section spec.
       heapN ⊥ N →
       {{{ heap_ctx }}} make_seal () @ p; ⊤
       {{{ v1 v2 γ, RET (v1, v2); is_seal γ v1 φ ∗ is_unseal γ v2 φ }}};
-    seal_spec p γ s v φ `{!PersistentP (φ v)} :
-      {{{ is_seal γ s φ ∗ φ v }}} s v @ p; ⊤
+    seal_spec p γ s v φ :
+      {{{ is_seal γ s φ ∗ □ φ v }}} s v @ p; ⊤
       {{{ v', RET v'; is_sealed γ v v' φ }}};
     unseal_spec p γ u v v' φ :
       {{{ is_unseal γ u φ ∗ is_sealed γ v v' φ }}} u v' @ p; ⊤
-      {{{ RET v; φ v }}};
+      {{{ RET v; True }}};
     unseal_low_spec γ u v' φ :
       {{{ is_unseal γ u φ ∗ low v' }}} u v' ?{{{ v, RET v; φ v }}}
   }.
@@ -446,8 +446,8 @@ Section proof.
     iApply ("HΦ" $! _ _ γ). iFrame "Hctx Hctx". by auto.
   Qed.
 
-  Lemma seal_spec p γ s v φ `{!PersistentP (φ v)} :
-    {{{ is_seal γ s φ ∗ φ v }}} s v @ p; ⊤
+  Lemma seal_spec p γ s v φ :
+    {{{ is_seal γ s φ ∗ □ φ v }}} s v @ p; ⊤
     {{{ v', RET v'; is_sealed γ v v' φ }}}.
   Proof.
     iIntros (Φ) "[[#Hctx %] #Hv] HΦ". subst. wp_lam.
@@ -455,7 +455,7 @@ Section proof.
   Qed.
 
   Lemma unseal_spec p γ u v v' φ :
-    {{{ is_unseal γ u φ ∗ is_sealed γ v v' φ }}} u v' @ p; ⊤ {{{ RET v; φ v }}}.
+    {{{ is_unseal γ u φ ∗ is_sealed γ v v' φ }}} u v' @ p; ⊤ {{{ RET v; True }}}.
   Proof.
     iIntros (Φ) "[[#[Hh Hsync] %] Hv'] HΦ". subst. wp_lam.
     wp_apply (wp_alloc_fresh with "Hh"); auto.
@@ -469,8 +469,7 @@ Section proof.
       first done. iIntros "_".
     iApply ("HΨ" with "[Hl Hw]").
     - iExists map, m. by iFrame "Hl Hm Hw Hinv".
-    - iApply "HΦ". setoid_rewrite always_elim.
-      by iApply (big_sepM_lookup (λ _, φ) m k v with "Hinv").
+    - by iApply "HΦ".
   Qed.
 
   Lemma unseal_low_spec γ u v' φ :
