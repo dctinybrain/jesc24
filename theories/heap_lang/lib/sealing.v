@@ -609,7 +609,7 @@ Section code.
     let: "sync" := make_sync LI () in
     let: "seal" := λ: "v",
       let: "k" := ref () in
-      "sync" (λ: <>, "tbl" <- map_insert (! "tbl") "k" "v") ;;
+      "sync" (λ: <>, "tbl" <- map_insert_new (! "tbl") "k" "v") ;;
       "k"
     in
     let: "unseal" := λ: "x",
@@ -643,7 +643,7 @@ Section proof.
     ctx γ φ ∗
     ⌜v = LamV "v" (
       let: "k" := ref () in
-      (sync γ) (λ: <>, (tbl γ) <- map_insert (! (tbl γ)) "k" "v") ;;
+      (sync γ) (λ: <>, (tbl γ) <- map_insert_new (! (tbl γ)) "k" "v") ;;
       "k")⌝
   )%I.
 
@@ -723,8 +723,8 @@ Section proof.
   Lemma seal_body p γ v φ :
     {{{ ctx γ φ ∗ □ φ v }}}
       let: "k" := ref () in
-      (sync γ) (λ: <>, tbl γ <- ((map_insert ! (tbl γ)) "k") v) ;; "k" @ p; ⊤
-    {{{ v', RET v'; is_sealed γ v v' φ }}}.
+      (sync γ) (λ: <>, tbl γ <- ((map_insert_new ! (tbl γ)) "k") v) ;; "k"
+    @ p; ⊤ {{{ v', RET v'; is_sealed γ v v' φ }}}.
   Proof.
     iIntros (Φ) "#[[Hh Hsync] Hv] HΦ".
     wp_apply (wp_alloc_low_fresh with "[$Hh]")=>//; first by simpl_low.
@@ -734,7 +734,7 @@ Section proof.
       rewrite -fupd_wp.
     iMod (is_witness_alloc _ _ k v with "Hh Hw Hkfresh") as "(%&Hw&Hkv)".
       iModIntro.
-    wp_apply (map_insert_spec _ _ _ m with "Hm").
+    wp_apply (map_insert_new_spec _ _ _ m with "[$Hm]"); first done.
       iIntros (map') "Hm'". wp_store.
     iApply ("HΨ" with "[Hl Hm' Hw]").
     - iExists map', (<[k:=v]> m). iFrame "Hl Hm' Hw".
