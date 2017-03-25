@@ -727,7 +727,7 @@ Section ClosedProofs.
   Let interval_client : expr := @interval_client sealing.
 
   Let N : namespace := nroot .@ "example".
-  Let Σ : gFunctors := #[ heapΣ; morris_sealing.sealingΣ; spin_lock.lockΣ ].
+  Let Σ : gFunctors := #[ heapΣ; sealingΣ; spin_lock.lockΣ ].
 
   Lemma interval_client_safe C t2 σ2 :
     AdvCtx C →
@@ -737,7 +737,7 @@ Section ClosedProofs.
     move=>??. eapply (robust_safety Σ); try done.
     { naive_solver eauto using is_closed_of_val. }
     iIntros (G) "Hh".
-    set L := spin_lock.spin_lock. set S := morris_sealing.sealing L.
+    set L := spin_lock.spin_lock. set S := morris_sealing.proof L.
     iApply (interval_client_spec S N with "Hh"); auto with ndisj.
   Qed.
 
@@ -750,7 +750,7 @@ Section ClosedProofs.
     move=>??. eapply (robust_safety Σ); try done.
     { naive_solver eauto using is_closed_of_val. }
     iIntros (G) "Hh".
-    set L := spin_lock.spin_lock. set S := morris_sealing.sealing L.
+    set L := spin_lock.spin_lock. set S := morris_sealing.proof L.
     iApply (pk_client_spec S N with "Hh"); auto with ndisj.
   Qed.
 End ClosedProofs.
