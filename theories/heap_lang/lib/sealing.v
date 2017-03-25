@@ -3,7 +3,7 @@ From iris.heap_lang Require Import addenda.
 From iris.heap_lang Require Export heap.
 From iris.heap_lang.lib Require Import abort lock maps.
 From iris.heap_lang Require Import notation proofmode.
-Import addenda.option.
+Import addenda.option addenda.algebra_auth.
 Import uPred.
 
 Local Notation ext R := (pointwise_relation _ R).
@@ -25,8 +25,15 @@ Local Notation ext R := (pointwise_relation _ R).
 	allocating a sealer-unsealer pair. The [seal] and [unseal]
 	operations then convert between [φ] and [lowval]. There are
 	two triples for [unseal]. The progressive triple returns a
-	predictable value, and is suitable for use in verified code.
-	The non-progressive triple returns *some* value.
+	predictable value, and is suitable for proving functional
+	correctness properties. The non-progressive triple returns
+	*some* value satisfying [φ].
+
+	Morris' implementation of sealing satisfies this
+	specification. A simpler, more direct implementation of
+	sealing satisfies a stronger specification whereby unsealing a
+	low value [v'] produces a value [v] that had previously been
+	sealed.
 *)
 Module Import intf.
 
@@ -56,6 +63,8 @@ Section spec.
     unseal_low γ u φ : is_unseal γ u φ -∗ □ (∀ v, φ v -∗ low v) -∗ low u;
     sealed_low γ v v' φ : is_sealed γ v v' φ -∗ low v';
     sealed_inv γ v v' φ : is_sealed γ v v' φ -∗ φ v;
+    sealed_agree γ v1 v2 v' φ :
+      is_sealed γ v1 v' φ -∗ is_sealed γ v2 v' φ -∗ ⌜v1 = v2⌝;
     (** Operations *)
     make_seal_spec N p φ :
       heapN ⊥ N →
@@ -70,8 +79,13 @@ Section spec.
     unseal_low_spec γ u v' φ :
       {{{ is_unseal γ u φ ∗ low v' }}} u v' ?{{{ v, RET v; φ v }}}
   }.
+  Class strong_unsealing (S : sealing) : Prop :=
+    unseal_low_strong γ u v' φ :
+      {{{ is_unseal S γ u φ ∗ low v' }}} u v'
+      ?{{{ v, RET v; is_sealed S γ v v' φ }}}.
 End spec.
 Arguments sealing _ {_ _}.
+Arguments strong_unsealing {_ _ _} _.
 Existing Instances is_seal_persistent is_seal_ne
   is_unseal_persistent is_unseal_ne
   is_sealed_persistent is_sealed_ne.
@@ -101,7 +115,7 @@ Section instances.
 End instances.
 End intf.
 
-(** * Dynamic sealing implementation *)
+(** * Morris' implementation *)
 (**
 	Other than the typecast, this is a transliteration of Morris'
 	implementation of sealing.
@@ -123,8 +137,7 @@ End intf.
 >>
 	(accessed in February 2017).
 *)
-
-Module code.
+Module morris_sealing.
 Section code.
   Context {LI : LockImpl}.
 
@@ -143,13 +156,11 @@ Section code.
     in
     ("seal", "unseal").
 
-  Global Instance sealing : SealingImpl := {|
+  Global Instance code : SealingImpl := {|
     intf.make_seal := make_seal
   |}.
 End code.
-End code.
 
-Module proof.
 (** The CMRA we need. *)
 Notation heap := (gmap loc val).
 Definition heapUR : ucmraT := gmapUR loc (agreeR valC).
@@ -163,7 +174,6 @@ Section proof.
   Context `{heapG Σ, sealingG Σ, LI : LockImpl} (L : lock Σ).
   Implicit Types l : loc.
   Implicit Types f v : val.
-  Notation ext R := (pointwise_relation _ R).
 
   (**
 	The table underlying the sealer-unsealer pair named [γ] sends
@@ -428,7 +438,7 @@ Section proof.
 
   Lemma make_seal_spec N p φ :
     heapN ⊥ N →
-    {{{ heap_ctx }}} code.make_seal () @ p; ⊤
+    {{{ heap_ctx }}} make_seal () @ p; ⊤
     {{{ v1 v2 γ, RET (v1, v2); is_seal γ v1 φ ∗ is_unseal γ v2 φ }}}.
   Proof.
     iIntros (? Φ) "#Hh HΦ". wp_lam. wp_alloc l as "Hl". wp_let.
@@ -484,10 +494,345 @@ Section proof.
     intf.unseal_low := unseal_low;
     intf.sealed_low := sealed_low;
     intf.sealed_inv := sealed_inv;
+    intf.sealed_agree := sealed_agree;
     intf.make_seal_spec := make_seal_spec;
     intf.seal_spec := seal_spec;
     intf.unseal_spec := unseal_spec;
     intf.unseal_low_spec := unseal_low_spec
   |}.
 End proof.
+End morris_sealing.
+
+(** * Direct implementation *)
+(**
+	This implemenation supports [strong_unsealing].
+*)
+Module direct_sealing.
+Section code.
+  Context {LI : LockImpl}.
+
+  Definition make_seal : val := λ: <>,
+    let: "tbl" := ref map_empty in
+    let: "sync" := make_sync LI () in
+    let: "seal" := λ: "v",
+      let: "k" := ref () in
+      "sync" (λ: <>, "tbl" <- map_insert (! "tbl") "k" "v") ;;
+      "k"
+    in
+    let: "unseal" := λ: "x",
+      ifloc: "x" as "k" =>
+        "sync" (λ: <>, map_lookup_partial (! "tbl") "k")
+      else abort
+    in
+    ("seal", "unseal").
+
+  Global Instance code : SealingImpl := {|
+    intf.make_seal := make_seal
+  |}.
+End code.
+
+(** The CMRA we need. *)
+Notation heap := (gmap loc val).
+Definition heapUR : ucmraT := gmapUR loc (agreeR valC).
+Class sealingG Σ := SealingG { sealing_heapG :> inG Σ (authR heapUR) }.
+
+Definition sealingΣ : gFunctors := #[ GFunctor (constRF (authR heapUR)) ].
+Instance subG_sealingΣ {Σ} : subG sealingΣ Σ → sealingG Σ.
+Proof. intros [??]%subG_inv. constructor; apply _. Qed.
+
+Section proof.
+  Context `{heapG Σ, sealingG Σ, LI : LockImpl} (L : lock Σ).
+  Implicit Types l k : loc.
+  Implicit Types f v : val.
+
+  Definition is_witness (γ : gname) (k : loc) (v : val) : iProp Σ :=
+    own γ (◯ {[k := to_agree v]}).
+  Definition to_heap : heap → heapUR := fmap to_agree.
+  Definition witness (γ : gname) (m : heap) : iProp Σ :=
+    (own γ (● to_heap m) ∗ live (dom _ m))%I.
+
+  Definition tbl_res (l : loc) (γ : gname) (φ : val → iProp Σ) : iProp Σ := (
+    ∃ map m, l ↦ map ∗ is_map map m ∗ witness γ m ∗
+    [∗ map] v ∈ m, □ φ v
+  )%I.
+
+  Record name : Type := { sync : val; tbl : loc; ghost : gname }.
+
+  Definition ctx (γ : name) φ : iProp Σ :=
+    (heap_ctx ∗ is_sync (sync γ) (tbl_res (tbl γ) (ghost γ) φ))%I.
+
+  Definition is_seal γ v φ : iProp Σ := (
+    ctx γ φ ∗
+    ⌜v = LamV "v" (
+      let: "k" := ref () in
+      (sync γ) (λ: <>, (tbl γ) <- map_insert (! (tbl γ)) "k" "v") ;;
+      "k")⌝
+  )%I.
+
+  Definition is_unseal γ v φ : iProp Σ := (
+    ctx γ φ ∗
+    ⌜v = LamV "x" (
+      ifloc: "x" as "k" =>
+        (sync γ) (λ: <>, map_lookup_partial (! (tbl γ)) "k")
+      else abort)%E⌝
+  )%I.
+
+  Definition is_sealed γ v v' φ : iProp Σ :=
+    (ctx γ φ ∗ □ φ v ∗ low v' ∗ ∃ k, ⌜v' = k⌝ ∗ is_witness (ghost γ) k v)%I.
+
+  (** Structure *)
+
+  Instance is_witness_persistent γ k v : PersistentP (is_witness γ k v).
+  Proof. apply _. Qed.
+  Instance is_witness_timeless γ k v : TimelessP (is_witness γ k v).
+  Proof. apply _. Qed.
+
+  Instance tbl_res_ne l γ n : Proper (ext (dist n) ==> dist n) (tbl_res l γ).
+  Proof. solve_proper. Qed.
+
+  Instance ctx_persistent γ φ : PersistentP (ctx γ φ).
+  Proof. apply _. Qed.
+  Instance ctx_ne γ n : Proper (ext (dist n) ==> dist n) (ctx γ).
+  Proof. solve_proper. Qed.
+
+  Instance is_seal_persistent γ v φ : PersistentP (is_seal γ v φ).
+  Proof. apply _. Qed.
+  Instance is_seal_ne γ v n : Proper (ext (dist n) ==> dist n) (is_seal γ v).
+  Proof. solve_proper. Qed.
+
+  Instance is_unseal_persistent γ v φ : PersistentP (is_unseal γ v φ).
+  Proof. apply _. Qed.
+  Instance is_unseal_ne γ v n :
+    Proper (ext (dist n) ==> dist n) (is_unseal γ v).
+  Proof. solve_proper. Qed.
+
+  Instance is_sealed_persistent γ v v' φ : PersistentP (is_sealed γ v v' φ).
+  Proof. apply _. Qed.
+  Instance is_sealed_ne γ v v' n :
+    Proper (ext (dist n) ==> dist n) (is_sealed γ v v').
+  Proof. solve_proper. Qed.
+
+  (** Ghosts *)
+
+  Lemma witness_elim γ m k v :
+    witness γ m -∗ is_witness γ k v -∗ ⌜m !! k = Some v⌝.
+  Proof.
+    iIntros "[Hw _] Hk".
+    iDestruct (own_valid_2 with "Hw Hk") as %[Hinc _]%auth_valid_discrete_2.
+    iPureIntro.
+    move: Hinc. rewrite singleton_included lookup_fmap=>-[] u [].
+    case: (m !! k)=>[vh|]/=; last by move=>/option_equivE.
+    move=>Heq. apply (inj Some) in Heq. unfold_leibniz. rewrite -Heq.
+    by case/Some_included=>[/(inj to_agree) | /to_agree_included]->.
+  Qed.
+
+  Lemma witness_alloc' γ m k v :
+    m !! k = None →
+    own γ (● to_heap m) ==∗
+    own γ (● to_heap (<[k:=v]> m)) ∗ is_witness γ k v.
+  Proof.
+    rewrite /to_heap fmap_insert -own_op=>Hdom.
+    apply own_update, auth_update_alloc, alloc_singleton_local_update.
+    by rewrite lookup_fmap Hdom. done.
+  Qed.
+
+  Lemma withness_alloc γ m k v :
+    heap_ctx -∗ witness γ m -∗ fresh k ={⊤}=∗
+    witness γ (<[k:=v]> m) ∗ is_witness γ k v.
+  Proof.
+    iIntros "#Hh [Hw Hlive] Hk".
+    iMod (heap_mark_live with "Hh Hk Hlive") as "(Hdom&Hlive)"; first done.
+      iDestruct "Hdom" as %?%not_elem_of_dom.
+    iMod (witness_alloc' _ _ k v with "Hw") as "[Hw Hv]"; first done.
+    iModIntro. iFrame "Hw Hv". rewrite dom_insert_L. by iFrame "Hlive".
+  Qed.
+
+  Lemma witness_obs γ m k v :
+    m !! k = Some v →
+    witness γ m ==∗ witness γ m ∗ is_witness γ k v.
+  Proof.
+    iIntros (Hdom) "[Hw HL]". rewrite/witness/is_witness. iFrame "HL".
+    rewrite -own_op. iApply (own_update with "Hw").
+    apply auth_frag_alloc; try apply _. apply singleton_included.
+    exists (to_agree v). split. by rewrite lookup_fmap Hdom. done.
+  Qed.
+
+  Lemma witness_agree γ k v1 v2 :
+    is_witness γ k v1 ∗ is_witness γ k v2 ⊢ ⌜v1 = v2⌝.
+  Proof.
+    rewrite -own_op -auth_frag_op.
+    rewrite own_valid auth_validI /= discrete_valid.
+    rewrite op_singleton singleton_valid.
+    by f_equiv=>/agree_op_inv/to_agree_inj/leibniz_equiv_iff.
+  Qed.
+
+  Lemma tbl_inv_insert (m : heap) k v (φ : val → iProp Σ) :
+    ([∗ map] v ∈ m, □ φ v) -∗ □ φ v -∗ [∗ map] v ∈ <[k:=v]> m, □ φ v.
+  Proof.
+    iIntros "Hinv #Hv". case Hv': (m !! k) => [v'|].
+    - rewrite (big_sepM_insert_override_2 _ _ _ v' v) //.
+      iApply "Hinv". iIntros "_". iAlways. by iFrame "Hv".
+    - rewrite big_sepM_insert //. iFrame "Hinv". iAlways. by iFrame "Hv".
+  Qed.
+
+  (** Operations *)
+
+  Lemma make_seal_spec N p φ :
+    heapN ⊥ N →
+    {{{ heap_ctx }}} make_seal () @ p; ⊤
+    {{{ v1 v2 γ, RET (v1, v2); is_seal γ v1 φ ∗ is_unseal γ v2 φ }}}.
+  Proof.
+    iIntros (? Φ) "#Hh HΦ". wp_lam. wp_alloc l as "Hl". wp_let.
+      rewrite -wp_fupd. set h := to_heap ∅.
+    iMod (own_alloc (Auth (Excl' h) h)) as (γh) "Hγh"; first done.
+      rewrite (auth_both_op h). iDestruct "Hγh" as "[Hγh _]".
+    iAssert (witness γh ∅) with "[Hγh]" as "Hw".
+    { iFrame "Hγh". by rewrite dom_empty_L big_sepS_empty. }
+    wp_apply (make_sync_spec L _ N (tbl_res l γh φ) with "[$Hh Hl Hw]");
+      first done.
+    { iExists map_empty, ∅. iFrame "Hl Hw". rewrite big_sepM_empty. by auto. }
+    iIntros (sync) "#Hsync". iCombine "Hh" "Hsync" as "Hctx".
+      set γ := {| sync := sync; tbl := l; ghost := γh |}. do 3!wp_let.
+    iApply ("HΦ" $! _ _ γ). iFrame "Hctx Hctx". by auto.
+  Qed.
+
+  (** Properties of sealing *)
+
+  Lemma sealed_inv γ v v' φ : is_sealed γ v v' φ -∗ φ v.
+  Proof. by iIntros "(_ &#?&_&_)". Qed.
+
+  Lemma sealed_low γ v v' φ : is_sealed γ v v' φ -∗ low v'.
+  Proof. by iIntros "(_ &_&#?&_)". Qed.
+
+  Lemma sealed_agree γ v1 v2 v' φ :
+    is_sealed γ v1 v' φ -∗ is_sealed γ v2 v' φ -∗ ⌜v1 = v2⌝.
+  Proof.
+    iIntros "(_&_&_&Hv1) (_&_&_&Hv2)".
+    iDestruct "Hv1" as (k1) "[% Hk1]". subst.
+    iDestruct "Hv2" as (k2) "[EQ Hk2]". iDestruct "EQ" as %[=<-].
+    by iApply (witness_agree with "[$Hk1 $Hk2]").
+  Qed.
+
+  Lemma seal_body p γ v φ :
+    {{{ ctx γ φ ∗ □ φ v }}}
+      let: "k" := ref () in
+      (sync γ) (λ: <>, tbl γ <- ((map_insert ! (tbl γ)) "k") v) ;; "k" @ p; ⊤
+    {{{ v', RET v'; is_sealed γ v v' φ }}}.
+  Proof.
+    iIntros (Φ) "#[[Hh Hsync] Hv] HΦ".
+    wp_apply (wp_alloc_low_fresh with "[$Hh]")=>//; first by simpl_low.
+      iIntros (k) "[#Hklow Hkfresh]". wp_let. rewrite/is_sync.
+    wp_apply ("Hsync" with "[%]"). iIntros (Ψ) "HR HΨ".
+      iDestruct "HR" as (map m) "(Hl & #Hm & Hw & #Hinv)". wp_load.
+      rewrite -fupd_wp.
+    iMod (withness_alloc _ _ k v with "Hh Hw Hkfresh") as "[Hw Hkv]".
+      iModIntro.
+    wp_apply (map_insert_spec _ _ _ m with "Hm").
+      iIntros (map') "Hm'". wp_store.
+    iApply ("HΨ" with "[Hl Hm' Hw]").
+    - iExists map', (<[k:=v]> m). iFrame "Hl Hm' Hw".
+      by iApply (tbl_inv_insert with "Hinv Hv").
+    - wp_seq. iApply "HΦ". iFrame "Hh Hv".
+      rewrite/is_sync. iFrame "Hsync".
+      simpl_low. iFrame "Hklow". iExists k. by iFrame "Hkv".
+  Qed.
+
+  Lemma seal_low γ s φ : is_seal γ s φ -∗ □ (∀ v, low v -∗ φ v) -∗ low s.
+  Proof.
+    iIntros "[#Hctx %] #Hφ". subst. rewrite low_rec.
+      iAlways. iNext. iIntros (v Φ) "#Hv HΦ". simpl_subst.
+    wp_apply (seal_body with "[$Hctx Hφ Hv]").
+    - iAlways. by iApply ("Hφ" with "Hv").
+    - iIntros (v') "Hv'". iApply "HΦ". by iApply (sealed_low with "Hv'").
+  Qed.
+
+  Lemma seal_spec p γ s v φ :
+    {{{ is_seal γ s φ ∗ □ φ v }}} s v @ p; ⊤
+    {{{ v', RET v'; is_sealed γ v v' φ }}}.
+  Proof.
+    iIntros (Φ) "[[#Hctx %] #Hv] HΦ". subst. wp_lam.
+    wp_apply (seal_body with "[$Hctx Hv] [$HΦ]"). by iAlways.
+  Qed.
+
+  (** Properties of unsealing. *)
+
+ Lemma unseal_spec p γ u v v' φ :
+    {{{ is_unseal γ u φ ∗ is_sealed γ v v' φ }}} u v' @ p; ⊤
+    {{{ RET v; True }}}.
+  Proof.
+    iIntros (Φ) "[[#[Hh Hsync] %] Hv'] HΦ". subst. wp_lam.
+      iDestruct "Hv'" as "(_&#Hv&#Hv'&Hw)". iDestruct "Hw" as (k) "[% #Hk]".
+      subst.
+    wp_typecast Hloc; last by exfalso; apply: Hloc; exists k. wp_match.
+      rewrite/is_sync.
+    wp_apply ("Hsync" with "[%]"). iClear "Hsync". iIntros (Ψ) "HR HΨ".
+      iDestruct "HR" as (map m) "(Hl & #Hm & Hw & #Hinv)". wp_load.
+      iDestruct (witness_elim with "Hw Hk") as "%".
+    wp_apply (map_lookup_partial_Some_spec _ _ _ _ k with "Hm")=>//.
+      iIntros "_".
+    iApply ("HΨ" with "[Hl Hw]"); last by iApply "HΦ".
+    iExists map, m. by iFrame "Hl Hm Hw Hinv".
+  Qed.
+
+  Lemma unseal_body_low γ v' φ :
+    {{{ ctx γ φ ∗ low v' }}}
+      ifloc: v' as "k" => (sync γ) (λ: <>, map_lookup_partial (! (tbl γ)) "k")
+      else abort
+    ?{{{ v, RET v; is_sealed γ v v' φ }}}.
+  Proof.
+    iIntros (Φ) "#[[Hh Hsync] Hv'] HΦ".
+    wp_typecast Hloc; wp_match; last by wp_apply wp_abort.
+      destruct (is_loc_val _ Hloc) as (k&->). rewrite/is_sync.
+    wp_apply ("Hsync" with "[%]"). iIntros (Ψ) "HR HΨ".
+      iDestruct "HR" as (map m) "(Hl & #Hm & Hw & #Hinv)". wp_load.
+      rewrite -wp_fupd.
+    wp_apply (map_lookup_partial_spec _ _  _ k with "Hm")=>//.
+      iIntros (v'') "%".
+    iMod (witness_obs with "Hw") as "[Hw Hk]"; first done.
+    iApply ("HΨ" with "[Hl Hw]").
+    - iExists map, m. by iFrame "Hl Hm Hw Hinv".
+    - iApply "HΦ". iFrame "Hh Hv'". rewrite /is_sync; iFrame "Hsync".
+      iSplitR; last by iExists k; auto. iAlways. setoid_rewrite always_elim.
+      by rewrite -(big_sepM_lookup (λ _, φ) m k v'').
+  Qed.
+
+  Lemma unseal_low γ u φ :
+    is_unseal γ u φ -∗ □ (∀ v, φ v -∗ low v) -∗ low u.
+  Proof.
+    iIntros "[#Hctx %] #Hφ". subst. rewrite low_rec.
+      iAlways. iNext. iIntros (v' Φ) "#Hv' HΦ". simpl_subst.
+    wp_apply (unseal_body_low with "[$Hctx $Hv']").
+      iIntros (v) "Hv".
+    iApply "HΦ". iApply "Hφ". by iApply (sealed_inv with "Hv").
+  Qed.
+
+  Lemma unseal_low_strong γ u v' φ :
+    {{{ is_unseal γ u φ ∗ low v' }}} u v' ?{{{ v, RET v; is_sealed γ v v' φ }}}.
+  Proof.
+    iIntros (Φ) "[[Hctx %] Hv'] HΦ". subst. wp_lam.
+    by wp_apply (unseal_body_low with "[$Hctx $Hv'] [$HΦ]").
+  Qed.
+
+  Lemma unseal_low_spec γ u v' φ :
+    {{{ is_unseal γ u φ ∗ low v' }}} u v' ?{{{ v, RET v; φ v }}}.
+  Proof.
+    iIntros (Φ) "Huv' HΦ".
+    wp_apply (unseal_low_strong with "Huv'"). iIntros (?) "?".
+    iApply "HΦ". by iApply sealed_inv.
+  Qed.
+
+  Definition sealing : sealing Σ := {|
+    intf.seal_low := seal_low;
+    intf.unseal_low := unseal_low;
+    intf.sealed_low := sealed_low;
+    intf.sealed_inv := sealed_inv;
+    intf.sealed_agree := sealed_agree;
+    intf.make_seal_spec := make_seal_spec;
+    intf.seal_spec := seal_spec;
+    intf.unseal_spec := unseal_spec;
+    intf.unseal_low_spec := unseal_low_spec
+  |}.
+  Global Instance strong : strong_unsealing sealing :=
+    unseal_low_strong.
 End proof.
+End direct_sealing.
