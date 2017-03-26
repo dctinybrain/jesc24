@@ -29,7 +29,8 @@ End lifting.
 (** * Protected interval manipulating routines *)
 (**
 	Other than the snapshot operation, this is Morris' example.
-	Snapshots are useful at the boundary with adversarial code.
+	Snapshots are useful (with weak unsealing) at the boundary
+	with adversarial code.
 *)
 Section intervals_code.
   Context {SI : SealingImpl}.
@@ -102,6 +103,11 @@ Section intervals_proof.
       (seal γ) (Fst (#n1, #n2) + Fst "y", Snd (#n1, #n2) + Snd "y"))⌝
   )%I.
 
+  Definition is_intervals γ (mk snap min max sum : val) : iProp Σ := (
+    is_make_int γ mk ∗ is_snap γ snap ∗
+    is_min γ min ∗ is_max γ max ∗ is_sum γ sum
+  )%I.
+
   (** Structure *)
 
   Instance intφ_persistent v : PersistentP (intφ v).
@@ -126,16 +132,16 @@ Section intervals_proof.
   Global Instance is_sum'_persistent γ n1 n2 v :
     PersistentP (is_sum' γ n1 n2 v).
   Proof. apply _. Qed.
+  Global Instance is_intervals_persistent γ mk snap min max sum :
+    PersistentP (is_intervals γ mk snap min max sum).
+  Proof. apply _. Qed.
 
   (** The [intervals] function *)
 
   Lemma intervals_spec N p :
     heapN ⊥ N →
     {{{ heap_ctx }}} intervals () @ p; ⊤
-    {{{ (make_int snap min max sum : val) γ,
-        RET (make_int, snap, min, max, sum);
-      is_make_int γ make_int ∗ is_snap γ snap ∗
-      is_min γ min ∗ is_max γ max ∗ is_sum γ sum }}}.
+    {{{ v1 v2 v3 v4 v5 γ, RET (v1, v2, v3, v4, v5); is_intervals γ v1 v2 v3 v4 v5 }}}.
   Proof.
     iIntros (? Φ) "#Hh HΦ". wp_lam.
     wp_apply (make_seal_spec S N _ intφ with "Hh"); first done.
@@ -155,6 +161,14 @@ Section intervals_proof.
 
   Lemma interval_low γ n1 n2 v : is_interval γ n1 n2 v -∗ low v.
   Proof. iIntros "[_ Hv]". by iApply (sealed_low with "Hv"). Qed.
+
+  Lemma interval_agree γ n1 n2 n'1 n'2 v :
+    is_interval γ n1 n2 v ∗ is_interval γ n'1 n'2 v
+    ⊢ ⌜n1 = n'1⌝ ∗ ⌜n2 = n'2⌝.
+  Proof.
+    iIntros "[[_ Hv] [_ H'v]]".
+    iDestruct (sealed_agree with "[$Hv $H'v]") as %[=->->]. by auto.
+  Qed.
 
   (** The make interval function *)
 
@@ -264,13 +278,24 @@ Section intervals_proof.
     by iApply ("HΦ" with "[%]").
   Qed.
 
-  Lemma unseal_interval_low γ v' :
-    {{{ ctx γ ∗ low v' }}} (unseal γ) v'
+  Lemma unseal_interval_any γ v `{!strong_unsealing S} :
+    {{{ ctx γ }}} (unseal γ) v
+    ?{{{ n1 n2, RET (#n1, #n2); ⌜n1 ≤ n2⌝ ∗ is_interval γ n1 n2 v }}}.
+  Proof.
+    iIntros (Φ) "#Hctx HΦ".
+      iDestruct (persistentP with "Hctx") as "[_ >Hu]".
+    wp_apply (unseal_any_spec with "Hu"). iIntros (?) "Hv".
+      iDestruct (sealed_inv with "Hv") as (n1 n2) "[%%]". subst.
+    by iApply ("HΦ" with "[$Hctx $Hv]").
+  Qed.
+
+  Lemma unseal_interval_low γ v `{!weak_unsealing S} :
+    {{{ ctx γ ∗ low v }}} (unseal γ) v
     ?{{{ n1 n2, RET (#n1, #n2); ⌜n1 ≤ n2⌝ }}}.
   Proof.
-    iIntros (Φ) "[[_ Hu] Hv'] HΦ".
-    wp_apply (unseal_low_spec with "[$Hu $Hv']").
-      iIntros (v). iDestruct 1 as (n1 n2) "[%%]". subst.
+    iIntros (Φ) "[[_ Hu] Hv] HΦ".
+    wp_apply (unseal_low_spec with "[$Hu $Hv]").
+      iIntros (?). iDestruct 1 as (n1 n2) "[%%]". subst.
     by iApply ("HΦ" with "[%]").
   Qed.
 
@@ -288,7 +313,24 @@ Section intervals_proof.
     by iApply ("HΦ" with "[$Hctx $Hv']").
   Qed.
 
-  Lemma snap_body γ v :
+  (**
+	While the following is sound, [strong_unsealing] obviates
+	snapshots.
+  *)
+  Lemma snap_any_spec γ snap v `{!strong_unsealing S} :
+    {{{ is_snap γ snap }}} snap v
+    ?{{{ v' n1 n2, RET v'; is_interval γ n1 n2 v' }}}.
+  Proof.
+    iIntros (Φ) "[#Hctx %] HΦ". subst. wp_lam.
+      iDestruct (persistentP with "Hctx") as "[#Hs _]".
+    wp_apply (unseal_interval_any with "Hctx"). iIntros (n1 n2) "[% Hv]".
+      wp_value.
+    wp_apply (seal_spec with "[$Hs]");
+      first by iAlways; iExists n1, n2; iFrame "%". iIntros (v') "Hv'".
+    by iApply ("HΦ" with "[$Hctx $Hv']").
+  Qed.
+
+  Lemma snap_body_low γ v `{!weak_unsealing S} :
     {{{ ctx γ ∗ low v }}} (seal γ) ((unseal γ) v)
     ?{{{ v' n1 n2, RET v'; is_interval γ n1 n2 v' }}}.
   Proof.
@@ -301,34 +343,45 @@ Section intervals_proof.
     by iApply ("HΦ" with "[$Hctx $Hv']").
   Qed.
 
-  Lemma snap_low_spec γ snap v :
+  Lemma snap_low_spec γ snap v `{!weak_unsealing S} :
     {{{ is_snap γ snap ∗ low v }}} snap v
     ?{{{ v' n1 n2, RET v'; is_interval γ n1 n2 v' }}}.
   Proof.
     iIntros (Φ) "[[Hctx %] Hv] HΦ". subst. wp_lam.
-    by wp_apply (snap_body with "[$Hctx $Hv]").
+    by wp_apply (snap_body_low with "[$Hctx $Hv]").
   Qed.
 
-  Lemma snap_low γ snap : is_snap γ snap -∗ low snap.
+  Lemma snap_low γ snap `{!weak_unsealing S} :
+    is_snap γ snap -∗ low snap.
   Proof.
     iIntros "[#Hctx %]". subst. rewrite low_rec. iAlways. iNext.
       iIntros (v Φ) "Hv HΦ". simpl_subst.
-    wp_apply (snap_body with "[$Hctx $Hv]"). iIntros (v' n1 n2) "Hv'".
+    wp_apply (snap_body_low with "[$Hctx $Hv]"). iIntros (v' n1 n2) "Hv'".
     iApply "HΦ". by iApply (interval_low with "Hv'").
   Qed.
 
   (** The min function *)
 
-  Lemma min_spec p γ min n1 n2 v' :
-    {{{ is_min γ min ∗ is_interval γ n1 n2 v' }}} min v' @ p; ⊤
+  Lemma min_spec p γ min n1 n2 v :
+    {{{ is_min γ min ∗ is_interval γ n1 n2 v }}} min v @ p; ⊤
     {{{ RET #n1; True }}}.
   Proof.
-    iIntros (Φ) "[[Hctx %] Hv'] HΦ". subst. wp_lam.
-    wp_apply (unseal_interval with "Hv'"). iIntros "%". wp_proj.
+    iIntros (Φ) "[[Hctx %] Hv] HΦ". subst. wp_lam.
+    wp_apply (unseal_interval with "Hv"). iIntros "%". wp_proj.
     by iApply "HΦ".
   Qed.
 
-  Lemma min_body γ v' :
+  Lemma min_any_spec γ min v `{!strong_unsealing S} :
+    {{{ is_min γ min }}} min v
+    ?{{{ n1 n2, RET #n1; is_interval γ n1 n2 v }}}.
+  Proof.
+    iIntros (Φ) "[Hctx %] HΦ". subst. wp_lam.
+    wp_apply (unseal_interval_any with "Hctx"). iIntros (n1 n2) "[% Hv]".
+      wp_proj.
+    by iApply ("HΦ" with "Hv").
+  Qed.
+
+  Lemma min_body_low γ v' `{!weak_unsealing S} :
     {{{ ctx γ ∗ low v' }}} Fst ((unseal γ) v') ?{{{ n, RET #n; True }}}.
   Proof.
     iIntros (Φ) "[Hctx Hv'] HΦ".
@@ -337,18 +390,19 @@ Section intervals_proof.
     by iApply "HΦ".
   Qed.
 
-  Lemma min_low_spec γ min v' :
+  Lemma min_low_spec γ min v' `{!weak_unsealing S} :
     {{{ is_min γ min ∗ low v' }}} min v' ?{{{ n, RET #n; True }}}.
   Proof.
     iIntros (Φ) "[[Hctx %] Hv'] HΦ". subst. wp_lam.
-    by wp_apply (min_body with "[$Hctx $Hv'] [$HΦ]").
+    by wp_apply (min_body_low with "[$Hctx $Hv'] [$HΦ]").
   Qed.
 
-  Lemma min_low γ min : is_min γ min -∗ low min.
+  Lemma min_low γ min `{!weak_unsealing S} :
+    is_min γ min -∗ low min.
   Proof.
     iIntros "[#Hctx %]". subst. rewrite low_rec. iAlways. iNext.
       iIntros (v' Φ) "Hv' HΦ". simpl_subst.
-    wp_apply (min_body with "[$Hctx $Hv']"). iIntros (n) "_".
+    wp_apply (min_body_low with "[$Hctx $Hv']"). iIntros (n) "_".
     iApply "HΦ". by simpl_low.
   Qed.
 
@@ -363,7 +417,17 @@ Section intervals_proof.
     by iApply "HΦ".
   Qed.
 
-  Lemma max_body γ v' :
+  Lemma max_any_spec γ max v `{!strong_unsealing S} :
+    {{{ is_max γ max }}} max v
+    ?{{{ n1 n2, RET #n2; is_interval γ n1 n2 v }}}.
+  Proof.
+    iIntros (Φ) "[Hctx %] HΦ". subst. wp_lam.
+    wp_apply (unseal_interval_any with "Hctx"). iIntros (n1 n2) "[% Hv]".
+      wp_proj.
+    by iApply ("HΦ" with "Hv").
+  Qed.
+
+  Lemma max_body_low γ v' `{!weak_unsealing S} :
     {{{ ctx γ ∗ low v' }}} Snd ((unseal γ) v') ?{{{ n, RET #n; True }}}.
   Proof.
     iIntros (Φ) "[Hctx Hv'] HΦ".
@@ -372,18 +436,19 @@ Section intervals_proof.
     by iApply "HΦ".
   Qed.
 
-  Lemma max_low_spec γ max v' :
+  Lemma max_low_spec γ max v' `{!weak_unsealing S} :
     {{{ is_max γ max ∗ low v' }}} max v' ?{{{ n, RET #n; True }}}.
   Proof.
     iIntros (Φ) "[[Hctx %] Hv'] HΦ". subst. wp_lam.
-    by wp_apply (max_body with "[$Hctx $Hv'] [$HΦ]").
+    by wp_apply (max_body_low with "[$Hctx $Hv'] [$HΦ]").
   Qed.
 
-  Lemma max_low γ max : is_max γ max -∗ low max.
+  Lemma max_low γ max `{!weak_unsealing S} :
+    is_max γ max -∗ low max.
   Proof.
     iIntros "[#Hctx %]". subst. rewrite low_rec. iAlways. iNext.
       iIntros (v' Φ) "Hv' HΦ". simpl_subst.
-    wp_apply (max_body with "[$Hctx $Hv']"). iIntros (n) "_".
+    wp_apply (max_body_low with "[$Hctx $Hv']"). iIntros (n) "_".
     iApply "HΦ". by simpl_low.
   Qed.
 
@@ -400,21 +465,31 @@ Section intervals_proof.
     iApply ("HΦ" with "[$Hctx]"). by iFrame "%".
   Qed.
 
-  Lemma sum_spec p γ sum n1 n2 v' :
-    {{{ is_sum γ sum ∗ is_interval γ n1 n2 v' }}} sum v' @ p; ⊤
+  Lemma sum_spec p γ sum n1 n2 v :
+    {{{ is_sum γ sum ∗ is_interval γ n1 n2 v }}} sum v @ p; ⊤
     {{{ f, RET f; is_sum' γ n1 n2 f }}}.
   Proof.
-    iIntros (Φ) "[[#Hctx %] Hv'] HΦ". subst. wp_lam.
-    wp_apply (unseal_interval with "Hv'"). iIntros "%".
+    iIntros (Φ) "[[#Hctx %] Hv] HΦ". subst. wp_lam.
+    wp_apply (unseal_interval with "Hv"). iIntros "%".
     by wp_apply (sum_body with "Hctx").
   Qed.
 
-  Lemma sum_low_spec γ sum v2 :
-    {{{ is_sum γ sum ∗ low v2 }}} sum v2
+  Lemma sum_any_spec γ sum v `{!strong_unsealing S} :
+    {{{ is_sum γ sum }}} sum v
+    ?{{{ f n1 n2, RET f; is_interval γ n1 n2 v ∗ is_sum' γ n1 n2 f }}}.
+  Proof.
+    iIntros (Φ) "[#Hctx %] HΦ". subst. wp_lam.
+    wp_apply (unseal_interval_any with "Hctx"). iIntros (??) "[% Hv]".
+    wp_apply (sum_body with "Hctx"); first done. iIntros (f) "Hf".
+    by iApply ("HΦ" with "[$Hv $Hf]").
+  Qed.
+
+  Lemma sum_low_spec γ sum v `{!weak_unsealing S} :
+    {{{ is_sum γ sum ∗ low v }}} sum v
     ?{{{ f n1 n2, RET f; is_sum' γ n1 n2 f }}}.
   Proof.
-    iIntros (Φ) "[[#Hctx %] Hv2] HΦ". subst. wp_lam.
-    wp_apply (unseal_interval_low with "[$Hctx $Hv2]"). iIntros (??) "%".
+    iIntros (Φ) "[[#Hctx %] Hv] HΦ". subst. wp_lam.
+    wp_apply (unseal_interval_low with "[$Hctx $Hv]"). iIntros (??) "%".
     wp_apply (sum_body with "Hctx"); first done. iIntros (f) "Hf".
     by iApply ("HΦ" with "Hf").
   Qed.
@@ -443,7 +518,19 @@ Section intervals_proof.
     by wp_apply (sum'_body with "Hctx").
   Qed.
 
-  Lemma sum'_body_low γ n1 n2 v2 :
+  Lemma sum'_any_spec γ n1 n2 sum v2 `{!strong_unsealing S} :
+    {{{ is_sum' γ n1 n2 sum }}}
+      sum v2
+    ?{{{ v n'1 n'2, RET v; is_interval γ n'1 n'2 v2
+      ∗ is_interval γ (n1 + n'1) (n2 + n'2) v }}}.
+  Proof.
+    iIntros (Φ) "(#Hctx & % & %) HΦ". subst. wp_lam.
+    wp_apply (unseal_interval_any with "Hctx"). iIntros (??) "[% Hv2]".
+    wp_apply (sum'_body with "Hctx")=>//. iIntros (v) "Hv".
+    by iApply ("HΦ" with "[$Hv2 $Hv]").
+  Qed.
+
+  Lemma sum'_body_low γ n1 n2 v2 `{!weak_unsealing S} :
     n1 ≤ n2 →
     {{{ ctx γ ∗ low v2 }}}
       let: "y" := (unseal γ) v2 in
@@ -456,7 +543,7 @@ Section intervals_proof.
     by iApply ("HΦ" with "Hv").
   Qed.
 
-  Lemma sum'_low_spec γ n1 n2 sum v2 :
+  Lemma sum'_low_spec γ n1 n2 sum v2 `{!weak_unsealing S} :
     {{{ is_sum' γ n1 n2 sum ∗ low v2 }}} sum v2
     ?{{{ v n'1 n'2, RET v; is_interval γ n'1 n'2 v }}}.
   Proof.
@@ -464,7 +551,8 @@ Section intervals_proof.
     by wp_apply (sum'_body_low with "[$Hctx $Hv2]").
   Qed.
 
-  Lemma sum'_low γ n1 n2 sum : is_sum' γ n1 n2 sum -∗ low sum.
+  Lemma sum'_low γ n1 n2 sum `{!weak_unsealing S} :
+    is_sum' γ n1 n2 sum -∗ low sum.
   Proof.
     iIntros "(#Hctx & % & %)". subst. rewrite low_rec. iAlways. iNext.
       iIntros (v2 Φ) "Hv2 HΦ". simpl_subst.
@@ -473,7 +561,8 @@ Section intervals_proof.
     iApply "HΦ". by iApply (interval_low with "Hv").
   Qed.
 
-  Lemma sum_low γ sum : is_sum γ sum -∗ low sum.
+  Lemma sum_low γ sum `{!weak_unsealing S} :
+    is_sum γ sum -∗ low sum.
   Proof.
     iIntros "[#Hctx %]". subst. rewrite low_rec. iAlways. iNext.
       iIntros (v1 Φ) "Hv1 HΦ". simpl_subst.
@@ -495,70 +584,146 @@ End intervals_proof.
 Typeclasses Opaque is_interval is_make_int is_make_int'
   is_snap is_min is_max is_sum is_sum'.
 
-(** * Simple intervals client *)
-Section intervals_client_code.
-  Context {SI : SealingImpl}.
+Section intervals_derived.
+  Context `{heapG Σ, SI : SealingImpl} (S : sealing Σ) `{!weak_unsealing S}.
 
-  Definition interval_client : expr :=
-    let: "cap" := intervals () in
-    let: "make_int" := Fst $ Fst $ Fst $ Fst "cap" in
-    let: "snap" := Snd $ Fst $ Fst $ Fst "cap" in
-    let: "min" := Snd $ Fst $ Fst "cap" in
-    let: "max" := Snd $ Fst "cap" in
-    let: "sum" := Snd "cap" in
-    let: "i100" := "sum" ("make_int" #1 #0) ("make_int" #(-1) #100) in
-    assert: ("min" "i100" = #-1) ;; assert: ("max" "i100" = #101) ;;
-    let: "use" := λ: "i",
-      let: "i" := "snap" "i" in
-      assert: ("min" "i" ≤ "max" "i") ;;
-      "sum" "i" "i100"
-    in
-    ("use", "cap").
-End intervals_client_code.
-
-Section intervals_client_proof.
-  Context `{heapG Σ, SI : SealingImpl} (S : sealing Σ).
-
-  Lemma interval_client_spec N :
-    heapN ⊥ N →
-    {{{ heap_ctx }}} interval_client {{{ v, RET v; low v }}}.
+  Lemma is_intervals_low γ mk snap min max sum :
+    is_intervals S γ mk snap min max sum
+    ⊢ low (mk, snap, min, max, sum)%V.
   Proof.
-    iIntros (? Φ) "#Hh HΦ". rewrite/interval_client.
-    wp_apply (intervals_spec S with "Hh")=>//.
-      iIntros (mk snap min max sum γ)
-        "#(Hmk & Hsnap & Hmin & Hmax & Hsum)".
-      wp_let. do 4!wp_proj; wp_let. do 4!wp_proj; wp_let.
-      do 3!wp_proj; wp_let. do 2!wp_proj; wp_let. wp_proj; wp_let.
-    (** The interval [-1, 101] *)
-    wp_apply (make_int_val with "Hmk"). iIntros (i1) "Hi1".
-    wp_apply (sum_spec with "[$Hsum $Hi1]"). iIntros (f) "Hf".
-    wp_apply (make_int_val with "Hmk"). iIntros (i2) "Hi2".
-    wp_apply (sum'_spec with "[$Hf $Hi2]"). iIntros (i100) "#Hi100". wp_let.
-    wp_apply (min_spec with "[$Hmin $Hi100]"). iIntros "_".
-    wp_apply wp_assert. wp_op=>?; last by exfalso. iSplit; first done.
-      iNext. wp_seq.
-    wp_apply (max_spec with "[$Hmax $Hi100]"). iIntros "_".
-    wp_apply wp_assert. wp_op=>?; last by exfalso. iSplit; first done.
-      iNext. wp_seq. wp_let. clear i1 f i2.
-    iApply "HΦ". clear Φ. simpl_low. iSplitL; iNext.
-    (** The use function is low. *)
-    { rewrite low_rec. iAlways. iNext. iIntros (v Φ) "#Hv HΦ". simpl_subst.
-      wp_apply (snap_low_spec with "[$Hsnap $Hv]"). iIntros (i n1 n2) "#Hi".
-        wp_let.
-      wp_apply (min_spec with "[$Hmin $Hi]"). iIntros "_".
-      wp_apply (max_spec with "[$Hmax $Hi]"). iIntros "_".
-        iDestruct (interval_inv with "Hi") as "%".
-      wp_apply wp_assert. wp_op=>?; last by exfalso; lia.
-        iSplit; first done. iNext. wp_seq.
-      wp_apply (sum_val with "[$Hsum $Hi $Hi100]"). iIntros (?) "?".
-      iApply "HΦ". by iApply interval_low. }
+    iIntros "#(Hmk&Hsnap&Hmin&Hmax&Hsum)". simpl_low.
     iSplitL; iNext; last by iApply (sum_low with "Hsum").
     iSplitL; iNext; last by iApply (max_low with "Hmax").
     iSplitL; iNext; last by iApply (min_low with "Hmin").
     iSplitL; iNext; last by iApply (snap_low with "Hsnap").
     by iApply (make_int_low with "Hmk").
   Qed.
-End intervals_client_proof.
+End intervals_derived.
+
+(** * Simple interval client *)
+(**
+	The point of the following two expressions, which differ only
+	in their "use" functions, is to demonstrate a practical cost
+	of [weak_unsealing]. Put positively, [weak_interval_client]
+	shows one technique—snapshots—to work around weak unsealing.
+
+	With [strong_unsealing], we can verify both expressions. With
+	[weak_unsealing], we can verify [weak_interval_client] (thanks
+	to the snapshot).
+*)
+Section interval_client_code.
+  Context {SI : SealingImpl}.
+
+  Definition interval_client : expr :=
+    let: "cap" := intervals () in
+    let: "tmp" := "cap" in
+    let: "sum" := Snd "tmp" in let: "tmp" := Fst "tmp" in
+    let: "max" := Snd "tmp" in let: "tmp" := Fst "tmp" in
+    let: "min" := Snd "tmp" in let: "tmp" := Fst "tmp" in
+    let: "snap" := Snd "tmp" in
+    let: "make_int" := Fst "tmp" in
+    let: "i" := "sum" ("make_int" #1 #0) ("make_int" #(-1) #100) in
+    assert: ("min" "i" = #-1) ;; assert: ("max" "i" = #101) ;;
+    let: "sum_i" := "sum" "i" in
+    let: "use" := λ: "j", assert: ("min" "j" ≤ "max" "j") ;; "sum_i" "j" in
+    ("use", "cap").
+
+  Definition weak_interval_client : expr :=
+    let: "cap" := intervals () in
+    let: "tmp" := "cap" in
+    let: "sum" := Snd "tmp" in let: "tmp" := Fst "tmp" in
+    let: "max" := Snd "tmp" in let: "tmp" := Fst "tmp" in
+    let: "min" := Snd "tmp" in let: "tmp" := Fst "tmp" in
+    let: "snap" := Snd "tmp" in
+    let: "make_int" := Fst "tmp" in
+    let: "i" := "sum" ("make_int" #1 #0) ("make_int" #(-1) #100) in
+    assert: ("min" "i" = #-1) ;; assert: ("max" "i" = #101) ;;
+    let: "sum_i" := "sum" "i" in
+    let: "use_weak" := λ: "j",
+      let: "j" := "snap" "j" in
+      assert: ("min" "j" ≤ "max" "j") ;; "sum_i" "j"
+    in
+    ("use_weak", "cap").
+End interval_client_code.
+
+Section interval_client_proof.
+  Context `{heapG Σ, SI : SealingImpl} (S : sealing Σ).
+
+  Lemma interval_client_spec N `{!strong_unsealing S} :
+    heapN ⊥ N →
+    {{{ heap_ctx }}} interval_client {{{ v, RET v; low v }}}.
+  Proof.
+    iIntros (? Φ) "#Hh HΦ". rewrite/interval_client.
+    wp_apply (intervals_spec S with "Hh")=>//.
+      iIntros (mk snap min max sum γ) "#Hint".
+      iDestruct (persistentP with "Hint")
+        as "#(Hmk & Hsnap & Hmin & Hmax & Hsum)".
+      do 2!wp_let. do 8!(wp_proj; wp_let).
+    (** The interval [-1, 101] *)
+    wp_apply (make_int_val with "Hmk"). iIntros (i1) "Hi1".
+    wp_apply (sum_spec with "[$Hsum $Hi1]"). iIntros (f) "Hf".
+    wp_apply (make_int_val with "Hmk"). iIntros (i2) "Hi2".
+    wp_apply (sum'_spec with "[$Hf $Hi2]"). iIntros (i) "#Hi". wp_let.
+    wp_apply (min_spec with "[$Hmin $Hi]"). iIntros "_".
+    wp_apply wp_assert. wp_op=>?; last by exfalso. iSplit; first done.
+      iNext. wp_seq.
+    wp_apply (max_spec with "[$Hmax $Hi]"). iIntros "_".
+    wp_apply wp_assert. wp_op=>?; last by exfalso. iSplit; first done.
+      iNext. wp_seq.
+    wp_apply (sum_spec with "[$Hsum $Hi]"). iIntros (sum_i) "#Hsum_i".
+      do 2!wp_let.
+    iApply "HΦ". clear Φ. rewrite low_val. iNext.
+    iSplitL; last by iApply (is_intervals_low with "Hint").
+    (** The use function is low. *)
+    rewrite low_rec. iAlways. iNext. iIntros (v Φ) "_ HΦ". simpl_subst.
+    wp_apply (min_any_spec with "Hmin"). iIntros (n1 n2) "Hv".
+    wp_apply (max_any_spec with "Hmax"). iIntros (n'1 n'2) "H'v".
+    iDestruct (interval_agree with "[$Hv $H'v]") as "[%%]". subst.
+    iDestruct (interval_inv with "Hv") as "%".
+    wp_apply wp_assert. wp_op=>?; last by exfalso; lia.
+      iSplit; first done. iNext. wp_seq.
+    wp_apply (sum'_spec with "[$Hsum_i $Hv]"). iIntros (?) "?".
+    iApply "HΦ". by iApply interval_low.
+  Qed.
+
+  Lemma weak_interval_client_spec N `{!weak_unsealing S} :
+    heapN ⊥ N →
+    {{{ heap_ctx }}} weak_interval_client {{{ v, RET v; low v }}}.
+  Proof.
+    iIntros (? Φ) "#Hh HΦ". rewrite/weak_interval_client.
+    wp_apply (intervals_spec S with "Hh")=>//.
+      iIntros (mk snap min max sum γ) "#Hint".
+      iDestruct (persistentP with "Hint")
+        as "#(Hmk & Hsnap & Hmin & Hmax & Hsum)".
+      do 2!wp_let. do 8!(wp_proj; wp_let).
+    (** The interval [-1, 101] *)
+    wp_apply (make_int_val with "Hmk"). iIntros (i1) "Hi1".
+    wp_apply (sum_spec with "[$Hsum $Hi1]"). iIntros (f) "Hf".
+    wp_apply (make_int_val with "Hmk"). iIntros (i2) "Hi2".
+    wp_apply (sum'_spec with "[$Hf $Hi2]"). iIntros (i) "#Hi". wp_let.
+    wp_apply (min_spec with "[$Hmin $Hi]"). iIntros "_".
+    wp_apply wp_assert. wp_op=>?; last by exfalso. iSplit; first done.
+      iNext. wp_seq.
+    wp_apply (max_spec with "[$Hmax $Hi]"). iIntros "_".
+    wp_apply wp_assert. wp_op=>?; last by exfalso. iSplit; first done.
+      iNext. wp_seq.
+    wp_apply (sum_spec with "[$Hsum $Hi]"). iIntros (sum_i) "#Hsum_i".
+      do 2!wp_let.
+    iApply "HΦ". clear Φ. rewrite low_val. iNext.
+    iSplitL; last by iApply (is_intervals_low with "Hint").
+    (** The use_weak function is low (thanks to the snapshot). *)
+    rewrite low_rec. iAlways. iNext. iIntros (v Φ) "#Hv HΦ". simpl_subst.
+    wp_apply (snap_low_spec with "[$Hsnap $Hv]"). iIntros (j n1 n2) "#Hj".
+      wp_let.
+    wp_apply (min_spec with "[$Hmin $Hj]"). iIntros "_".
+    wp_apply (max_spec with "[$Hmax $Hj]"). iIntros "_".
+      iDestruct (interval_inv with "Hj") as "%".
+    wp_apply wp_assert. wp_op=>?; last by exfalso; lia.
+      iSplit; first done. iNext. wp_seq.
+    wp_apply (sum'_spec with "[$Hsum_i $Hj]"). iIntros (?) "?".
+    iApply "HΦ". by iApply interval_low.
+  Qed.
+End interval_client_proof.
 
 (** * Public-key interfaces for sealer-unsealer pairs *)
 (**
@@ -567,7 +732,8 @@ End intervals_client_proof.
 	asymmetric signature and encryption schemes.
 *)
 Section pk_proof.
-  Context `{heapG Σ, SI : SealingImpl} (S : sealing Σ) (N : namespace).
+  Context `{heapG Σ, SI : SealingImpl} (S : sealing Σ) `{!weak_unsealing S}
+    (N : namespace).
   Implicit Types f v : val.
   Implicit Types n : Z.
 
@@ -666,7 +832,8 @@ Section pk_client.
 End pk_client.
 
 Section pk_client_proof.
-  Context `{heapG Σ, SI : SealingImpl} (S : sealing Σ) (N : namespace).
+  Context `{heapG Σ, SI : SealingImpl} (S : sealing Σ) `{!weak_unsealing S}
+    (N : namespace).
   Implicit Types f v : val.
   Implicit Types n : Z.
   Implicit Types l : loc.
@@ -723,7 +890,7 @@ Section ClosedProofs.
   Import lock.
 
   Let lock : LockImpl := spin_lock.spin.
-  Let sealing : SealingImpl := @morris_sealing.code lock.
+  Let sealing : SealingImpl := @direct_sealing.code lock.
   Let interval_client : expr := @interval_client sealing.
 
   Let N : namespace := nroot .@ "example".
@@ -737,8 +904,21 @@ Section ClosedProofs.
     move=>??. eapply (robust_safety Σ); try done.
     { naive_solver eauto using is_closed_of_val. }
     iIntros (G) "Hh".
-    set L := spin_lock.spin_lock. set S := morris_sealing.proof L.
+    set L := spin_lock.spin_lock. set S := direct_sealing.proof L.
     iApply (interval_client_spec S N with "Hh"); auto with ndisj.
+  Qed.
+
+  Let weak_interval_client : expr := @weak_interval_client sealing.
+  Lemma weak_interval_client_safe C t2 σ2 :
+    AdvCtx C →
+    rtc step ([ctx_fill C weak_interval_client], good_state ∅) (t2, σ2) →
+    is_good σ2.
+  Proof.
+    move=>??. eapply (robust_safety Σ); try done.
+    { naive_solver eauto using is_closed_of_val. }
+    iIntros (G) "Hh".
+    set L := spin_lock.spin_lock. set S := direct_sealing.proof L.
+    iApply (weak_interval_client_spec S N with "Hh"); auto with ndisj.
   Qed.
 
   Let pk_client : expr := @pk_client sealing.
@@ -750,10 +930,11 @@ Section ClosedProofs.
     move=>??. eapply (robust_safety Σ); try done.
     { naive_solver eauto using is_closed_of_val. }
     iIntros (G) "Hh".
-    set L := spin_lock.spin_lock. set S := morris_sealing.proof L.
+    set L := spin_lock.spin_lock. set S := direct_sealing.proof L.
     iApply (pk_client_spec S N with "Hh"); auto with ndisj.
   Qed.
 End ClosedProofs.
 
 Print Assumptions interval_client_safe.
+Print Assumptions weak_interval_client_safe.
 Print Assumptions pk_client_safe.

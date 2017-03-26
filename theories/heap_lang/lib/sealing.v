@@ -15,11 +15,9 @@ Local Notation ext R := (pointwise_relation _ R).
 	James H. Morris Jr. Protection in Programming Languages.
 	CACM 16(1) (January 1973), 15–21.
 >>
-	His idea was to associate dynamic "type tags" with values
-	satisfying a representation invariant in order to approximate
-	the convenience of working in a language with abstract types
-	(while interoperating with untrusted, potentially ill-typed
-	code).
+	His idea was to dynamically approximate the convenience of
+	working in a language with abstract types while interoperating
+	with untrusted, potentially ill-typed code.
 
 	Our spec lets one pick a representation invariant [φ] when
 	allocating a sealer-unsealer pair. The [seal] and [unseal]
@@ -75,16 +73,16 @@ Section spec.
       {{{ v', RET v'; is_sealed γ v v' φ }}};
     unseal_spec p γ u v v' φ :
       {{{ is_unseal γ u φ ∗ is_sealed γ v v' φ }}} u v' @ p; ⊤
-      {{{ RET v; True }}};
-    unseal_low_spec γ u v' φ :
-      {{{ is_unseal γ u φ ∗ low v' }}} u v' ?{{{ v, RET v; φ v }}}
+      {{{ RET v; True }}}
   }.
+  Class weak_unsealing (S : sealing) : Prop :=
+    unseal_low_spec γ u v' φ :
+      {{{ is_unseal S γ u φ ∗ low v' }}} u v' ?{{{ v, RET v; φ v }}}.
   Class strong_unsealing (S : sealing) : Prop :=
     unseal_any_spec γ u v' φ :
       {{{ is_unseal S γ u φ }}} u v' ?{{{ v, RET v; is_sealed S γ v v' φ }}}.
 End spec.
 Arguments sealing _ {_ _}.
-Arguments strong_unsealing {_ _ _} _.
 Existing Instances is_seal_persistent is_seal_ne
   is_unseal_persistent is_unseal_ne
   is_sealed_persistent is_sealed_ne.
@@ -110,6 +108,14 @@ Section instances.
   Proof.
     move=>???. apply equiv_dist=>?. apply is_sealed_ne=>?.
     by apply equiv_dist.
+  Qed.
+
+  Global Instance weaken_unsealing `{!strong_unsealing S} :
+    weak_unsealing S.
+  Proof.
+    iIntros (γ u v' φ Φ) "[Hu _] HΦ".
+    wp_apply (unseal_any_spec with "Hu"). iIntros (?) "?".
+    iApply "HΦ". by iApply sealed_inv.
   Qed.
 End instances.
 End intf.
@@ -420,31 +426,41 @@ Section proof.
     rewrite lookup_insert_ne //. by apply map_subseteq_spec.
   Qed.
 
+  (** Operations *)
+
+  Lemma make_seal_spec N p φ :
+    heapN ⊥ N →
+    {{{ heap_ctx }}} make_seal () @ p; ⊤
+    {{{ v1 v2 γ, RET (v1, v2); is_seal γ v1 φ ∗ is_unseal γ v2 φ }}}.
+  Proof.
+    iIntros (? Φ) "#Hh HΦ". wp_lam. wp_alloc l as "Hl". wp_let.
+      rewrite -wp_fupd.
+    iMod witness_some_alloc as (γh) "Hw".
+    wp_apply (make_sync_spec L _ N (tbl_res l γh φ) with "[$Hh Hl Hw]");
+      first done.
+    { iExists map_empty, ∅. iFrame "Hl Hw".
+      rewrite big_sepM_empty. iSplitL. by auto. by iAlways. }
+    iIntros (sync) "#Hsync". iCombine "Hh" "Hsync" as "Hctx".
+      set γ := {| sync := sync; tbl := l; ghost := γh |}. do 3!wp_let.
+    iApply ("HΦ" $! _ _ γ). iFrame "Hctx Hctx". by auto.
+  Qed.
+
   (** Properties of sealing *)
 
-  Lemma sealed_agree γ v1 v2 v' φ :
-    is_sealed γ v1 v' φ ∗ is_sealed γ v2 v' φ ⊢ ⌜v1 = v2⌝.
-  Proof. iIntros "[(_&_&%) (_&_&%)]". by naive_solver. Qed.
-
-  Lemma sealed_high p γ v v' k φ :
-    {{{ is_sealed γ v v' φ ∗ k ↦ () ∗ fresh k }}} v' k @ p; ⊤
-    {{{ RET (); is_witness (ghost γ) k v }}}.
+  Lemma seal_spec p γ s v φ :
+    {{{ is_seal γ s φ ∗ □ φ v }}} s v @ p; ⊤
+    {{{ v', RET v'; is_sealed γ v v' φ }}}.
   Proof.
-    iIntros (Φ) "((#[Hh Hsync] & #Hv & %) & Hk & Hf) HΦ". subst. wp_lam.
-    wp_typecast Hloc; last by exfalso; apply Hloc; exists k.
-      wp_match. rewrite/is_sync.
-    wp_apply ("Hsync" with "[%]"). iClear "Hsync". iIntros (Ψ) "HR HΨ".
-      iDestruct "HR" as (map m) "(Hl & Hm & Hw & #Hinv)". wp_load.
-    wp_apply (map_insert_spec _ _ _ m with "Hm").
-      iIntros (map') "Hm'". rewrite -wp_fupd. wp_store.
-    iMod (is_witness_alloc_high _ _ k v with "Hh Hw Hk Hf") as "[Hw Hkv]".
-    iApply ("HΨ" with "[Hv Hl Hm' Hw]"); last by iApply ("HΦ" with "Hkv").
-    iExists map', (<[k:=v]> m). iFrame "Hl Hm' Hw". iAlways.
-    by iApply (tbl_inv_insert with "Hinv Hv").
+    iIntros (Φ) "[[#Hctx %] #Hv] HΦ". subst. wp_lam.
+    iApply "HΦ". iFrame "Hctx". iSplitL. by iAlways. done.
   Qed.
 
   Lemma sealed_inv γ v v' φ : is_sealed γ v v' φ -∗ φ v.
   Proof. iIntros "(_ &#Hv&_)". by iFrame "Hv". Qed.
+
+  Lemma sealed_agree γ v1 v2 v' φ :
+    is_sealed γ v1 v' φ ∗ is_sealed γ v2 v' φ ⊢ ⌜v1 = v2⌝.
+  Proof. iIntros "[(_&_&%) (_&_&%)]". by naive_solver. Qed.
 
   Lemma sealed_low γ v v' φ : is_sealed γ v v' φ -∗ low v'.
   Proof.
@@ -471,7 +487,43 @@ Section proof.
     iSplitL; last done. iAlways. by iApply ("Hφ" with "Hv").
   Qed.
 
+  Lemma sealed_high p γ v v' k φ :
+    {{{ is_sealed γ v v' φ ∗ k ↦ () ∗ fresh k }}} v' k @ p; ⊤
+    {{{ RET (); is_witness (ghost γ) k v }}}.
+  Proof.
+    iIntros (Φ) "((#[Hh Hsync] & #Hv & %) & Hk & Hf) HΦ". subst. wp_lam.
+    wp_typecast Hloc; last by exfalso; apply Hloc; exists k.
+      wp_match. rewrite/is_sync.
+    wp_apply ("Hsync" with "[%]"). iClear "Hsync". iIntros (Ψ) "HR HΨ".
+      iDestruct "HR" as (map m) "(Hl & Hm & Hw & #Hinv)". wp_load.
+    wp_apply (map_insert_spec _ _ _ m with "Hm").
+      iIntros (map') "Hm'". rewrite -wp_fupd. wp_store.
+    iMod (is_witness_alloc_high _ _ k v with "Hh Hw Hk Hf") as "[Hw Hkv]".
+    iApply ("HΨ" with "[Hv Hl Hm' Hw]"); last by iApply ("HΦ" with "Hkv").
+    iExists map', (<[k:=v]> m). iFrame "Hl Hm' Hw". iAlways.
+    by iApply (tbl_inv_insert with "Hinv Hv").
+  Qed.
+
   (** Properties of unsealing. *)
+
+  Lemma unseal_spec p γ u v v' φ :
+    {{{ is_unseal γ u φ ∗ is_sealed γ v v' φ }}} u v' @ p; ⊤
+    {{{ RET v; True }}}.
+  Proof.
+    iIntros (Φ) "[[#[Hh Hsync] %] Hv'] HΦ". subst. wp_lam.
+    wp_apply (wp_alloc_fresh with "Hh"); auto.
+      iIntros (k) "[Hk Hf]". wp_let.
+    wp_apply (sealed_high with "[$Hv' $Hk $Hf]"). iIntros "Hwk". wp_seq.
+      rewrite/is_sync.
+    wp_apply ("Hsync" with "[%]"). iClear "Hsync". iIntros (Ψ) "HR HΨ".
+      iDestruct "HR" as (map m) "(Hl & #Hm & Hw & #Hinv)". wp_load.
+      iDestruct (is_witness_some_elim with "Hw Hwk") as "%".
+    wp_apply (map_lookup_partial_Some_spec _ _ _ _ k with "Hm");
+      first done. iIntros "_".
+    iApply ("HΨ" with "[Hl Hw]").
+    - iExists map, m. iFrame "Hl Hm Hw". by iAlways.
+    - by iApply "HΦ".
+  Qed.
 
   Lemma unseal_body_low γ v' φ :
     {{{ ctx γ φ ∗ low v' }}}
@@ -513,52 +565,6 @@ Section proof.
     iApply "HΦ". by iApply ("Hφ" with "Hv").
   Qed.
 
-  (** Operations *)
-
-  Lemma make_seal_spec N p φ :
-    heapN ⊥ N →
-    {{{ heap_ctx }}} make_seal () @ p; ⊤
-    {{{ v1 v2 γ, RET (v1, v2); is_seal γ v1 φ ∗ is_unseal γ v2 φ }}}.
-  Proof.
-    iIntros (? Φ) "#Hh HΦ". wp_lam. wp_alloc l as "Hl". wp_let.
-      rewrite -wp_fupd.
-    iMod witness_some_alloc as (γh) "Hw".
-    wp_apply (make_sync_spec L _ N (tbl_res l γh φ) with "[$Hh Hl Hw]");
-      first done.
-    { iExists map_empty, ∅. iFrame "Hl Hw".
-      rewrite big_sepM_empty. iSplitL. by auto. by iAlways. }
-    iIntros (sync) "#Hsync". iCombine "Hh" "Hsync" as "Hctx".
-      set γ := {| sync := sync; tbl := l; ghost := γh |}. do 3!wp_let.
-    iApply ("HΦ" $! _ _ γ). iFrame "Hctx Hctx". by auto.
-  Qed.
-
-  Lemma seal_spec p γ s v φ :
-    {{{ is_seal γ s φ ∗ □ φ v }}} s v @ p; ⊤
-    {{{ v', RET v'; is_sealed γ v v' φ }}}.
-  Proof.
-    iIntros (Φ) "[[#Hctx %] #Hv] HΦ". subst. wp_lam.
-    iApply "HΦ". iFrame "Hctx". iSplitL. by iAlways. done.
-  Qed.
-
-  Lemma unseal_spec p γ u v v' φ :
-    {{{ is_unseal γ u φ ∗ is_sealed γ v v' φ }}} u v' @ p; ⊤
-    {{{ RET v; True }}}.
-  Proof.
-    iIntros (Φ) "[[#[Hh Hsync] %] Hv'] HΦ". subst. wp_lam.
-    wp_apply (wp_alloc_fresh with "Hh"); auto.
-      iIntros (k) "[Hk Hf]". wp_let.
-    wp_apply (sealed_high with "[$Hv' $Hk $Hf]"). iIntros "Hwk". wp_seq.
-      rewrite/is_sync.
-    wp_apply ("Hsync" with "[%]"). iClear "Hsync". iIntros (Ψ) "HR HΨ".
-      iDestruct "HR" as (map m) "(Hl & #Hm & Hw & #Hinv)". wp_load.
-      iDestruct (is_witness_some_elim with "Hw Hwk") as "%".
-    wp_apply (map_lookup_partial_Some_spec _ _ _ _ k with "Hm");
-      first done. iIntros "_".
-    iApply ("HΨ" with "[Hl Hw]").
-    - iExists map, m. iFrame "Hl Hm Hw". by iAlways.
-    - by iApply "HΦ".
-  Qed.
-
   Lemma unseal_low_spec γ u v' φ :
     {{{ is_unseal γ u φ ∗ low v' }}} u v' ?{{{ v, RET v; φ v }}}.
   Proof.
@@ -574,9 +580,9 @@ Section proof.
     intf.sealed_agree := sealed_agree;
     intf.make_seal_spec := make_seal_spec;
     intf.seal_spec := seal_spec;
-    intf.unseal_spec := unseal_spec;
-    intf.unseal_low_spec := unseal_low_spec
+    intf.unseal_spec := unseal_spec
   |}.
+  Global Instance weak : weak_unsealing proof := unseal_low_spec.
 End proof.
 End morris_sealing.
 
@@ -784,7 +790,7 @@ Section proof.
     - by iApply "HΦ".
   Qed.
 
-  Lemma unseal_body_strong γ v' φ :
+  Lemma unseal_body_any γ v' φ :
     {{{ ctx γ φ }}}
       ifloc: v' as "k" => (sync γ) (λ: <>, map_lookup_partial (! (tbl γ)) "k")
       else abort
@@ -813,7 +819,7 @@ Section proof.
   Proof.
     iIntros "[#Hctx %] #Hφ". subst. rewrite low_rec.
       iAlways. iNext. iIntros (v' Φ) "#Hv' HΦ". simpl_subst.
-    wp_apply (unseal_body_strong with "Hctx").
+    wp_apply (unseal_body_any with "Hctx").
       iIntros (v) "Hv".
     iApply "HΦ". iApply "Hφ". by iApply (sealed_inv with "Hv").
   Qed.
@@ -822,15 +828,7 @@ Section proof.
     {{{ is_unseal γ u φ }}} u v' ?{{{ v, RET v; is_sealed γ v v' φ }}}.
   Proof.
     iIntros (Φ) "[Hctx %] HΦ". subst. wp_lam.
-    by wp_apply (unseal_body_strong with "Hctx [$HΦ]").
-  Qed.
-
-  Lemma unseal_low_spec γ u v' φ :
-    {{{ is_unseal γ u φ ∗ low v' }}} u v' ?{{{ v, RET v; φ v }}}.
-  Proof.
-    iIntros (Φ) "[Hu _] HΦ".
-    wp_apply (unseal_any_spec with "Hu"). iIntros (?) "?".
-    iApply "HΦ". by iApply sealed_inv.
+    by wp_apply (unseal_body_any with "Hctx [$HΦ]").
   Qed.
 
   Definition proof : sealing Σ := {|
@@ -841,8 +839,7 @@ Section proof.
     intf.sealed_agree := sealed_agree;
     intf.make_seal_spec := make_seal_spec;
     intf.seal_spec := seal_spec;
-    intf.unseal_spec := unseal_spec;
-    intf.unseal_low_spec := unseal_low_spec
+    intf.unseal_spec := unseal_spec
   |}.
   Global Instance strong : strong_unsealing proof := unseal_any_spec.
 End proof.
