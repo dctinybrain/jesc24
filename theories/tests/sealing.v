@@ -832,19 +832,10 @@ End signing.
 
 (** ** Asymmetric encryption scheme *)
 (**
-	With malleable encryption, an attacker may transform a
-	ciphertext, applying some function to the underlying plaintext
-	without learning that plaintext.
-
-	We model malleability in [ctext_inv] which says that the
-	plaintext [v] underlying a ciphertext [v'] is either a low
-	value (because the adversary encrypted [v]) or a value [f v0]
-	for some [v0] satisfying the representation invariant [φ]
-	(because the adversary transformed [v0] to [v]).
-
-	Our encryption interface offers (weak) secrecy but no
-	integrity; for example, one can encrypt high-integrity
-	locations and share the resulting plaintext with an adversary.
+	Encryption offers no integrity, so we pick a trivial
+	representation invariant. (This would be reasonable, even if
+	the encryption function were kept private, due to
+	malleability.)
 *)
 Module encryption.
 Section encryption_proof.
@@ -854,99 +845,55 @@ Section encryption_proof.
 
   (** Definitions *)
 
-  Let encφ (φ : val → iProp Σ) : val → iProp Σ :=
-    λ v, (low v ∨ ∃ f v0, ⌜v = f v0⌝ ∗ φ v0)%I.
+  Let encφ : val → iProp Σ := const True%I.
 
   Definition name := intf.name S.
-  Definition is_encrypt (γ : name) v φ := is_seal S γ v (encφ φ).
-  Definition is_decrypt (γ : name) v φ := is_unseal S γ v (encφ φ).
-  Definition is_ctext (γ : name) v v' φ := is_sealed S γ v v' (encφ φ).
+  Definition is_encrypt (γ : name) v := is_seal S γ v encφ.
+  Definition is_decrypt (γ : name) v := is_unseal S γ v encφ.
+  Definition is_ctext (γ : name) v v' := is_sealed S γ v v' encφ.
 
   (** Structure *)
 
-  Lemma encφ_ne n : Proper (ext (dist n) ==> ext (dist n)) encφ.
-  Proof. solve_proper. Qed.
-
-  Global Instance is_encrypt_persistent γ v φ :
-    PersistentP (is_encrypt γ v φ).
+  Global Instance is_encrypt_persistent γ v : PersistentP (is_encrypt γ v).
   Proof. apply _. Qed.
-  Global Instance is_encrypt_ne γ v n :
-    Proper (ext (dist n) ==> dist n) (is_encrypt γ v).
-  Proof. preprocess_solve_proper. f_equiv. by apply encφ_ne. Qed.
-  Global Instance is_encrypt_proper γ v :
-    Proper (ext (≡) ==> (≡)) (is_encrypt γ v).
-  Proof.
-    move=>???. apply equiv_dist=>?. apply is_encrypt_ne=>?.
-    by apply equiv_dist.
-  Qed.
-
-  Global Instance is_decrypt_persistent γ v φ :
-    PersistentP (is_decrypt γ v φ).
+  Global Instance is_decrypt_persistent γ v : PersistentP (is_decrypt γ v).
   Proof. apply _. Qed.
-  Global Instance is_decrypt_ne γ v n :
-    Proper (ext (dist n) ==> dist n) (is_decrypt γ v).
-  Proof. preprocess_solve_proper. f_equiv. by apply encφ_ne. Qed.
-  Global Instance is_decrypt_proper γ v :
-    Proper (ext (≡) ==> (≡)) (is_decrypt γ v).
-  Proof.
-    move=>???. apply equiv_dist=>?. apply is_decrypt_ne=>?.
-    by apply equiv_dist.
-  Qed.
-
-  Global Instance is_ctext_persistent γ v v' φ :
-    PersistentP (is_ctext γ v v' φ).
+  Global Instance is_ctext_persistent γ v v' : PersistentP (is_ctext γ v v').
   Proof. apply _. Qed.
-  Global Instance is_ctext_ne γ v v' n :
-    Proper (ext (dist n) ==> dist n) (is_ctext γ v v').
-  Proof. preprocess_solve_proper. f_equiv. by apply encφ_ne. Qed.
-  Global Instance is_ctext_proper γ v v' :
-    Proper (ext (≡) ==> (≡)) (is_ctext γ v v').
-  Proof.
-    move=>???. apply equiv_dist=>?. apply is_ctext_ne=>?.
-    by apply equiv_dist.
-  Qed.
 
   (** Properties *)
 
-  Lemma encrypt_low γ enc φ : is_encrypt γ enc φ -∗ low enc.
+  Lemma encrypt_low γ enc : is_encrypt γ enc -∗ low enc.
   Proof.
-    iIntros "He". iApply (seal_low with "He"). iAlways.
-    iIntros (v) "Hv". by iLeft.
+    iIntros "He". iApply (seal_low with "He"). iAlways. by iIntros.
   Qed.
 
-  Lemma ctext_low γ v v' φ : is_ctext γ v v' φ -∗ low v'.
+  Lemma ctext_low γ v v' : is_ctext γ v v' -∗ low v'.
   Proof. exact: sealed_low. Qed.
 
-  Lemma ctext_inv γ v v' φ :
-    is_ctext γ v v' φ -∗ low v ∨ ∃ f v0, ⌜v = f v0⌝ ∗ φ v0.
-  Proof. exact: sealed_inv. Qed.
-
-  Lemma ctext_agree γ v1 v2 v' φ :
-    is_ctext γ v1 v' φ ∗ is_ctext γ v2 v' φ ⊢ ⌜v1 = v2⌝.
+  Lemma ctext_agree γ v1 v2 v' : is_ctext γ v1 v' ∗ is_ctext γ v2 v' ⊢ ⌜v1 = v2⌝.
   Proof. exact: sealed_agree. Qed.
 
-  Lemma make_encrypt_spec N p φ :
+  Lemma make_encrypt_spec N p :
     heapN ⊥ N →
     {{{ heap_ctx }}} make_seal () @ p; ⊤
-    {{{ v1 v2 γ, RET (v1, v2); is_encrypt γ v1 φ ∗ is_decrypt γ v2 φ }}}.
+    {{{ v1 v2 γ, RET (v1, v2); is_encrypt γ v1 ∗ is_decrypt γ v2 }}}.
   Proof. exact: make_seal_spec. Qed.
 
-  Lemma encrypt_spec p γ enc v φ :
-    {{{ is_encrypt γ enc φ ∗ □ φ v }}} enc v @ p; ⊤
-    {{{ v', RET v'; is_ctext γ v v' φ }}}.
+  Lemma encrypt_spec p γ enc v :
+    {{{ is_encrypt γ enc }}} enc v @ p; ⊤ {{{ v', RET v'; is_ctext γ v v' }}}.
   Proof.
-    iIntros (Φ) "[Henc #Hv] HΦ".
-    wp_apply (seal_spec with "[$Henc] [$HΦ]").
-    iAlways. iRight. iExists id, v. by auto.
+    iIntros (Φ) "Henc HΦ".
+    wp_apply (seal_spec with "[$Henc] [$HΦ]"). iAlways. by iIntros.
   Qed.
 
-  Lemma decrypt_spec p γ dec v v' φ :
-    {{{ is_decrypt γ dec φ ∗ is_ctext γ v v' φ }}} dec v' @ p; ⊤
+  Lemma decrypt_spec p γ dec v v' :
+    {{{ is_decrypt γ dec ∗ is_ctext γ v v' }}} dec v' @ p; ⊤
     {{{ RET v; True }}}.
   Proof. exact: unseal_spec. Qed.
 
-  Lemma decrypt_any_spec γ u v' φ :
-    {{{ is_decrypt γ u φ }}} u v' ?{{{ v, RET v; is_ctext γ v v' φ }}}.
+  Lemma decrypt_any_spec γ u v' :
+    {{{ is_decrypt γ u }}} u v' ?{{{ v, RET v; is_ctext γ v v' }}}.
   Proof. exact: unseal_any_spec. Qed.
 End encryption_proof.
 Typeclasses Opaque name is_encrypt is_decrypt is_ctext.
@@ -969,7 +916,7 @@ Section pk_client.
     let: "sign" := Fst "sk" in let: "verify" := Snd "sk" in
     let: "send" := λ: "x", "sign" ("enc" (ref (assume_even "x"))) in
     let: "recv" := λ: "m", assert_even (! ("dec" ("verify" "m"))) in
-    ("send", "recv").
+    ("send", "recv", "enc", "verify").
 End pk_client.
 
 Section pk_client_proof.
@@ -985,10 +932,8 @@ Section pk_client_proof.
 
   Definition plaintext (v : val) : iProp Σ :=
     (∃ l v', ⌜v = l%V⌝ ∗ is_even v' ∗ inv Nloc (l ↦ v'))%I.
-  Definition ciphertext (γ : encryption.name S) (v v' : val) : iProp Σ :=
-    is_ctext S γ v v' plaintext.
   Definition signature (γ : encryption.name S) (v' : val) : iProp Σ :=
-    (∃ v, plaintext v ∗ ciphertext γ v v')%I.
+    (∃ v, plaintext v ∗ is_ctext S γ v v')%I.
 
   Lemma plaintext_alloc l v : is_even v -∗ l ↦ v ={⊤}=∗ plaintext l%V.
   Proof.
@@ -1014,21 +959,22 @@ Section pk_client_proof.
     {{{ heap_ctx }}} pk_client {{{ v, RET v; low v }}}.
   Proof.
     iIntros (? Φ) "#Hh HΦ". rewrite/pk_client.
-    wp_apply (make_encrypt_spec S Nseal _ plaintext with "Hh");
+    wp_apply (make_encrypt_spec S Nseal with "Hh");
       first by solve_ndisj. iIntros (enc dec γenc) "#[Henc Hdec]".
       wp_let. do 2!(wp_proj; wp_let).
     wp_apply (make_sign_spec S Nseal _ (signature γenc) with "[$Hh]");
       [by solve_ndisj|by iAlways; iIntros; rewrite -signature_low|].
       iIntros (sign ver γsig) "#[Hsign Hver]".
       wp_let. do 2!(wp_proj; wp_let). do 2!wp_let.
-    iApply "HΦ". clear Φ. simpl_low. iNext.
-    iSplitL; rewrite low_rec; iAlways; iNext; iIntros (v0 Φ) "#Hv0 HΦ";
+    iApply "HΦ". clear Φ. simpl_low.
+    iSplitL; iNext; last by iApply (verify_low with "Hver").
+    iSplitL; iNext; last by iApply (encrypt_low with "Henc").
+    iSplitL; iNext; rewrite low_rec; iAlways; iNext; iIntros (v0 Φ) "#Hv0 HΦ";
       simpl_subst.
     (** The send function is low. *)
     - wp_apply assume_even_spec. iIntros "Hev". wp_alloc l as "Hl".
       iMod (plaintext_alloc with "Hev Hl") as "#Hplain".
-      wp_apply (encrypt_spec _ _ _ _ l%V with "[$Henc]");
-        first by iAlways. iIntros (c) "#Hctext".
+      wp_apply (encrypt_spec _ _ _ _ l%V with "Henc"). iIntros (c) "#Hctext".
       wp_apply (sign_spec with "[$Hsign]").
         { iAlways. iExists l. by iFrame "Hplain Hctext". } iIntros (s) "Hsig".
       iApply "HΦ". by iApply signed_low.
