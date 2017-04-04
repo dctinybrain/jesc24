@@ -602,7 +602,7 @@ Section heap.
 
   Lemma heap_mark_low E l v :
     ↑heapN ⊆ E →
-    heap_ctx -∗  l ↦ v -∗ ▷ low v ={E}=∗ low l.
+    heap_ctx ⊢  l ↦ v -∗ ▷ low v ={E}=∗ low l.
   Proof.
     rewrite mapsto_eq low_loc lowloc_eq. iIntros (?) "Hctx Hl Hv".
     iInv heapN as (h h' L L') "(>% & Hσ & >Hh & Hlow & Hd)" "Hcl".
@@ -635,7 +635,7 @@ Section heap.
   Global Instance liveloc_persistent l : PersistentP (liveloc l).
   Proof. rewrite liveloc_eq. apply _. Qed.
 
-  Lemma fresh_not_live l : fresh l ∗ liveloc l -∗ False.
+  Lemma fresh_not_live l : fresh l ∗ liveloc l ⊢ False.
   Proof.
     rewrite fresh_eq liveloc_eq -own_op -auth_frag_op.
     rewrite own_valid auth_validI /= discrete_valid.
@@ -646,7 +646,7 @@ Section heap.
 
   Lemma heap_mark_liveloc E l :
     ↑heapN ⊆ E →
-    heap_ctx -∗ fresh l ={E}=∗ liveloc l.
+    heap_ctx ⊢ fresh l ={E}=∗ liveloc l.
   Proof.
     rewrite fresh_eq liveloc_eq. iIntros (?) "Hctx Hl".
     iInv heapN as (h h' L L') "(>% & Hσ & Hh & Hlow & >Hd)" "Hcl".
