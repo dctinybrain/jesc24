@@ -123,6 +123,7 @@ theories/heap_lang/lib/membrane.v
 theories/heap_lang/lib/maps.v
 theories/heap_lang/lib/sealing.v
 theories/heap_lang/adequacy.v
+theories/tests/assert.v
 theories/tests/readonly.v
 theories/tests/even.v
 theories/tests/caretaker.v
