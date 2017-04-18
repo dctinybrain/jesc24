@@ -10,7 +10,7 @@ as a few earlier versions.
 
 To develop OCPL, we changed Iris' sample program logic to support
 non-progressive weakeast preconditions and Iris' sample heap language
-to support robust safety.
+to support robust safety. We call the modified heap language HLA.
 
 Our work on progress bits appears in ./theories/program_logic/; in
 particular ./theories/program_logic/weakestpre.v.
@@ -54,5 +54,5 @@ whole programs.)
 The paper mentions a few libraries:
 
 	./theories/heap_lang/lib/lock.v
-		./theories/heap_lang/lib/spin_lock.v
+	./theories/heap_lang/lib/spin_lock.v
 	./theories/heap_lang/lib/maps.v
