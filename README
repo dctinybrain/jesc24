@@ -1,0 +1,58 @@
+This is a modified version of the Iris Coq development to support the
+submission
+
+	Robust and Compositional Verification of Object Capability
+	Patterns
+
+See ./Iris_README.md for compilation instructions. We've tested the
+development under Coq 8.6 (January 2017) and ssreflect 1.6.1, as well
+as a few earlier versions.
+
+To develop OCPL, we changed Iris' sample program logic to support
+non-progressive weakeast preconditions and Iris' sample heap language
+to support robust safety.
+
+Our work on progress bits appears in ./theories/program_logic/; in
+particular ./theories/program_logic/weakestpre.v.
+
+Our work on the heap language appears in ./theories/heap_lang/. The
+most interesting bits are:
+
+	theories/heap_lang/lang.v
+		language definition
+
+	theories/heap_lang/on_val.v
+		the predicate transformer called `lift` in the paper
+
+	theories/heap_lang/heap.v
+		heap resources and the invariant enforcing robust safety
+
+	theories/heap_lang/substitution.v
+	theories/heap_lang/robust_safety.v
+		the proof of "internal" robust safety
+
+	theories/heap_lang/adequacy.v
+		metatheory, including the robust safety theorem stated
+		in the paper
+
+As far as examples go, you will find general object capability
+patterns (OCPs) in
+
+	./theories/heap_lang/lib/sealing.v
+	./theories/heap_lang/lib/caretaker.v
+	./theories/heap_lang/lib/membrane.v
+
+and derived OCPs and client programs in
+
+	./theories/tests/sealing.v
+	./theories/tests/caretaker.v
+	./theories/tests/membrane.v
+
+(These are the files in which we apply the robust safety theorem to
+whole programs.)
+
+The paper mentions a few libraries:
+
+	./theories/heap_lang/lib/lock.v
+		./theories/heap_lang/lib/spin_lock.v
+	./theories/heap_lang/lib/maps.v

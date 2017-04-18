@@ -5,6 +5,8 @@ From iris.heap_lang.lib Require Import abort.
 From iris.proofmode Require Import tactics.
 From iris.heap_lang Require Import proofmode notation.
 
+Set Bullet Behavior "None".
+
 (** * Finite maps *)
 (**
 	These are finite maps implemented as association lists, with

@@ -5,6 +5,8 @@ From iris.proofmode Require Import tactics.
 From iris.heap_lang Require Import proofmode.
 Import uPred.
 
+Set Bullet Behavior "None".
+
 (** * Membrane code *)
 (**
 	The membrane constructs values that may be safely shared with

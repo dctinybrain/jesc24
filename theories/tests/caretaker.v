@@ -6,6 +6,8 @@ From iris.tests Require Import even.
 From iris.heap_lang Require Import proofmode notation.
 Import caretaker.
 
+Set Bullet Behavior "None".
+
 (** * Caretaker for locations *)
 (**
 	Revokable read/write access to a location with

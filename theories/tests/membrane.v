@@ -8,6 +8,8 @@ From iris.proofmode Require Import tactics.
 From iris.heap_lang Require Import proofmode notation.
 Import uPred addenda.algebra_auth.
 
+Set Bullet Behavior "None".
+
 (** * Public membrane interface *)
 (**
 	As a matter of policy, we use [pub_ref] to "declare" _public
