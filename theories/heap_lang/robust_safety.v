@@ -556,13 +556,10 @@ Qed.
 	the context's subexpressions to low values. As in the proof of
 	the FTLR, we must generalize to account for substitution.
 
-	PDS: This is just a special case of the more general
-	result with expression
-
-		C_1[e_1] ;; C_2[e_2] ;; ⋯ ;; C_n[e_n]
-
-	where each e_i is semantically low and each C_i
-	is adversarial.
+	TODO: This is just a special case of the more general result
+	with multi-holed contexts. *That* proof is likely to be
+	shorter, since we can dispense with the FTLR and we'll have
+	fewer cases in the definition of contexts.
  *)
 Section robust_safety.
   Context `{heapG Σ}.
@@ -600,7 +597,7 @@ Section robust_safety.
 
   Lemma safe_rec f x C : □ safe C -∗ safe (CRec f x C).
   Proof.
-    (* PDS: Lots of duplication with confined_rec. *)
+    (* TODO: Lots of duplication with confined_rec. *)
     iIntros "#IH". iIntros (γ p e) "#Hh #HC #Hγ #He /=".
     rewrite adv_ctx substitute_expr. set erec := substitute _ _.
     case: (decide (Closed (f :b: x :b: []) erec)) => ?;
@@ -966,7 +963,7 @@ Section adversary.
   Qed.
 
   Lemma adv_ctx_i C : AdvCtx C → adv C.
-  Proof.	(* PDS: Automate. *)
+  Proof.	(* TODO: Automate. *)
     elim: C => //=.
     (* application *)
     - move=>C1 IH e2 [] ??. rewrite adv_ctx.

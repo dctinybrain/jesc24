@@ -5,7 +5,7 @@ From iris.tests Require Import even.
 From iris.heap_lang Require Import notation proofmode.
 Import sealing.intf.
 
-Section lifting.	(* PDS: Hoist. *)
+Section lifting.	(* TODO: Hoist. *)
   Context `{ownPG heap_lang Σ}.
   Local Hint Resolve to_of_val.
   Implicit Types n : Z.
@@ -984,7 +984,7 @@ Section pk_client_proof.
       wp_apply (decrypt_spec with "[$Hdec $Hctext]"). iIntros "_".
       wp_apply (plaintext_deref with "[$Hh $Hplain]"); first by solve_ndisj.
         iIntros (v') "#Hev".
-      (* PDS: generalize assert_even_spec *)
+      (* TODO: generalize assert_even_spec *)
       wp_apply (wp_forget_progress progress).
       wp_apply (assert_even_spec with "Hev"). iIntros "_".
       iApply "HΦ". by iApply is_even_low.

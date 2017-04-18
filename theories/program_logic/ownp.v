@@ -161,7 +161,7 @@ Section lifting.
     edestruct Hdet as (->&Hval&->). done. by rewrite Hval; iApply "Hσ2".
   Qed.
 
-  (* PDS: Why had this only been proved for ectx languages, and for the ownP interface? *)
+  (* TODO: Why had this only been proved for ectx languages, and for the ownP interface? *)
   Lemma ownP_lift_atomic_det_step_no_fork {p E e1} σ1 v2 σ2 :
     to_val e1 = None →
     (if p then reducible e1 σ1 else True) →
@@ -184,7 +184,7 @@ Section lifting.
     by apply Hpuredet. by iNext; iIntros (e' efs' σ (_&->&->)%Hpuredet).
   Qed.
 
-  (* PDS: Why had this only been proved for ectx languages, and for the ownP interface? *)
+  (* TODO: Why had this only been proved for ectx languages, and for the ownP interface? *)
   Lemma ownP_lift_pure_det_step_no_fork {p E Φ} e1 e2 :
     to_val e1 = None →
     (∀ σ1, if p then reducible e1 σ1 else True) →

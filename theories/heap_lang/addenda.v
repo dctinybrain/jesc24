@@ -9,7 +9,7 @@ Section union.
     m1 !! i = None → m2 !! i = Some x → (m1 ∪ m2) !! i = Some x.
   Proof. rewrite lookup_union_Some_raw; intuition. Qed.
 
-  (* PDS: There's likely a much shorter proof. *)
+  (* TODO: There's likely a much shorter proof. *)
   Lemma delete_insert_union {A} (m1 m2 : M A) i x :
     m1 !! i = Some x → m2 !! i = None → m1 ∪ m2 = delete i m1 ∪ <[i:=x]> m2.
   Proof.

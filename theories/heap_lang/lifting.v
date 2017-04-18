@@ -188,7 +188,7 @@ Proof.
   - move=>? [] ??; subst. apply: stuck_by_val Hstep. naive_solver.
 Qed.
 
-(* PDS: Misnamed. *)
+(* TODO: Misnamed. *)
 Lemma wp_rec p E f x erec e1 e2 Φ :
   e1 = Rec f x erec →
   is_Some (to_val e2) →

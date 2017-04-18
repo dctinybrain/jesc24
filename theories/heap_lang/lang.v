@@ -10,7 +10,7 @@ Open Scope Z_scope.
 Definition loc := positive. (* Really, any countable type. *)
 
 (*
-	PDS: It would be nice to use constraints for base values and
+	TODO: It would be nice to use constraints for base values and
 	operations (like we do for CMRAs).
 *)
 Inductive base_lit : Set :=
