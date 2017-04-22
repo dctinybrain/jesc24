@@ -9,14 +9,14 @@ development under Coq 8.6 (January 2017) and ssreflect 1.6.1, as well
 as a few earlier versions.
 
 To develop OCPL, we changed Iris' sample program logic to support
-non-progressive weakeast preconditions and Iris' sample heap language
+non-progressive weakest preconditions and Iris' sample heap language
 to support robust safety. We call the modified heap language HLA.
 
 Our work on progress bits appears in ./theories/program_logic/; in
 particular ./theories/program_logic/weakestpre.v.
 
-Our work on the heap language appears in ./theories/heap_lang/. The
-most interesting bits are:
+Our work on HLA appears in ./theories/heap_lang/. The most interesting
+bits are:
 
 	theories/heap_lang/lang.v
 		language definition
@@ -47,6 +47,7 @@ and derived OCPs and client programs in
 	./theories/tests/sealing.v
 	./theories/tests/caretaker.v
 	./theories/tests/membrane.v
+	./theories/tests/readonly.v
 
 (These are the files in which we apply the robust safety theorem to
 whole programs.)
