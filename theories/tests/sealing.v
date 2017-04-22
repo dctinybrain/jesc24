@@ -994,9 +994,11 @@ End pk_client_proof.
 Section ClosedProofs.
   Import lock.
 
-  Let lock : LockImpl := spin_lock.spin.
-  Let sealing : SealingImpl := @direct_sealing.code lock.
-  Let interval_client : expr := @interval_client sealing.
+  Let LI : LockImpl := spin_lock.code.
+  Let SI : SealingImpl := @direct_sealing.code LI.
+  Let interval_client : expr := @interval_client SI.
+  Let weak_interval_client : expr := @weak_interval_client SI.
+  Let pk_client : expr := @pk_client SI.
 
   Let N : namespace := nroot .@ "example".
   Let Σ : gFunctors := #[ heapΣ; sealingΣ; spin_lock.lockΣ ].
@@ -1009,11 +1011,10 @@ Section ClosedProofs.
     move=>??. eapply (robust_safety Σ); try done.
     { naive_solver eauto using is_closed_of_val. }
     iIntros (G) "Hh".
-    set L := spin_lock.spin_lock. set S := direct_sealing.proof L.
+    set L := spin_lock.proof. set S := direct_sealing.proof L.
     iApply (interval_client_spec S N with "Hh"); auto with ndisj.
   Qed.
 
-  Let weak_interval_client : expr := @weak_interval_client sealing.
   Lemma weak_interval_client_safe C t2 σ2 :
     AdvCtx C →
     rtc step ([ctx_fill C weak_interval_client], good_state ∅) (t2, σ2) →
@@ -1022,11 +1023,10 @@ Section ClosedProofs.
     move=>??. eapply (robust_safety Σ); try done.
     { naive_solver eauto using is_closed_of_val. }
     iIntros (G) "Hh".
-    set L := spin_lock.spin_lock. set S := direct_sealing.proof L.
+    set L := spin_lock.proof. set S := direct_sealing.proof L.
     iApply (weak_interval_client_spec S N with "Hh"); auto with ndisj.
   Qed.
 
-  Let pk_client : expr := @pk_client sealing.
   Lemma pk_client_safe C t2 σ2 :
     AdvCtx C →
     rtc step ([ctx_fill C pk_client], good_state ∅) (t2, σ2) →
@@ -1035,7 +1035,7 @@ Section ClosedProofs.
     move=>??. eapply (robust_safety Σ); try done.
     { naive_solver eauto using is_closed_of_val. }
     iIntros (G) "Hh".
-    set L := spin_lock.spin_lock. set S := direct_sealing.proof L.
+    set L := spin_lock.proof. set S := direct_sealing.proof L.
     iApply (pk_client_spec S N with "Hh"); auto with ndisj.
   Qed.
 End ClosedProofs.

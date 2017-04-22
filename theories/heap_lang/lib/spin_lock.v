@@ -13,7 +13,7 @@ Definition acquire : val :=
 Definition release : val := λ: "l", "l" <- #false.
 End impl.
 
-Definition spin : LockImpl := {|
+Instance code : LockImpl := {|
   newlock' := impl.newlock'; acquire := impl.acquire;
   release := impl.release
 |}.
@@ -27,49 +27,54 @@ Instance subG_lockΣ {Σ} : subG lockΣ Σ → lockG Σ.
 Proof. intros [?%subG_inG _]%subG_inv. split; apply _. Qed.
 
 Section proof.
-  Context `{!heapG Σ, !lockG Σ} (p : pbit) (N : namespace).
+  Context `{!heapG Σ, !lockG Σ}.
 
-  Definition lock_inv (γ : gname) (l : loc) (R : iProp Σ) : iProp Σ :=
-    (∃ b : bool, l ↦ #b ∗ if b then True else own γ (Excl ()) ∗ R)%I.
+  Record name : Type := { nsp : namespace; tok : gname; loc : loc }.
 
-  Definition is_lock (γ : gname) (lk : val) (R : iProp Σ) : iProp Σ :=
-    (∃ l: loc, ⌜heapN ⊥ N⌝ ∧ heap_ctx ∧ ⌜lk = l⌝ ∧ inv N (lock_inv γ l R))%I.
+  Definition lock_inv (γ : name) (R : iProp Σ) : iProp Σ :=
+    (∃ b : bool, loc γ ↦ #b ∗ if b then True else own (tok γ) (Excl ()) ∗ R)%I.
 
-  Definition locked (γ : gname): iProp Σ := own γ (Excl ()).
+  Definition is_lock (γ : name) (lk : val) (R : iProp Σ) : iProp Σ :=
+    (⌜heapN ⊥ (nsp γ)⌝ ∧ heap_ctx ∧ ⌜lk = loc γ⌝ ∧
+     inv (nsp γ) (lock_inv γ R))%I.
 
-  Lemma locked_exclusive (γ : gname) : locked γ -∗ locked γ -∗ False.
+  Definition locked (γ : name): iProp Σ := own (tok γ) (Excl ()).
+
+  Lemma locked_exclusive (γ : name) : locked γ -∗ locked γ -∗ False.
   Proof. iIntros "H1 H2". by iDestruct (own_valid_2 with "H1 H2") as %?. Qed.
 
-  Global Instance lock_inv_ne n γ l : Proper (dist n ==> dist n) (lock_inv γ l).
+  Global Instance lock_inv_ne n γ : Proper (dist n ==> dist n) (lock_inv γ).
   Proof. solve_proper. Qed.
-  Global Instance is_lock_ne n l : Proper (dist n ==> dist n) (is_lock γ l).
+  Global Instance is_lock_ne γ lk n : Proper (dist n ==> dist n) (is_lock γ lk).
   Proof. solve_proper. Qed.
 
   (** The main proofs. *)
-  Global Instance is_lock_persistent γ l R : PersistentP (is_lock γ l R).
+  Global Instance is_lock_persistent γ lk R : PersistentP (is_lock γ lk R).
   Proof. apply _. Qed.
   Global Instance locked_timeless γ : TimelessP (locked γ).
   Proof. apply _. Qed.
 
-  Lemma newlock'_spec (R : iProp Σ):
+  Lemma newlock'_spec p N (R : iProp Σ):
     heapN ⊥ N →
-    {{{ heap_ctx }}} newlock' spin () @ p; ⊤
+    {{{ heap_ctx }}} newlock' () @ p; ⊤
     {{{ lk γ, RET lk; is_lock γ lk R ∗ locked γ }}}.
   Proof.
     iIntros (? Φ) "#Hh HΦ". rewrite -wp_fupd.
     wp_seq. wp_alloc l as "Hl".
-    iMod (own_alloc (Excl ())) as (γ) "Hγ"; first done.
-    iMod (inv_alloc N _ (lock_inv γ l R) with "[Hl]") as "#?".
+    iMod (own_alloc (Excl ())) as (γtok) "Hγ"; first done.
+    set γ := {| nsp := N; tok := γtok; loc := l |}.
+    iMod (inv_alloc N _ (lock_inv γ R) with "[Hl]") as "#?".
     { iIntros "!>". iExists true. by iFrame. }
-    iModIntro. iApply "HΦ". iSplitR "Hγ". by iExists l; eauto. by iFrame.
+    iModIntro. iApply ("HΦ" $! _ γ).
+    iSplitR "Hγ". rewrite/is_lock. by eauto. by iFrame.
   Qed.
 
-  Lemma try_acquire_spec γ lk R :
+  Lemma try_acquire_spec p γ lk R :
     {{{ is_lock γ lk R }}} impl.try_acquire lk @ p; ⊤
     {{{ b, RET #b; if b is true then locked γ ∗ R else True }}}.
   Proof.
-    iIntros (Φ) "#Hl HΦ". iDestruct "Hl" as (l) "(% & #? & % & #?)"; subst.
-    wp_rec. iInv N as ([]) "[Hl HR]" "Hclose".
+    iIntros (Φ) "#Hl HΦ". iDestruct "Hl" as "(% & #? & % & #?)"; subst.
+    wp_rec. iInv (nsp γ) as ([]) "[Hl HR]" "Hclose".
     - wp_cas_fail. iMod ("Hclose" with "[Hl]"); first (iNext; iExists true; eauto).
       iModIntro. iApply ("HΦ" $! false). done.
     - wp_cas_suc. iDestruct "HR" as "[Hγ HR]".
@@ -77,8 +82,8 @@ Section proof.
       iModIntro. by iApply ("HΦ" $! true with "[$Hγ $HR]").
   Qed.
 
-  Lemma acquire_spec γ lk R :
-    {{{ is_lock γ lk R }}} acquire spin lk @ p; ⊤ {{{ RET (); locked γ ∗ R }}}.
+  Lemma acquire_spec p γ lk R :
+    {{{ is_lock γ lk R }}} acquire lk @ p; ⊤ {{{ RET (); locked γ ∗ R }}}.
   Proof.
     iIntros (Φ) "#Hl HΦ". iLöb as "IH". wp_rec.
     wp_apply (try_acquire_spec with "Hl"). iIntros ([]).
@@ -86,19 +91,19 @@ Section proof.
     - iIntros "_". wp_if. iApply ("IH" with "[HΦ]"). auto.
   Qed.
 
-  Lemma release_spec γ lk R :
-    {{{ is_lock γ lk R ∗ locked γ ∗ R }}} release spin lk @ p; ⊤
+  Lemma release_spec p γ lk R :
+    {{{ is_lock γ lk R ∗ locked γ ∗ R }}} release lk @ p; ⊤
     {{{ RET (); True }}}.
   Proof.
     iIntros (Φ) "(Hlock & Hlocked & HR) HΦ".
-    iDestruct "Hlock" as (l) "(% & #? & % & #?)"; subst.
-    wp_let. iInv N as (b) "[Hl _]" "Hclose".
+    iDestruct "Hlock" as "(% & #? & % & #?)"; subst.
+    wp_let. iInv (nsp γ) as (b) "[Hl _]" "Hclose".
     wp_store. iApply "HΦ". iApply "Hclose". iNext. iExists false. by iFrame.
   Qed.
 End proof.
 
 Typeclasses Opaque is_lock locked.
 
-Definition spin_lock `{!heapG Σ, !lockG Σ} : lock Σ :=
+Definition proof `{!heapG Σ, !lockG Σ} : lock Σ :=
   {| lock.locked_exclusive := locked_exclusive; lock.newlock'_spec := newlock'_spec;
      lock.acquire_spec := acquire_spec; lock.release_spec := release_spec |}.

@@ -269,7 +269,7 @@ Section code.
 
   Definition make_seal : val := λ: <>,
     let: "tbl" := ref map_empty in
-    let: "sync" := make_sync LI () in
+    let: "sync" := make_sync () in
     let: "seal" := λ: "v" "x",
       ifloc: "x" as "k" =>
         "sync" (λ: <>, "tbl" <- map_insert (! "tbl") "k" "v")
@@ -612,7 +612,7 @@ Section code.
 
   Definition make_seal : val := λ: <>,
     let: "tbl" := ref map_empty in
-    let: "sync" := make_sync LI () in
+    let: "sync" := make_sync () in
     let: "seal" := λ: "v",
       let: "k" := ref () in
       "sync" (λ: <>, "tbl" <- map_insert_new (! "tbl") "k" "v") ;;

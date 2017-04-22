@@ -15,12 +15,12 @@ Set Bullet Behavior "None".
 *)
 
 Section loc_ct_code.
-  Context (CI : CaretakerImpl).
+  Context {CI : CaretakerImpl}.
 
   Definition make_loc_ct : val := λ: "rmon" "wmon" "l",
-    let: "ct" := make_caretaker CI () in
-    let: "read" := wrap CI "ct" (λ: <>, "rmon" (! "l")) in
-    let: "write" := wrap CI "ct" (λ: "v", "l" <- "wmon" "v") in
+    let: "ct" := make_caretaker () in
+    let: "read" := wrap "ct" (λ: <>, "rmon" (! "l")) in
+    let: "write" := wrap "ct" (λ: "v", "l" <- "wmon" "v") in
     ("ct", ("read", "write")).
 End loc_ct_code.
 
@@ -35,9 +35,9 @@ Section loc_ct_proof.
 
   Let ct_res (l : loc) (Ψ : val → iProp Σ) : iProp Σ := (∃ v, l ↦ v ∗ Ψ v)%I.
 
-  Definition is_loc_ct (N : namespace) (γ : name C)
-      (ct : val) (l : loc) (Ψ : val → iProp Σ) : iProp Σ :=
-    is_caretaker C N γ ct $ ct_res l Ψ.
+  Definition is_loc_ct (γ : name C) (ct : val) (l : loc)
+      (Ψ : val → iProp Σ) : iProp Σ :=
+    is_caretaker C γ ct $ ct_res l Ψ.
 
   (** Bookkeeping. *)
   Lemma rmon_triple rmon p1 Ψ :
@@ -50,9 +50,9 @@ Section loc_ct_proof.
     (∀ v1 : val, {{{ low v1 }}} wmon v1 @ p2; ⊤ {{{ v2, RET v2; Ψ v2 }}})%I.
   Proof. by []. Qed.
 
-  Lemma can_wrap_loc_ct_read p1 N γ ct l r Ψ :
+  Lemma can_wrap_loc_ct_read p1 γ ct l r Ψ :
     heap_ctx -∗
-    is_loc_ct N γ ct l Ψ -∗
+    is_loc_ct γ ct l Ψ -∗
     is_rmon p1 r Ψ -∗
     can_wrap p1 (LamV <> (r (! l)%E)) (ct_res l Ψ).
   Proof.
@@ -63,9 +63,9 @@ Section loc_ct_proof.
     iApply "HΦ". iFrame "Hlow2". iExists v1. by iFrame.
   Qed.
 
-  Lemma can_wrap_loc_ct_write p2 N γ ct l w Ψ :
+  Lemma can_wrap_loc_ct_write p2 γ ct l w Ψ :
     heap_ctx -∗
-    is_loc_ct N γ ct l Ψ -∗
+    is_loc_ct γ ct l Ψ -∗
     is_wmon p2 w Ψ -∗
     can_wrap p2 (LamV "v" (l <- w "v")) (ct_res l Ψ).
   Proof.
@@ -78,9 +78,9 @@ Section loc_ct_proof.
 
   (** Specialize the caretaker interface. *)
 
- Lemma loc_ct_enable N γ ct l v p Ψ :
-    {{{ is_loc_ct N γ ct l Ψ ∗ enabled C γ false ∗ l ↦ v ∗ Ψ v }}}
-      enable CI ct @ p; ⊤
+ Lemma loc_ct_enable γ ct l v p Ψ :
+    {{{ is_loc_ct γ ct l Ψ ∗ enabled C γ false ∗ l ↦ v ∗ Ψ v }}}
+      enable ct @ p; ⊤
     {{{ RET (); enabled C γ true }}}.
   Proof.
     iIntros (Φ) "(#Hct & Hoff & Hl & Hv) HΦ".
@@ -88,13 +88,13 @@ Section loc_ct_proof.
     iExists v. by iFrame.
   Qed.
 
- Lemma loc_ct_disable N γ ct l p Ψ :
-    {{{ is_loc_ct N γ ct l Ψ ∗ enabled C γ true }}}
-      disable CI ct @ p; ⊤
+ Lemma loc_ct_disable γ ct l p Ψ :
+    {{{ is_loc_ct γ ct l Ψ ∗ enabled C γ true }}}
+      disable ct @ p; ⊤
     {{{ v, RET (); enabled C γ false ∗ l ↦ v ∗ Ψ v }}}.
   Proof.
     iIntros (Φ) "(#Hct & Hon) HΦ".
-    wp_apply (disable_spec _ _ _ _ _ (ct_res l Ψ) with "[$Hct $Hon]").
+    wp_apply (disable_spec _ _ _ _ (ct_res l Ψ) with "[$Hct $Hon]").
       iIntros "[Hoff HR]". iDestruct "HR" as (v) "(Hl & Hv)".
     by iApply ("HΦ" $! v with "[$Hoff $Hl $Hv]").
   Qed.
@@ -102,18 +102,18 @@ Section loc_ct_proof.
   Lemma make_loc_ct_spec N r w l Ψ p1 p2 :
     heapN ⊥ N →
     {{{ heap_ctx ∗ is_rmon p1 r Ψ ∗ is_wmon p2 w Ψ }}}
-      make_loc_ct CI r w l
+      make_loc_ct r w l
     {{{ ct γ v, RET (ct, v);
-      is_loc_ct N γ ct l Ψ ∗ enabled C γ false ∗ low v }}}.
+      is_loc_ct γ ct l Ψ ∗ enabled C γ false ∗ low v }}}.
   Proof.
-    iIntros (? Φ) "#(Hh & Hr & Hw) HΦ". wp_lam. wp_lam. wp_lam.
+    iIntros (? Φ) "#(Hh & Hr & Hw) HΦ". do 3!wp_lam.
     wp_apply (make_caretaker_spec C _ _ (ct_res l Ψ) with "Hh");
       first done. iIntros (ct γ) "(#Hct & Hoff)". wp_let.
-    wp_bind (wrap _ _ _). rewrite of_val_rec.
+    wp_bind (wrap _ _). rewrite of_val_rec.
     wp_apply (wrap_spec with "[$Hct]").
     - by iApply (can_wrap_loc_ct_read with "Hh Hct Hr").
     iIntros (read) "Hread". wp_let.
-    wp_bind (wrap _ _ _). rewrite of_val_rec.
+    wp_bind (wrap _ _). rewrite of_val_rec.
     wp_apply (wrap_spec with "[$Hct]").
     - by iApply (can_wrap_loc_ct_write with "Hh Hct Hw").
     iIntros (write) "Hwrite". wp_let.
@@ -127,22 +127,21 @@ End loc_ct_proof.
 *)
 
 Section even_code.
-  Context (CI : CaretakerImpl) (LI : LockImpl).
+  Context {CI : CaretakerImpl} {LI : LockImpl}.
   Implicit Types n : Z.
 
   Definition even : expr :=
     let: "l" := ref #0 in
-    let: "ct" := make_loc_ct CI assert_even assume_even "l" in
-    let: "loc" := Snd "ct" in
-    let: "ct" := Fst "ct" in
-    enable CI "ct" ;;
-    let: "sync" := make_sync LI () in
+    let: "ct" := make_loc_ct assert_even assume_even "l" in
+    let: "loc" := Snd "ct" in let: "ct" := Fst "ct" in
+    enable "ct" ;;
+    let: "sync" := make_sync () in
     let: "use" := "sync" (λ: <>,
-      disable CI "ct" ;;
+      disable "ct" ;;
       assert: (even: (! "l")) ;;
       "l" <- #1 ;;	(* i.e., with wrappers off, we can do as we like *)
       "l" <- #0 ;;
-      enable CI "ct")
+      enable "ct")
     in
     ("use", "loc").
 End even_code.
@@ -157,9 +156,9 @@ Section even_proof.
     enabled C γ true.
 
   (* We turn the caretaker on with [l ↦ #0] twice. *)
-  Lemma enable_zero N γ ct l :
-    {{{ is_loc_ct C N γ ct l is_even ∗ enabled C γ false ∗ l ↦ #0 }}}
-      enable CI ct
+  Lemma enable_zero γ ct l :
+    {{{ is_loc_ct C γ ct l is_even ∗ enabled C γ false ∗ l ↦ #0 }}}
+      enable ct
     {{{ RET (); enabled C γ true }}}.
   Proof.
     iIntros (Φ) "(#Hct & Hoff & Hl) HΦ".
@@ -169,7 +168,7 @@ Section even_proof.
 
   Lemma even_spec N :
     heapN ⊥ N →
-    {{{ heap_ctx }}} even CI LI {{{ v, RET v; low v }}}.
+    {{{ heap_ctx }}} even {{{ v, RET v; low v }}}.
   Proof.
     iIntros (? Φ) "#Hh HΦ". rewrite/even.
     wp_alloc l as "Hl". wp_let.
@@ -205,20 +204,21 @@ Section even_proof.
 End even_proof.
 
 Section ClosedProof.
-  Import spin_lock blocking_caretaker.
-  Let Σ : gFunctors := #[ heapΣ ; spin_lock.lockΣ ].
-  Let example : expr := even (blocking spin) spin.
+  Let LI : LockImpl := spin_lock.code.
+  Let CI : CaretakerImpl := @blocking_caretaker.code LI.
+  Let even : expr := @even CI LI.
 
   Lemma even_safe C t2 σ2 :
     AdvCtx C →
-    rtc step ([ctx_fill C example], good_state ∅) (t2, σ2) →
+    rtc step ([ctx_fill C even], good_state ∅) (t2, σ2) →
     is_good σ2.
   Proof.
+    set Σ : gFunctors := #[ heapΣ ; spin_lock.lockΣ ].
     move=>??. eapply (robust_safety Σ); try done.
     { naive_solver eauto using is_closed_of_val. }
     iIntros (G) "Hh".
-    set L := spin_lock.
-    set CT := blocking_caretaker L.
+    set L := spin_lock.proof.
+    set CT := blocking_caretaker.proof L.
     set N := nroot .@ "example".
     iApply (even_spec CT L N with "Hh"); auto with ndisj.
   Qed.

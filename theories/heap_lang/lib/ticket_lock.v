@@ -28,7 +28,7 @@ Definition release : val :=
   λ: "lk", (Fst "lk") <- !(Fst "lk") + #1.
 End impl.
 
-Definition ticket : LockImpl := {|
+Instance code : LockImpl := {|
   newlock' := impl.newlock'; acquire := impl.acquire;
   release := impl.release
 |}.
@@ -43,67 +43,69 @@ Instance subG_tlockΣ {Σ} : subG tlockΣ Σ → tlockG Σ.
 Proof. by intros ?%subG_inG. Qed.
 
 Section proof.
-  Context `{!heapG Σ, !tlockG Σ} (p : pbit) (N : namespace).
+  Context `{!heapG Σ, !tlockG Σ}.
 
-  Definition lock_inv (γ : gname) (lo ln : loc) (R : iProp Σ) : iProp Σ :=
+  Record name : Type := { nsp : namespace; ghost : gname; lo : loc; ln : loc }.
+
+  Definition lock_inv (γ : name) (R : iProp Σ) : iProp Σ :=
     (∃ o n : nat,
-      lo ↦ #o ∗ ln ↦ #n ∗
-      own γ (● (Excl' o, GSet (seq_set 0 n))) ∗
-      ((own γ (◯ (Excl' o, ∅)) ∗ R) ∨ own γ (◯ (∅, GSet {[ o ]}))))%I.
+      lo γ ↦ #o ∗ ln γ ↦ #n ∗
+      own (ghost γ) (● (Excl' o, GSet (seq_set 0 n))) ∗
+      ((own (ghost γ) (◯ (Excl' o, ∅)) ∗ R) ∨
+       own (ghost γ) (◯ (∅, GSet {[ o ]}))))%I.
 
-  Definition is_lock (γ : gname) (lk : val) (R : iProp Σ) : iProp Σ :=
-    (∃ lo ln : loc,
-       ⌜heapN ⊥ N⌝ ∗ heap_ctx ∗
-       ⌜lk = (lo, ln)%V⌝ ∗ inv N (lock_inv γ lo ln R))%I.
+  Definition is_lock (γ : name) (lk : val) (R : iProp Σ) : iProp Σ :=
+    (⌜heapN ⊥ nsp γ⌝ ∗ heap_ctx ∗
+       ⌜lk = (lo γ, ln γ)%V⌝ ∗ inv (nsp γ) (lock_inv γ R))%I.
 
-  Definition issued (γ : gname) (lk : val) (x : nat) (R : iProp Σ) : iProp Σ :=
-    (∃ lo ln: loc,
-       ⌜heapN ⊥ N⌝ ∗ heap_ctx ∗
-       ⌜lk = (lo, ln)%V⌝ ∗ inv N (lock_inv γ lo ln R) ∗
-       own γ (◯ (∅, GSet {[ x ]})))%I.
+  Definition issued (γ : name) (lk : val) (x : nat) (R : iProp Σ) : iProp Σ :=
+    (⌜heapN ⊥ nsp γ⌝ ∗ heap_ctx ∗
+       ⌜lk = (lo γ, ln γ)%V⌝ ∗ inv (nsp γ) (lock_inv γ R) ∗
+       own (ghost γ) (◯ (∅, GSet {[ x ]})))%I.
 
-  Definition locked (γ : gname) : iProp Σ := (∃ o, own γ (◯ (Excl' o, ∅)))%I.
+  Definition locked (γ : name) : iProp Σ :=
+    (∃ o, own (ghost γ) (◯ (Excl' o, ∅)))%I.
 
-  Global Instance lock_inv_ne n γ lo ln :
-    Proper (dist n ==> dist n) (lock_inv γ lo ln).
+  Global Instance lock_inv_ne n γ : Proper (dist n ==> dist n) (lock_inv γ).
   Proof. solve_proper. Qed.
-  Global Instance is_lock_ne γ n lk : Proper (dist n ==> dist n) (is_lock γ lk).
+  Global Instance is_lock_ne γ lk n : Proper (dist n ==> dist n) (is_lock γ lk).
   Proof. solve_proper. Qed.
   Global Instance is_lock_persistent γ lk R : PersistentP (is_lock γ lk R).
   Proof. apply _. Qed.
   Global Instance locked_timeless γ : TimelessP (locked γ).
   Proof. apply _. Qed.
 
-  Lemma locked_exclusive (γ : gname) : locked γ -∗ locked γ -∗ False.
+  Lemma locked_exclusive (γ : name) : locked γ -∗ locked γ -∗ False.
   Proof.
     iDestruct 1 as (o1) "H1". iDestruct 1 as (o2) "H2".
     iDestruct (own_valid_2 with "H1 H2") as %[[] _].
   Qed.
 
-  Lemma newlock'_spec (R : iProp Σ) :
+  Lemma newlock'_spec p N (R : iProp Σ) :
     heapN ⊥ N →
-    {{{ heap_ctx }}} newlock' ticket () @ p; ⊤
+    {{{ heap_ctx }}} newlock' () @ p; ⊤
     {{{ lk γ, RET lk; is_lock γ lk R ∗ locked γ }}}.
   Proof.
     iIntros (? Φ) "#Hh HΦ". rewrite -wp_fupd.
     wp_seq. wp_alloc lo as "Hlo". wp_alloc ln as "Hln".
     iMod (own_alloc (● (Excl' 0%nat, GSet (seq_set 0 1)) ⋅
-      ◯ (∅, GSet {[0%nat]}) ⋅ ◯ (Excl' 0%nat, ∅))) as (γ) "((Hγ1 & Hγ2) & Hγ3)".
+      ◯ (∅, GSet {[0%nat]}) ⋅ ◯ (Excl' 0%nat, ∅))) as (γlk) "((Hγ1 & Hγ2) & Hγ3)".
     { by rewrite -assoc -auth_frag_op -auth_both_op pair_op left_id right_id
       auth_valid_discrete /=  prod_included -gset_disj_union //= right_id. }
-    iMod (inv_alloc _ _ (lock_inv γ lo ln R) with "[-HΦ Hγ3]").
+    set γ := {| nsp := N; ghost := γlk; lo := lo; ln := ln |}.
+    iMod (inv_alloc N _ (lock_inv γ R) with "[-HΦ Hγ3]").
     { iNext. rewrite /lock_inv. iExists 0%nat, 1%nat. iFrame. by iRight. }
     iModIntro. iApply ("HΦ" $! (lo, ln)%V γ). iSplitR "Hγ3".
-    by iExists lo, ln; eauto. by iExists 0%nat.
+    by rewrite/is_lock; eauto. by iExists 0%nat.
   Qed.
 
-  Lemma wait_loop_spec γ lk x R :
+  Lemma wait_loop_spec p γ lk x R :
     {{{ issued γ lk x R }}} impl.wait_loop #x lk @ p; ⊤
     {{{ RET (); locked γ ∗ R }}}.
   Proof.
-    iIntros (Φ) "Hl HΦ". iDestruct "Hl" as (lo ln) "(% & #? & % & #? & Ht)".
+    iIntros (Φ) "Hl HΦ". iDestruct "Hl" as "(% & #? & % & #? & Ht)".
     iLöb as "IH". wp_rec. subst. wp_let. wp_proj. wp_bind (! _)%E.
-    iInv N as (o n) "(Hlo & Hln & Ha)" "Hclose".
+    iInv (nsp γ) as (o n) "(Hlo & Hln & Ha)" "Hclose".
     wp_load. destruct (decide (x = o)) as [->|Hneq].
     - iDestruct "Ha" as "[Hainv [[Ho HR] | Haown]]".
       + iMod ("Hclose" with "[Hlo Hln Hainv Ht]") as "_".
@@ -119,17 +121,17 @@ Section proof.
       wp_if. iApply ("IH" with "Ht"). iNext. by iExact "HΦ".
   Qed.
 
-  Lemma acquire_spec γ lk R :
-    {{{ is_lock γ lk R }}} acquire ticket lk @ p; ⊤ {{{ RET (); locked γ ∗ R }}}.
+  Lemma acquire_spec p γ lk R :
+    {{{ is_lock γ lk R }}} acquire lk @ p; ⊤ {{{ RET (); locked γ ∗ R }}}.
   Proof.
-    iIntros (ϕ) "Hl HΦ". iDestruct "Hl" as (lo ln) "(% & #? & % & #?)".
+    iIntros (ϕ) "Hl HΦ". iDestruct "Hl" as "(% & #? & % & #?)".
     iLöb as "IH". wp_rec. wp_bind (! _)%E. subst. wp_proj.
-    iInv N as (o n) "[Hlo [Hln Ha]]" "Hclose".
+    iInv (nsp γ) as (o n) "[Hlo [Hln Ha]]" "Hclose".
     wp_load. iMod ("Hclose" with "[Hlo Hln Ha]") as "_".
     { iNext. iExists o, n. by iFrame. }
     iModIntro. wp_let. wp_proj. wp_op.
     wp_bind (CAS _ _ _).
-    iInv N as (o' n') "(>Hlo' & >Hln' & >Hauth & Haown)" "Hclose".
+    iInv (nsp γ) as (o' n') "(>Hlo' & >Hln' & >Hauth & Haown)" "Hclose".
     destruct (decide (#n' = #n))%V as [[= ->%Nat2Z.inj] | Hneq].
     - wp_cas_suc.
       iMod (own_update with "Hauth") as "[Hauth Hofull]".
@@ -141,7 +143,7 @@ Section proof.
       { iNext. iExists o', (S n).
         rewrite Nat2Z.inj_succ -Z.add_1_r. by iFrame. }
       iModIntro. wp_if.
-      iApply (wait_loop_spec γ (lo, ln) with "[-HΦ]").
+      iApply (wait_loop_spec p γ (lo γ, ln γ) with "[-HΦ]").
       + rewrite /issued; eauto 10.
       + by iNext.
     - wp_cas_fail.
@@ -150,21 +152,21 @@ Section proof.
       iModIntro. wp_if. by iApply "IH"; auto.
   Qed.
 
-  Lemma release_spec γ lk R :
-    {{{ is_lock γ lk R ∗ locked γ ∗ R }}} release ticket lk @ p; ⊤
+  Lemma release_spec p γ lk R :
+    {{{ is_lock γ lk R ∗ locked γ ∗ R }}} release lk @ p; ⊤
     {{{ RET (); True }}}.
   Proof.
-    iIntros (Φ) "(Hl & Hγ & HR) HΦ". iDestruct "Hl" as (lo ln) "(% & #? & % & #?)"; subst.
+    iIntros (Φ) "(Hl & Hγ & HR) HΦ". iDestruct "Hl" as "(% & #? & % & #?)"; subst.
     iDestruct "Hγ" as (o) "Hγo".
     rewrite /release. wp_let. wp_proj. wp_proj. wp_bind (! _)%E.
-    iInv N as (o' n) "(>Hlo & >Hln & >Hauth & Haown)" "Hclose".
+    iInv (nsp γ) as (o' n) "(>Hlo & >Hln & >Hauth & Haown)" "Hclose".
     wp_load.
     iDestruct (own_valid_2 with "Hauth Hγo") as
       %[[<-%Excl_included%leibniz_equiv _]%prod_included _]%auth_valid_discrete_2.
     iMod ("Hclose" with "[Hlo Hln Hauth Haown]") as "_".
     { iNext. iExists o, n. by iFrame. }
     iModIntro. wp_op.
-    iInv N as (o' n') "(>Hlo & >Hln & >Hauth & Haown)" "Hclose".
+    iInv (nsp γ) as (o' n') "(>Hlo & >Hln & >Hauth & Haown)" "Hclose".
     wp_store.
     iDestruct (own_valid_2 with "Hauth Hγo") as
       %[[<-%Excl_included%leibniz_equiv _]%prod_included _]%auth_valid_discrete_2.
@@ -181,6 +183,6 @@ End proof.
 
 Typeclasses Opaque is_lock issued locked.
 
-Definition ticket_lock `{!heapG Σ, !tlockG Σ} : lock Σ :=
+Definition proof `{!heapG Σ, !tlockG Σ} : lock Σ :=
   {| lock.locked_exclusive := locked_exclusive; lock.newlock'_spec := newlock'_spec;
      lock.acquire_spec := acquire_spec; lock.release_spec := release_spec |}.

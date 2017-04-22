@@ -8,15 +8,15 @@ From iris.heap_lang Require Import proofmode notation.
 	Ensure we can still apply metatheorems to code using locks.
 *)
 
-Definition ignore_lock (LI : LockImpl) : expr :=
-  let: "lk" := newlock LI () in ().
+Definition ignore_lock {LI : LockImpl} : expr :=
+  let: "lk" := newlock () in ().
 
 Section proof.
   Context `{heapG Σ, LI : LockImpl} (L : lock Σ).
 
   Lemma ignore_lock_spec N :
     heapN ⊥ N →
-    {{{ heap_ctx }}} ignore_lock LI {{{ v, RET v; low v }}}.
+    {{{ heap_ctx }}} ignore_lock {{{ v, RET v; low v }}}.
   Proof.
     iIntros (? Φ) "#Hh HΦ". rewrite/ignore_lock.
     wp_apply (newlock_spec L _ _ True%I with "[$Hh]"); first done.
@@ -26,19 +26,21 @@ Section proof.
 End proof.
 
 Section ClosedProof.
-  Import spin_lock.
-
-  Let Σ : gFunctors := #[ heapΣ ; lockΣ ].
+  Let lock : LockImpl := spin_lock.code.
+  Let ignore_lock : expr := @ignore_lock lock.
 
   Lemma ignore_lock_safe C t2 σ2 :
     AdvCtx C →
-    rtc step ([ctx_fill C $ ignore_lock spin], good_state ∅) (t2, σ2) →
+    rtc step ([ctx_fill C $ ignore_lock], good_state ∅) (t2, σ2) →
     is_good σ2.
   Proof.
-    set N : namespace := nroot .@ "ignore_lock".
+    set Σ : gFunctors := #[ heapΣ ; spin_lock.lockΣ ].
+    set N : namespace := nroot .@ "example".
     move=>??. eapply (robust_safety Σ); try done.
     { naive_solver eauto using is_closed_of_val. }
     iIntros (?) "Hh".
-    iApply (ignore_lock_spec spin_lock N with "Hh"); auto with ndisj.
+    set L := spin_lock.proof.
+    iApply (ignore_lock_spec L N with "Hh"); auto with ndisj.
   Qed.
 End ClosedProof.
+Print Assumptions ignore_lock_safe.

@@ -34,12 +34,6 @@ Class PubImpl : Set := {
   make_pub : val; pub_ref : val; pub_wrap : val; pub_unwrap : val;
   shadow_read : val; shadow_write : val
 }.
-Arguments make_pub _ : clear implicits.
-Arguments pub_ref _ : clear implicits.
-Arguments pub_wrap _ : clear implicits.
-Arguments pub_unwrap _ : clear implicits.
-Arguments shadow_read _ : clear implicits.
-Arguments shadow_write _ : clear implicits.
 
 Section spec.
   Context `{heapG Σ} {PI : PubImpl}.
@@ -48,33 +42,34 @@ Section spec.
   Structure pub := Pub {
     (** Predicates. Name ties [is_pub]  to [is_membrane]. *)
     name : Type;
-    is_membrane (N : namespace) (γ : name) (m : val) : iProp Σ;
+    is_membrane (γ : name) (m : val) : iProp Σ;
     is_pub (γ : name) (l : loc) : iProp Σ;
     (** Structure *)
-    is_membrane_persistent N γ m : PersistentP (is_membrane N γ m);
+    is_membrane_persistent γ m : PersistentP (is_membrane γ m);
     is_pub_timeless γ l : TimelessP (is_pub γ l);
     is_pub_persistent γ l : PersistentP (is_pub γ l);
     (** Operations *)
-    make_pub_spec N :
+    make_pub_spec p N :
       heapN ⊥ N →
-      {{{ heap_ctx }}} make_pub PI () {{{ m γ, RET m; is_membrane N γ m }}};
-    pub_alloc_spec N γ m (v : val) :
-      {{{ is_membrane N γ m ∗ on_val (is_pub γ) v }}} pub_ref PI m v
+      {{{ heap_ctx }}} make_pub () @ p; ⊤
+      {{{ m γ, RET m; is_membrane γ m }}};
+    pub_alloc_spec p γ m (v : val) :
+      {{{ is_membrane γ m ∗ on_val (is_pub γ) v }}} pub_ref m v @ p; ⊤
       {{{ l, RET LocV l; is_pub γ l ∗ l ↦ v }}};
-    pub_wrap_spec N γ m p E :
-      {{{ is_membrane N γ m }}} pub_wrap PI m @ p; E {{{ f, RET f;
+    pub_wrap_spec p γ m :
+      {{{ is_membrane γ m }}} pub_wrap m @ p; ⊤ {{{ f, RET f;
         is_monP progress f (on_val (is_pub γ)) (on_val low)
       }}};
-    pub_unwrap_spec N γ m p E :
-      {{{ is_membrane N γ m }}} pub_unwrap PI m @ p; E {{{ f, RET f;
+    pub_unwrap_spec p γ m :
+      {{{ is_membrane γ m }}} pub_unwrap m @ p; ⊤ {{{ f, RET f;
         is_monP noprogress f (on_val low) (on_val (is_pub γ))
       }}};
-    shadow_read_spec N γ m l :
-      {{{ is_membrane N γ m ∗ is_pub γ l }}} shadow_read PI m l
+    shadow_read_spec γ m l :
+      {{{ is_membrane γ m ∗ is_pub γ l }}} shadow_read m l
       ?{{{ v, RET v; on_val (is_pub γ) v }}};
-    shadow_write_spec N γ m l v :
-      {{{ is_membrane N γ m ∗ is_pub γ l ∗ on_val (is_pub γ) v }}}
-        shadow_write PI m l v
+    shadow_write_spec p γ m l v :
+      {{{ is_membrane γ m ∗ is_pub γ l ∗ on_val (is_pub γ) v }}}
+        shadow_write m l v @ p; ⊤
       {{{ RET (); True }}}
   }.
 End spec.
@@ -86,9 +81,9 @@ Section lemmas.
   Context `{heapG Σ, PI : PubImpl} (P : pub Σ).
   Implicit Types v : val.
 
-  Lemma pub_wrap_val N γ m v1 :
-    {{{ is_membrane P N γ m ∗ on_val (is_pub P γ) v1 }}}
-      pub_wrap PI m v1
+  Lemma pub_wrap_val γ m v1 :
+    {{{ is_membrane P γ m ∗ on_val (is_pub P γ) v1 }}}
+      pub_wrap m v1
     {{{ v2, RET v2; low v2 }}}.
   Proof.
     iIntros (Φ) "#(Hm & Hv1) HΦ".
@@ -97,9 +92,9 @@ Section lemmas.
     wp_apply ("Hw" with "* Hv1"). iExact "HΦ".
   Qed.
 
-  Lemma pub_unwrap_val N γ m v2 :
-    {{{ is_membrane P N γ m ∗ low v2 }}}
-      pub_unwrap PI m v2
+  Lemma pub_unwrap_val γ m v2 :
+    {{{ is_membrane P γ m ∗ low v2 }}}
+      pub_unwrap m v2
     ?{{{ v1, RET v1; on_val (is_pub P γ) v1 }}}.
   Proof.
     iIntros (Φ) "#(Hm & Hv2) HΦ".
@@ -135,16 +130,16 @@ End mix.
 
 Module counter_1.
 Section code.
-  Context (LI : LockImpl) (PI : PubImpl).
+  Context {LI : LockImpl} {PI : PubImpl}.
 
   Definition get_limit : val := λ: "m" "f" "r",
     let: "n1" := ! "r" in
-    ifint: shadow_read PI "m" "r" as "n2" =>
+    ifint: shadow_read "m" "r" as "n2" =>
       let: "n3" := "f" "n1" "n2" in
       let: <> := if: "n1" ≠ "n3" then "r" <- "n3" else () in
-      let: <> := if: "n2" ≠ "n3" then shadow_write PI "m" "r" "n3" else () in
+      let: <> := if: "n2" ≠ "n3" then shadow_write "m" "r" "n3" else () in
       "n3"
-    else (shadow_write PI "m" "r" "n1" ;; "n1").
+    else (shadow_write "m" "r" "n1" ;; "n1").
 
   Definition use : val := λ: "sync" "count" "limit" <>,
     "sync" (λ: <>,
@@ -159,28 +154,25 @@ Section code.
     ).
   Definition make_counter : val := λ: "m",
     let: "count" := ref #0 in
-    let: "limit" := pub_ref PI "m" #0 in
-    let: "sync" := make_sync LI () in
+    let: "limit" := pub_ref "m" #0 in
+    let: "sync" := make_sync () in
     let: "use" := use "sync" "count" "limit" in
     let: "incr" := incr "m" "sync" "count" "limit" in
-    let: "limit" := pub_wrap PI "m" "limit" in
+    let: "limit" := pub_wrap "m" "limit" in
     ("use", "limit", "incr").
 
   Definition client : expr :=
-    let: "m" := make_pub PI () in
+    let: "m" := make_pub () in
     make_counter "m".
 End code.
 
 Section proof.
   Context `{heapG Σ, LI : LockImpl, PI : PubImpl} (L : lock Σ) (P : pub Σ).
-  Context (N : namespace).
-  Let Nm : namespace := N .@ "pub".
-  Let Nlk : namespace := N .@ "lk".
   Implicit Types f g : val.
   Implicit Types n : Z.
 
   Lemma get_limit_spec γ m :
-    {{{ heap_ctx ∗ is_membrane P Nm γ m }}} get_limit PI m
+    {{{ heap_ctx ∗ is_membrane P γ m }}} get_limit m
     ?{{{ g, RET g; ∀ f F l n1,
       {{{ ⌜F n1 n1 = n1⌝ ∗ is_mix f F ∗ is_pub P γ l ∗ l ↦ #n1 }}} g f l
       ?{{{ n2, RET #(F n1 n2); l ↦ #(F n1 n2) }}}
@@ -236,8 +228,8 @@ Section proof.
   Qed.
 
   Lemma incr_spec m γ sync c hi :
-    {{{ heap_ctx ∗ is_membrane P Nm γ m ∗ is_sync sync (counter_res γ c hi) }}}
-      incr PI m sync c hi
+    {{{ heap_ctx ∗ is_membrane P γ m ∗ is_sync sync (counter_res γ c hi) }}}
+      incr m sync c hi
     {{{ f, RET f; low f }}}.
   Proof.
     iIntros (Φ) "#(Hh & Hm & Hsync) HΦ". do 4!wp_lam.
@@ -257,16 +249,16 @@ Section proof.
       iExists _, _. iFrame "Hc Hhi Hphi". iPureIntro. by lia.
   Qed.
 
-  Lemma make_counter_spec γ m :
+  Lemma make_counter_spec N γ m :
     heapN ⊥ N →
-    {{{ heap_ctx ∗ is_membrane P Nm γ m }}} make_counter LI PI m
+    {{{ heap_ctx ∗ is_membrane P γ m }}} make_counter m
     {{{ v, RET v; low v }}}.
   Proof.
     iIntros (? Φ) "#(Hh & Hm) HΦ". wp_lam.
       wp_alloc c as "Hc". wp_let.
     wp_apply (pub_alloc_spec _ _ _ _ (#0) with "[$Hm]");
       first by simpl_on_val. iIntros (hi) "(#Hphi & Hhi)". wp_let.
-    wp_apply (make_sync_spec L _ Nlk (counter_res γ c hi)
+    wp_apply (make_sync_spec L _ N (counter_res γ c hi)
       with "[$Hh Hc Hhi]").
     - by solve_ndisj.
     - iExists 0, 0. by iFrame "Hc Hhi Hphi".
@@ -275,17 +267,17 @@ Section proof.
       wp_let.
     wp_apply (incr_spec with "[$Hh $Hm $Hsync]").
       iIntros (incr) "#Hincr". wp_let.
-    wp_apply (pub_wrap_val _ _ _ _ (LocV hi) with "[$Hm Hphi]");
+    wp_apply (pub_wrap_val _ _ _ (LocV hi) with "[$Hm Hphi]");
       first by simpl_on_val. iIntros (vhi) "#Hvhi". wp_let.
     iApply "HΦ". simpl_low. by iFrame "Huse Hvhi Hincr".
   Qed.
 
-  Lemma client_spec :
+  Lemma client_spec N :
     heapN ⊥ N →
-    {{{ heap_ctx }}} client LI PI {{{ v, RET v; low v }}}.
+    {{{ heap_ctx }}} client {{{ v, RET v; low v }}}.
   Proof.
     iIntros (? Φ) "#Hh HΦ". rewrite/client.
-    wp_apply (make_pub_spec P Nm with "Hh"); first by solve_ndisj.
+    wp_apply (make_pub_spec P _ N with "Hh"); first by solve_ndisj.
       iIntros (m γ) "#Hm". wp_let.
     by wp_apply (make_counter_spec with "[$Hh $Hm]").
   Qed.
@@ -296,8 +288,8 @@ End counter_1.
 
 Module counter_2.
 Section code.
-  Context (LI : LockImpl) (PI : PubImpl).
-  Let get_limit : val := counter_1.get_limit PI.
+  Context {LI : LockImpl} {PI : PubImpl}.
+  Let get_limit : val := counter_1.get_limit.
 
   Definition pick_lo : val := λ: "n" "lo1" "lo2",
     if: "lo2" ≤ "n" then "lo2" else "lo1".
@@ -328,34 +320,31 @@ Section code.
       "b"
     ).
   Definition make_counter : val := λ: "m",
-    let: "lo" := pub_ref PI "m" #0 in
+    let: "lo" := pub_ref "m" #0 in
     let: "count" := ref #0 in
-    let: "hi" := pub_ref PI "m" #0 in
-    let: "sync" := make_sync LI () in
+    let: "hi" := pub_ref "m" #0 in
+    let: "sync" := make_sync () in
     let: "use" := use "sync" "lo" "count" "hi" in
     let: "get_limits" := get_limits "m" "lo" "count" "hi" in
     let: "decr" := decr "sync" "count" "get_limits" in
     let: "incr" := incr "sync" "count" "get_limits" in
-    let: "lo" := pub_wrap PI "m" "lo" in
-    let: "hi" := pub_wrap PI "m" "hi" in
+    let: "lo" := pub_wrap "m" "lo" in
+    let: "hi" := pub_wrap "m" "hi" in
     ("use", "lo", "hi", "incr", "decr").
 
   Definition client : expr :=
-    let: "m" := make_pub PI () in
+    let: "m" := make_pub () in
     make_counter "m".
 
   Definition client_12 : expr :=
-    let: "m" := make_pub PI () in
-    let: "c1" := counter_1.make_counter LI PI "m" in
+    let: "m" := make_pub () in
+    let: "c1" := counter_1.make_counter "m" in
     let: "c2" := make_counter "m" in
     ("c1", "c2").
 End code.
 
 Section proof.
   Context `{heapG Σ, LI : LockImpl, PI : PubImpl} (L : lock Σ) (P : pub Σ).
-  Context (N : namespace).
-  Let Nm : namespace := N .@ "pub".
-  Let Nlk : namespace := N .@ "lk".
   Implicit Types f g : val.
   Implicit Types n : Z.
 
@@ -391,8 +380,8 @@ Section proof.
   )%I.
 
   Lemma get_limits_spec γ m lo c hi :
-    {{{ heap_ctx ∗ is_membrane P Nm γ m ∗ is_pub P γ lo ∗ is_pub P γ hi }}}
-      get_limits PI m lo c hi
+    {{{ heap_ctx ∗ is_membrane P γ m ∗ is_pub P γ lo ∗ is_pub P γ hi }}}
+      get_limits m lo c hi
     {{{ f, RET f; is_get_limits lo c hi f }}}.
   Proof.
     iIntros (Φ) "#(Hh & Hm & Hplo & Hphi) HΦ". do 4!wp_lam.
@@ -487,9 +476,9 @@ Section proof.
       by rewrite/PickHi; case_decide; lia.
   Qed.
 
-  Lemma make_counter_spec γ m :
+  Lemma make_counter_spec N γ m :
     heapN ⊥ N →
-    {{{ heap_ctx ∗ is_membrane P Nm γ m }}} make_counter LI PI m
+    {{{ heap_ctx ∗ is_membrane P γ m }}} make_counter m
     {{{ v, RET v; low v }}}.
   Proof.
     iIntros (? Φ) "#(Hh & Hm) HΦ". wp_lam.
@@ -498,7 +487,7 @@ Section proof.
     wp_alloc c as "Hc". wp_let.
     wp_apply (pub_alloc_spec _ _ _ _ (#0) with "[$Hm]");
       first by simpl_on_val. iIntros (hi) "(#Hphi & Hhi)". wp_let.
-    wp_apply (make_sync_spec L _ Nlk (counter_res γ lo c hi)
+    wp_apply (make_sync_spec L _ N (counter_res γ lo c hi)
       with "[$Hh Hlo Hc Hhi]").
     - by solve_ndisj.
     - iExists 0, 0, 0. by iFrame "Hlo Hc Hhi Hplo Hphi".
@@ -511,29 +500,29 @@ Section proof.
       iIntros (decr) "#Hdecr". wp_let.
     wp_apply (incr_spec with "[$Hh $Hsync $Hget]").
       iIntros (incr) "#Hincr". wp_let.
-    wp_apply (pub_wrap_val _ _ _ _ (LocV lo) with "[$Hm Hplo]");
+    wp_apply (pub_wrap_val _ _ _ (LocV lo) with "[$Hm Hplo]");
       first by simpl_on_val. iIntros (vlo) "#Hvlo". wp_let.
-    wp_apply (pub_wrap_val _ _ _ _ (LocV hi) with "[$Hm Hphi]");
+    wp_apply (pub_wrap_val _ _ _ (LocV hi) with "[$Hm Hphi]");
       first by simpl_on_val. iIntros (vhi) "#Hvhi". wp_let.
     iApply "HΦ". simpl_low. by iFrame "Huse Hvlo Hvhi Hincr Hdecr".
   Qed.
 
-  Lemma client_spec :
+  Lemma client_spec N :
     heapN ⊥ N →
-    {{{ heap_ctx }}} client LI PI {{{ v, RET v; low v }}}.
+    {{{ heap_ctx }}} client {{{ v, RET v; low v }}}.
   Proof.
     iIntros (? Φ) "#Hh HΦ". rewrite/client.
-    wp_apply (make_pub_spec P Nm with "Hh"); first by solve_ndisj.
+    wp_apply (make_pub_spec P _ N with "Hh"); first by solve_ndisj.
       iIntros (m γ) "#Hm". wp_let.
     by wp_apply (make_counter_spec with "[$Hh $Hm]").
   Qed.
 
-  Lemma client_12_spec :
+  Lemma client_12_spec N :
     heapN ⊥ N →
-    {{{ heap_ctx }}} client_12 LI PI {{{ v, RET v; low v }}}.
+    {{{ heap_ctx }}} client_12 {{{ v, RET v; low v }}}.
   Proof.
     iIntros (? Φ) "#Hh HΦ". rewrite/client_12.
-    wp_apply (make_pub_spec P Nm with "Hh"); first by solve_ndisj.
+    wp_apply (make_pub_spec P _ N with "Hh"); first by solve_ndisj.
       iIntros (m γ) "#Hm". wp_let.
     wp_apply (counter_1.make_counter_spec L P with "[$Hh $Hm]")=>//.
       iIntros (v1) "#Hv1". wp_let.
@@ -557,11 +546,11 @@ End counter_2.
 *)
 Module code.
 Section code.
-  Context (LI : LockImpl).
+  Context {LI : LockImpl}.
 
   Definition make_pub : val := λ: <>,
     let: "tbl" := ref bij_empty in
-    let: "sync" := make_sync LI () in
+    let: "sync" := make_sync () in
     ("sync", "tbl").
   Definition locout : val := λ: "m" "l1",
     let: "sync" := Fst "m" in let: "tbl" := Snd "m" in
@@ -583,8 +572,8 @@ Section code.
     locout "m" "l" <- pub_wrap "m" "x".
 End code.
 
-Definition pub_membrane (LI : LockImpl) : PubImpl := {|
-  intf.make_pub := make_pub LI;
+Instance pub_membrane {LI : LockImpl} : PubImpl := {|
+  intf.make_pub := @make_pub LI;
   intf.pub_ref := pub_ref;
   intf.pub_wrap := pub_wrap;
   intf.pub_unwrap := pub_unwrap;
@@ -603,14 +592,16 @@ Instance subG_pubΣ {Σ} : subG pubΣ Σ → pubG Σ.
 Proof. intros [??]%subG_inv. constructor; apply _. Qed.
 
 Section proof.
-  Context `{heapG Σ, pubG Σ, LI : LockImpl} (L : lock Σ) (N : namespace).
-  Let PI : PubImpl := code.pub_membrane LI.
+  Context `{heapG Σ, pubG Σ, LI : LockImpl} (L : lock Σ).
   Implicit Types v f : val.
+  Import code.
 
   (** Definitions *)
 
-  Definition is_pub (γ : gname) (l : loc) : iProp Σ :=
-    own γ (◯ (to_gset {[ l ]})).
+  Record name : Type := { sync : val; tbl : loc; ghost : gname }.
+
+  Definition is_pub (γ : name) (l : loc) : iProp Σ :=
+    own (ghost γ) (◯ (to_gset {[ l ]})).
 
   Definition pubhigh (γ : gname) (m1 : gmap loc val) : iProp Σ :=
     (own γ (● (dom (gset loc) m1)) ∗ live (dom _ m1))%I.
@@ -622,9 +613,9 @@ Section proof.
     ∃ bij m1 m2, t ↦ bij ∗ is_bij bij m1 m2 ∗ pubhigh γ m1 ∗ publow m2
   )%I.
 
-  Definition is_membrane (γ : gname) (m : val) : iProp Σ := (
-    ∃ (t : loc) sync, ⌜heapN ⊥ N⌝ ∗ heap_ctx ∗ ⌜m = (sync, t)%V⌝ ∗
-    is_sync sync (tbl_res t γ)
+  Definition is_membrane (γ : name) (m : val) : iProp Σ := (
+    heap_ctx ∗ ⌜m = (sync γ, tbl γ)%V⌝ ∗
+    is_sync (sync γ) (tbl_res (tbl γ) (ghost γ))
   )%I.
 
   (** Structure *)
@@ -653,7 +644,7 @@ Section proof.
 
   Lemma pubhigh_obs γ m1 l1 :
     is_Some (m1 !! l1) →
-    pubhigh γ m1 ==∗ pubhigh γ m1 ∗ is_pub γ l1.
+    pubhigh (ghost γ) m1 ==∗ pubhigh (ghost γ) m1 ∗ is_pub γ l1.
   Proof.
     iIntros (?) "(Hp & Ha)". rewrite/pubhigh/is_pub. iFrame "Ha".
     rewrite -own_op. iApply (own_update with "Hp").
@@ -688,29 +679,30 @@ Section proof.
 
   (** Operations *)
 
-  Lemma make_pub_spec :
+  Lemma make_pub_spec p N :
     heapN ⊥ N →
-    {{{ heap_ctx }}} make_pub PI () {{{ m γ, RET m; is_membrane γ m }}}.
+    {{{ heap_ctx }}} make_pub () @ p; ⊤
+    {{{ m γ, RET m; is_membrane γ m }}}.
   Proof.
     iIntros (? Φ) "#Hh HΦ". wp_lam. wp_alloc t as "Ht". wp_let.
       rewrite -wp_fupd.
-      iMod (own_alloc (Auth (Excl' ∅) ∅)) as (γ) "Hγ"; first done.
-    wp_apply (make_sync_spec L _ _ (tbl_res t γ) with "[$Hh Ht Hγ]").
+      iMod (own_alloc (Auth (Excl' ∅) ∅)) as (γt) "Hγ"; first done.
+    wp_apply (make_sync_spec L _ _ (tbl_res t γt) with "[$Hh Ht Hγ]").
     - solve_ndisj.
     - iExists bij_empty, ∅, ∅.
       rewrite /pubhigh /publow dom_empty_L 2!big_sepS_empty.
       iFrame "Ht Hγ". by auto.
     iIntros (sync) "#Hsync". wp_let. iModIntro.
-    iApply ("HΦ" $! _ γ). iExists t, sync. by iFrame "% Hh Hsync".
+    set γ := {|  sync := sync; tbl := t; ghost := γt |}.
+    iApply ("HΦ" $! _ γ). by iFrame "% Hh Hsync".
   Qed.
 
   Lemma locout_spec p E γ m :
     {{{ is_membrane γ m }}} code.locout m @ p; E
     {{{ v, RET v; is_monP progress v (is_pub γ) low }}}.
   Proof.
-    iIntros (Φ) "#Hm HΦ". wp_lam.
+    iIntros (Φ) "#(Hh & % & Hsync) HΦ". subst. wp_lam.
     iApply "HΦ". clear Φ p E. iIntros (l1) "!#". iIntros (Φ) "Hl1 HΦ". wp_lam.
-      iDestruct "Hm" as (t sync) "(% & Hh & % & Hsync)". subst.
       do 2!(wp_proj; wp_let). rewrite/is_sync.
     wp_apply ("Hsync" with "[%]"). iClear "Hsync".
       iIntros (Ψ) "HR HΨ".
@@ -731,11 +723,9 @@ Section proof.
     {{{ is_membrane γ m }}} code.locin m @ p; E
     {{{ v, RET v; is_monP noprogress v low (is_pub γ) }}}.
   Proof.
-    iIntros (Φ) "#Hm HΦ". wp_lam.
+    iIntros (Φ) "#(Hh & % & Hsync) HΦ". subst. wp_lam.
     iApply "HΦ". clear Φ. iIntros (l2) "!#". iIntros (Φ) "Hl2 HΦ".
-      wp_lam.
-      iDestruct "Hm" as (t sync) "(% & Hh & % & Hsync)". subst.
-      do 2!(wp_proj; wp_let). rewrite/is_sync.
+      wp_lam. do 2!(wp_proj; wp_let). rewrite/is_sync.
     wp_apply ("Hsync" with "[%]"). iClear "Hsync".
       iIntros (Ψ) "HR HΨ".
       iDestruct "HR" as (bij m1 m2) "(Ht & #Hbij & Hhi & #Hlo)". wp_load.
@@ -749,8 +739,8 @@ Section proof.
     by iApply ("HΦ" with "Hl1").
   Qed.
 
-  Lemma pub_wrap_spec γ m p E :
-    {{{ is_membrane γ m }}} pub_wrap PI m @ p; E {{{ f, RET f;
+  Lemma pub_wrap_spec p γ m :
+    {{{ is_membrane γ m }}} pub_wrap m @ p; ⊤ {{{ f, RET f;
       is_monP progress f (on_val (is_pub γ)) (on_val low)
     }}}.
   Proof.
@@ -761,8 +751,8 @@ Section proof.
     wp_apply ("Hw" with "* Hlocin"). iExact "HΦ".
   Qed.
 
-  Lemma pub_unwrap_spec γ m p E :
-    {{{ is_membrane γ m }}} pub_unwrap PI m @ p; E {{{ f, RET f;
+  Lemma pub_unwrap_spec p γ m :
+    {{{ is_membrane γ m }}} pub_unwrap m @ p; ⊤ {{{ f, RET f;
       is_monP noprogress f (on_val low) (on_val (is_pub γ))
     }}}.
   Proof.
@@ -773,16 +763,16 @@ Section proof.
     wp_apply ("Hu" with "* Hlocout"). iExact "HΦ".
   Qed.
 
-  Lemma pub_alloc_spec γ m (v : val) :
-    {{{ is_membrane γ m ∗ on_val (is_pub γ) v }}} pub_ref PI m v
+  Lemma pub_alloc_spec p γ m (v : val) :
+    {{{ is_membrane γ m ∗ on_val (is_pub γ) v }}} pub_ref m v @ p; ⊤
     {{{ l, RET LocV l; is_pub γ l ∗ l ↦ v }}}.
   Proof.
-    iIntros (Φ) "#(Hm & Hv) HΦ". wp_lam. wp_lam.
-      iDestruct(persistentP with "Hm") as "#Hm2".
-      iDestruct "Hm2" as (t sync) "(% & Hh & % & Hsync)". subst.
+    iIntros (Φ) "#(Hm & Hv) HΦ". do 2!wp_lam.
+      iDestruct(persistentP with "Hm") as "#(Hh & % & Hsync)". subst.
     wp_apply (wp_alloc_fresh with "Hh"); auto.
       iIntros (l1) "[Hl1 Hf1]". wp_let.
     wp_apply (pub_wrap_spec with "Hm"). iIntros (wrap) "Hwrap".
+      rewrite (monP_pbit_mono p progress); last by case: p.
       rewrite monP_triple.
     wp_apply ("Hwrap" $! v with "Hv"). iIntros (v2) "Hv2".
     wp_apply (wp_alloc_low_fresh with "[$Hh $Hv2]"); auto.
@@ -805,24 +795,26 @@ Section proof.
      wp_seq. by iApply ("HΦ" with "[$Hl1 $Hpub]").
   Qed.
 
-  Lemma shadow_write_spec γ m l v :
+  Lemma shadow_write_spec p γ m l v :
     {{{ is_membrane γ m ∗ is_pub γ l ∗ on_val (is_pub γ) v }}}
-      shadow_write PI m l v
+      shadow_write m l v @ p; ⊤
     {{{ RET (); True }}}.
   Proof.
     iIntros (Φ) "#(Hm & Hl & Hv) HΦ". wp_lam. wp_lam. wp_lam.
     wp_apply (locout_spec with "Hm"). iIntros (locout) "Hlocout".
+      rewrite (monP_pbit_mono p progress); last by case: p.
       rewrite monP_triple.
     wp_apply ("Hlocout" $! l with "Hl"). iIntros (l2) "Hl2".
     wp_apply (pub_wrap_spec with "Hm"). iIntros (wrap) "Hwrap".
+      rewrite (monP_pbit_mono p progress); last by case: p.
       rewrite monP_triple.
     wp_apply ("Hwrap" $! v with "Hv"). iIntros (v2) "Hv2".
     wp_apply (wp_store_low with "[Hm $Hl2 $Hv2]"); auto.
-    by iDestruct "Hm" as (??) "(_&Hh&_&_)".
+    by iDestruct "Hm" as "(Hh&_&_)".
   Qed.
 
   Lemma shadow_read_spec γ m l :
-    {{{ is_membrane γ m ∗ is_pub γ l }}} shadow_read PI m l
+    {{{ is_membrane γ m ∗ is_pub γ l }}} shadow_read m l
     ?{{{ v, RET v; on_val (is_pub γ) v }}}.
   Proof.
     iIntros (Φ) "#(Hm & Hl) HΦ". wp_lam. wp_lam.
@@ -831,7 +823,7 @@ Section proof.
       rewrite (monP_pbit_mono noprogress progress) // 2!monP_triple.
     wp_apply ("Hlocout" $! l with "Hl"). iIntros (l2) "Hl2".
     wp_apply (wp_load_low with "[Hm $Hl2]")=>//;
-      first by iDestruct "Hm" as (??) "(_&Hh&_&_)"; iFrame "Hh".
+      first by iDestruct "Hm" as "(Hh&_&_)"; iFrame "Hh".
       iIntros (v2) "Hv2".
     wp_apply ("Hf" $! v2 with "Hv2"). iExact "HΦ".
   Qed.
@@ -849,14 +841,14 @@ Definition pub_membrane `{heapG Σ, pubG Σ, LockImpl}
 End proof.
 
 Section ClosedProofs.
-  Import spin_lock.
+  Let LI : LockImpl := spin_lock.code.
+  Let PI : PubImpl := @code.pub_membrane LI.
+  Let counter_1 : expr := @counter_1.client LI PI.
+  Let counter_2 : expr := @counter_2.client LI PI.
+  Let counter_12 : expr := @counter_2.client_12 LI PI.
+
   Let N : namespace := nroot .@ "example".
   Let Σ : gFunctors := #[ heapΣ; spin_lock.lockΣ; proof.pubΣ ].
-  Let lock : LockImpl := spin.
-  Let pub : PubImpl := code.pub_membrane lock.
-  Let counter_1 : expr := counter_1.client lock pub.
-  Let counter_2 : expr := counter_2.client lock pub.
-  Let counter_12 : expr := counter_2.client_12 lock pub.
 
   Lemma counter_1_safe C t2 σ2 :
     AdvCtx C →
@@ -866,7 +858,7 @@ Section ClosedProofs.
     move=>??. eapply (robust_safety Σ); try done.
     { naive_solver eauto using is_closed_of_val. }
     iIntros (G) "Hh".
-    set L := spin_lock. set P := proof.pub_membrane L.
+    set L := spin_lock.proof. set P := proof.pub_membrane L.
     iApply (counter_1.client_spec L P N with "Hh"); auto with ndisj.
   Qed.
 
@@ -878,7 +870,7 @@ Section ClosedProofs.
     move=>??. eapply (robust_safety Σ); try done.
     { naive_solver eauto using is_closed_of_val. }
     iIntros (G) "Hh".
-    set L := spin_lock. set P := proof.pub_membrane L.
+    set L := spin_lock.proof. set P := proof.pub_membrane L.
     iApply (counter_2.client_spec L P N with "Hh"); auto with ndisj.
   Qed.
 
@@ -890,7 +882,7 @@ Section ClosedProofs.
     move=>??. eapply (robust_safety Σ); try done.
     { naive_solver eauto using is_closed_of_val. }
     iIntros (G) "Hh".
-    set L := spin_lock. set P := proof.pub_membrane L.
+    set L := spin_lock.proof. set P := proof.pub_membrane L.
     iApply (counter_2.client_12_spec L P N with "Hh"); auto with ndisj.
   Qed.
 End ClosedProofs.

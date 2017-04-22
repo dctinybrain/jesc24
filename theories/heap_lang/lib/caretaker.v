@@ -18,10 +18,6 @@ Module Import caretaker.
 Class CaretakerImpl : Set := {
   make_caretaker : val; wrap : val; disable : val; enable : val
 }.
-Arguments make_caretaker _ : clear implicits.
-Arguments wrap _ : clear implicits.
-Arguments disable _ : clear implicits.
-Arguments enable _ : clear implicits.
 
 Section caretaker.
   Context `{heapG Σ} {CI : CaretakerImpl}.
@@ -32,26 +28,26 @@ Section caretaker.
   Structure caretaker := Caretaker {
     (** Predicates. Name ties [enabled] to [is_caretaker]. *)
     name : Type;
-    is_caretaker (N : namespace) (γ : name) (ct : val) (R : iProp Σ) : iProp Σ;
+    is_caretaker (γ : name) (ct : val) (R : iProp Σ) : iProp Σ;
     enabled (γ : name) (b : bool) : iProp Σ;
     (** Structure *)
-    is_caretaker_ne N γ ct n : Proper (dist n ==> dist n) (is_caretaker N γ ct);
-    is_caretaker_persistent N γ ct R : PersistentP (is_caretaker N γ ct R);
+    is_caretaker_ne γ ct n : Proper (dist n ==> dist n) (is_caretaker γ ct);
+    is_caretaker_persistent γ ct R : PersistentP (is_caretaker γ ct R);
     enabled_timeless γ b : TimelessP (enabled γ b);
     enabled_exclusive γ b1 b2 : enabled γ b1 -∗ enabled γ b2 -∗ False;
     (** Operations *)
     make_caretaker_spec p N (R : iProp Σ) :
       heapN ⊥ N →
-      {{{ heap_ctx }}} make_caretaker CI () @ p; ⊤
-      {{{ ct γ, RET ct; is_caretaker N γ ct R ∗ enabled γ false }}};
-    wrap_spec p N γ ct R (f : val) p1 :
-      {{{ is_caretaker N γ ct R ∗ can_wrap p1 f R }}} wrap CI ct f @ p; ⊤
+      {{{ heap_ctx }}} make_caretaker () @ p; ⊤
+      {{{ ct γ, RET ct; is_caretaker γ ct R ∗ enabled γ false }}};
+    wrap_spec p γ ct R (f : val) p1 :
+      {{{ is_caretaker γ ct R ∗ can_wrap p1 f R }}} wrap ct f @ p; ⊤
       {{{ v, RET v; low v }}};
-    enable_spec p N γ ct R :
-      {{{ is_caretaker N γ ct R ∗ enabled γ false ∗ R }}} enable CI ct @ p; ⊤
+    enable_spec p γ ct R :
+      {{{ is_caretaker γ ct R ∗ enabled γ false ∗ R }}} enable ct @ p; ⊤
       {{{ RET (); enabled γ true }}};
-    disable_spec p N γ ct R :
-      {{{ is_caretaker N γ ct R ∗ enabled γ true }}} disable CI ct @ p; ⊤
+    disable_spec p γ ct R :
+      {{{ is_caretaker γ ct R ∗ enabled γ true }}} disable ct @ p; ⊤
       {{{ RET (); enabled γ false ∗ R }}}
   }.
 
@@ -72,9 +68,9 @@ Arguments caretaker _ {_ _}.
 Existing Instances is_caretaker_ne is_caretaker_persistent
   enabled_timeless.
 
-Instance is_caretaker_proper Σ `{heapG Σ, CaretakerImpl}
-    (CT : caretaker Σ) N ct R :
-  Proper ((≡) ==> (≡)) (is_caretaker CT N ct R) := ne_proper _.
+Instance is_caretaker_proper `{heapG Σ, CI : CaretakerImpl}
+    (CT : caretaker Σ) ct R :
+  Proper ((≡) ==> (≡)) (is_caretaker CT ct R) := ne_proper _.
 End caretaker.
 
 (** * Non-blocking caretaker *)
@@ -83,9 +79,9 @@ End caretaker.
 *)
 Module nonblocking_caretaker.
 Module impl.
-  Definition make_caretaker (LI : LockImpl) : val := λ: <>,
+  Definition make_caretaker {LI : LockImpl} : val := λ: <>,
     let: "enabled" := ref #false in
-    let: "sync" := make_sync LI () in
+    let: "sync" := make_sync () in
     ("sync", "enabled").
 
   Definition wrap : val := λ: "ct" "f" "x",
@@ -95,16 +91,14 @@ Module impl.
   Definition disable : val := λ: "ct", (Fst "ct") (λ: <>, Snd "ct" <- #false).
 End impl.
 
-Definition nonblocking (LI : LockImpl) : CaretakerImpl := {|
-  make_caretaker := impl.make_caretaker LI;
+Instance code {LI : LockImpl} : CaretakerImpl := {|
+  make_caretaker := impl.make_caretaker;
   wrap := impl.wrap;
   enable := impl.enable; disable := impl.disable
 |}.
 
 Section proof.
   Context `{heapG Σ, LI : LockImpl} (L : lock Σ).
-  Context (p : pbit) (N : namespace).
-  Let CI : CaretakerImpl := nonblocking LI.
 
   (** Definitions *)
 
@@ -116,11 +110,13 @@ Section proof.
   Definition caretaker_res (l : loc) (R : iProp Σ) : iProp Σ :=
     (∃ b : bool, l ↦{small} #b ∗ if b then R else True)%I.
 
-  Definition is_caretaker (l : loc) (ct : val) (R : iProp Σ) : iProp Σ :=
-    (∃ sync, ⌜heapN ⊥ N⌝ ∗ heap_ctx ∗ ⌜ct = (sync, l)%V⌝ ∗
-     is_sync sync (caretaker_res l R))%I.
+  Record name : Type := { sync : val; loc : loc }.
 
-  Definition enabled (l : loc) (b : bool) : iProp Σ := (l ↦{large} #b)%I.
+  Definition is_caretaker (γ : name) (ct : val) (R : iProp Σ) : iProp Σ :=
+    (heap_ctx ∗ ⌜ct = (sync γ, loc γ)%V⌝ ∗
+     is_sync (sync γ) (caretaker_res (loc γ) R))%I.
+
+  Definition enabled (γ : name) (b : bool) : iProp Σ := (loc γ ↦{large} #b)%I.
 
   (** Structure *)
 
@@ -128,18 +124,18 @@ Section proof.
     Proper (dist n ==> dist n) (caretaker_res l).
   Proof. solve_proper. Qed.
 
-  Global Instance is_caretaker_ne l ct n :
-     Proper (dist n ==> dist n) (is_caretaker l ct).
+  Global Instance is_caretaker_ne γ ct n :
+     Proper (dist n ==> dist n) (is_caretaker γ ct).
   Proof. solve_proper. Qed.
 
-  Global Instance is_caretaker_persistent l ct R :
-    PersistentP (is_caretaker l ct R).
+  Global Instance is_caretaker_persistent γ ct R :
+    PersistentP (is_caretaker γ ct R).
   Proof. apply _. Qed.
 
-  Global Instance enabled_timeless l b : TimelessP (enabled l b).
+  Global Instance enabled_timeless γ b : TimelessP (enabled γ b).
   Proof. apply _. Qed.
 
-  Lemma enabled_exclusive l b1 b2 : enabled l b1 -∗ enabled l b2 -∗ False.
+  Lemma enabled_exclusive γ b1 b2 : enabled γ b1 -∗ enabled γ b2 -∗ False.
   Proof.
     iIntros "H1 H2". iDestruct (mapsto_valid_2 with "[$H1 $H2]") as %Hv.
     by case: Hv.
@@ -147,10 +143,10 @@ Section proof.
 
   (** Operations *)
 
-  Lemma make_caretaker_spec (R : iProp Σ) :
+  Lemma make_caretaker_spec p N (R : iProp Σ) :
     heapN ⊥ N →
-    {{{ heap_ctx }}} make_caretaker CI () @ p; ⊤
-    {{{ ct l, RET ct; is_caretaker l ct R ∗ enabled l false }}}.
+    {{{ heap_ctx }}} make_caretaker () @ p; ⊤
+    {{{ ct γ, RET ct; is_caretaker γ ct R ∗ enabled γ false }}}.
   Proof.
     iIntros (? Φ) "#Hh HΦ". wp_lam.
     wp_alloc l as "Hl". rewrite -caretaker_split.
@@ -159,15 +155,15 @@ Section proof.
       first by iExists false; iFrame.
     wp_apply (make_sync_spec L  _ _ res with "[$Hh $Hr]"); first done.
       iIntros (sync) "#Hsync". wp_let.
-    iApply ("HΦ" $! _ l). iFrame. iExists sync. by iFrame "# %".
+    set γ := {| sync := sync; loc := l |}.
+    iApply ("HΦ" $! _ γ). iFrame. by iFrame "# %".
   Qed.
 
-  Lemma wrap_spec l ct (R : iProp Σ) (f : val) p1 :
-    {{{ is_caretaker l ct R ∗ can_wrap p1 f R }}} wrap CI ct f @ p; ⊤
+  Lemma wrap_spec p γ ct (R : iProp Σ) (f : val) p1 :
+    {{{ is_caretaker γ ct R ∗ can_wrap p1 f R }}} wrap ct f @ p; ⊤
     {{{ v, RET v; low v }}}.
   Proof.
-    iIntros (Φ) "[Hct #Hf] HΦ".
-      iDestruct "Hct" as (sync) "(%&#Hh&%&#Hsync)". subst.
+    iIntros (Φ) "[(#Hh&%&#Hsync) #Hf] HΦ". subst.
       wp_lam. wp_let. iApply "HΦ". clear Φ.
     rewrite low_val. iAlways. iNext. iIntros (v) "#Hv". simpl_subst.
       wp_proj. rewrite/is_sync.
@@ -182,12 +178,11 @@ Section proof.
     iApply ("HΨ" with "[Hl Hr] Hv"). by iExists true; iFrame.
   Qed.
 
-  Lemma enable_spec l ct (R : iProp Σ) :
-    {{{ is_caretaker l ct R ∗ enabled l false ∗ R }}} enable CI ct @ p; ⊤
-    {{{ RET (); enabled l true }}}.
+  Lemma enable_spec p γ ct (R : iProp Σ) :
+    {{{ is_caretaker γ ct R ∗ enabled γ false ∗ R }}} enable ct @ p; ⊤
+    {{{ RET (); enabled γ true }}}.
   Proof.
-    iIntros (Φ) "[Hct (Hlarge&Hr)] HΦ".
-      iDestruct "Hct" as (sync) "(%&#Hh&%&#Hsync)". subst. wp_lam.
+    iIntros (Φ) "[(#Hh&%&#Hsync) (Hlarge&Hr)] HΦ". subst. wp_lam.
       wp_proj. rewrite/is_sync.
     wp_apply ("Hsync" with "[%]"). iIntros (Ψ) "HR HΨ".
       iDestruct "HR" as (b) "(Hsmall&_)".
@@ -198,12 +193,11 @@ Section proof.
     iApply ("HΨ" with "[Hsmall Hr]"). by iExists true; iFrame. by iApply "HΦ".
   Qed.
 
-  Lemma disable_spec l ct (R : iProp Σ) :
-    {{{ is_caretaker l ct R ∗ enabled l true }}} disable CI ct @ p; ⊤
-    {{{ RET (); enabled l false ∗ R }}}.
+  Lemma disable_spec p γ ct (R : iProp Σ) :
+    {{{ is_caretaker γ ct R ∗ enabled γ true }}} disable ct @ p; ⊤
+    {{{ RET (); enabled γ false ∗ R }}}.
   Proof.
-    iIntros (Φ) "[Hct Hlarge] HΦ".
-      iDestruct "Hct" as (sync) "(%&#Hh&%&#Hsync)". subst. wp_lam.
+    iIntros (Φ) "[(#Hh&%&#Hsync) Hlarge] HΦ". subst. wp_lam.
       wp_proj. rewrite/is_sync.
     wp_apply ("Hsync" with "[%]"). iIntros (Ψ) "HR HΨ".
       iDestruct "HR" as (b) "(Hsmall&Hr)".
@@ -217,7 +211,7 @@ Section proof.
 End proof.
 Typeclasses Opaque is_caretaker enabled.
 
-Definition nonblocking_caretaker `{heapG Σ, LockImpl}
+Definition proof `{heapG Σ, LI : LockImpl}
     (L : lock Σ) : caretaker Σ := {|
   caretaker.enabled_exclusive := enabled_exclusive;
   caretaker.make_caretaker_spec := make_caretaker_spec L;
@@ -234,24 +228,30 @@ End nonblocking_caretaker.
 Module blocking_caretaker.
 Module impl.
 Section impl.
-  Context (LI : LockImpl).
+  Context {LI : LockImpl}.
 
-  Definition make_caretaker : val := newlock' LI.
-  Definition wrap : val := λ: "ct" "f" "x", sync_with LI "ct" (λ: <>, "f" "x").
-  Definition enable : val := release LI.
-  Definition disable : val := acquire LI.
+  Definition make_caretaker : val := newlock'.
+  Definition wrap : val := λ: "ct" "f" "x", sync_with "ct" (λ: <>, "f" "x").
+  Definition enable : val := release.
+  Definition disable : val := acquire.
+(*
+  Instance blocking : CaretakerImpl := {|
+    caretaker.make_caretaker := make_caretaker;
+    caretaker.wrap := wrap;
+    caretaker.enable := enable; caretaker.disable := disable
+  |}.
+*)
 End impl.
 End impl.
 
-Definition blocking (LI : LockImpl) : CaretakerImpl := {|
-  make_caretaker := impl.make_caretaker LI;
-  wrap := impl.wrap LI;
-  enable := impl.enable LI; disable := impl.disable LI
+Instance code {LI : LockImpl} : CaretakerImpl := {|
+  make_caretaker := @impl.make_caretaker LI;
+  wrap := @impl.wrap LI;
+  enable := @impl.enable LI; disable := @impl.disable LI
 |}.
 
 
 (** The CMRA we need. *)
-(* Not bundling heapG, as it may be shared with other users. *)
 Class caretakerG Σ := CaretakerG { caretaker_tokG :> inG Σ (exclR unitC) }.
 Definition caretakerΣ : gFunctors := #[GFunctor (constRF (exclR unitC))].
 
@@ -259,15 +259,13 @@ Instance subG_caretakerΣ {Σ} : subG caretakerΣ Σ → caretakerG Σ.
 Proof. intros [?%subG_inG _]%subG_inv. split; apply _. Qed.
 
 Section proof.
-  Context `{heapG Σ, caretakerG Σ, LI : LockImpl} (L : lock Σ) (p : pbit)
-    (N : namespace).
-  Let CI : CaretakerImpl := blocking LI.
+  Context `{heapG Σ, caretakerG Σ, LI : LockImpl} (L : lock Σ).
 
   (** Definitions *)
   Let name : Type := gname * lock.name L.
 
   Definition is_caretaker (γ : name) (ct : val) (R : iProp Σ) : iProp Σ :=
-    is_lock L N (γ.2) ct R.
+    is_lock L (γ.2) ct R.
 
   Definition enabled (γ : name) (b : bool) : iProp Σ :=
     (own (γ.1) (Excl ()) ∗ (if b then True else locked L (γ.2)))%I.
@@ -292,20 +290,20 @@ Section proof.
 
   (** Operations *)
 
-  Lemma make_caretaker_spec (R : iProp Σ) :
+  Lemma make_caretaker_spec p N (R : iProp Σ) :
     heapN ⊥ N →
-    {{{ heap_ctx }}} make_caretaker CI () @ p; ⊤
+    {{{ heap_ctx }}} make_caretaker () @ p; ⊤
     {{{ ct γ, RET ct; is_caretaker γ ct R ∗ enabled γ false }}}.
   Proof.
     iIntros (? Φ) "#Hh HΦ". rewrite -wp_fupd /make_caretaker.
-    iApply (newlock'_spec _ _ _ _ R with "Hh"); first done.
-      iNext. iIntros (lk γlk) "(#Hlk & Hlocked)".
+    wp_apply (newlock'_spec L _ _ R with "Hh"); first done.
+      iIntros (lk γlk) "(#Hlk & Hlocked)".
     iMod (own_alloc (Excl ())) as (γ) "Hγ"; first done. iModIntro.
     iApply ("HΦ" $! lk (γ, γlk)). iSplitR. done. by iFrame.
   Qed.
 
-  Lemma wrap_spec γ ct (R : iProp Σ) (f : val) p1 :
-    {{{ is_caretaker γ ct R ∗ can_wrap p1 f R }}} wrap CI ct f @ p; ⊤
+  Lemma wrap_spec p γ ct (R : iProp Σ) (f : val) p1 :
+    {{{ is_caretaker γ ct R ∗ can_wrap p1 f R }}} wrap ct f @ p; ⊤
     {{{ v, RET v; low v }}}.
   Proof.
     iIntros (Φ) "#(Hct & Hf) HΦ". wp_lam. wp_lam.
@@ -320,8 +318,8 @@ Section proof.
     by iApply ("HΨ" with "Hr Hv").
   Qed.
 
-  Lemma enable_spec γ ct (R : iProp Σ) :
-    {{{ is_caretaker γ ct R ∗ enabled γ false ∗ R }}} enable CI ct @ p; ⊤
+  Lemma enable_spec p γ ct (R : iProp Σ) :
+    {{{ is_caretaker γ ct R ∗ enabled γ false ∗ R }}} enable ct @ p; ⊤
     {{{ RET (); enabled γ true }}}.
   Proof.
     iIntros (Φ) "(Hct & (Htok & Hlock) & Hr) HΦ". rewrite/enable.
@@ -329,8 +327,8 @@ Section proof.
     by iApply ("HΦ" with "[$Htok]").
   Qed.
 
-  Lemma disable_spec γ ct (R : iProp Σ) :
-    {{{ is_caretaker γ ct R ∗ enabled γ true }}} disable CI ct @ p; ⊤
+  Lemma disable_spec p γ ct (R : iProp Σ) :
+    {{{ is_caretaker γ ct R ∗ enabled γ true }}} disable ct @ p; ⊤
     {{{ RET (); enabled γ false ∗ R }}}.
   Proof.
     iIntros (Φ) "(Hct & (Htok & Hlock)) HΦ". rewrite/disable.
@@ -340,7 +338,7 @@ Section proof.
 End proof.
 Typeclasses Opaque is_caretaker enabled.
 
-Definition blocking_caretaker `{heapG Σ, caretakerG Σ, LockImpl}
+Definition proof `{heapG Σ, caretakerG Σ, LockImpl}
     (L : lock Σ) : caretaker Σ := {|
   caretaker.enabled_exclusive := enabled_exclusive L;
   caretaker.make_caretaker_spec := make_caretaker_spec L;
