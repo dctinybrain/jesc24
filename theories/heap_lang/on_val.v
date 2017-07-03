@@ -1,3 +1,4 @@
+From iris.program_logic Require Import hoare.	(* for [on_val_hoare] *)
 From iris.heap_lang Require Export lifting.
 From iris.heap_lang Require Import proofmode_basics.
 Import uPred.
@@ -72,10 +73,25 @@ Section definition.
     WP subst' x (of_val v) (subst' f (Rec f x e) e) ?{{ Φ }}.
   Proof.
     rewrite on_val_elim. iSplit.
-    - iIntros "#Hv !#". iNext. iIntros (v2 Φ) "Hv2". rewrite -wp_wand.
-      by iApply ("Hv" with "[$Hv2]").
-    - iIntros "#Hv !#". iNext. iIntros (v2) "Hv2".
-      iApply ("Hv" with "[$Hv2] []"). by iIntros.
+    - iIntros "#Hrec !#". iNext. iIntros (v Φ) "Hv". rewrite -wp_wand.
+      by iApply ("Hrec" with "Hv").
+    - iIntros "#Hrec !#". iNext. iIntros (v) "Hv".
+      iApply ("Hrec" with "[$Hv] []"). by iIntros.
+  Qed.
+
+  (**
+	While we use [on_val_rec] to prove things about lifted
+	functions, we characterize them as follows in our paper. (We
+	cannot use so-called Texan triples—otherwise favored in our
+	Coq development—because they bake in a step of computation.)
+  *)
+  Lemma on_val_hoare f x e `{!Closed (f :b: x :b: []) e} :
+    on_val (RecV f x e) ⊣⊢
+    ▷ ∀ v, {{ on_val v }} subst' x (of_val v) (subst' f (Rec f x e) e) ?{{ on_val }}.
+  Proof.
+    rewrite on_val_elim. iSplit.
+    - iIntros "#Hrec". iNext. iIntros (v) "!# Hv". by iApply ("Hrec" with "Hv").
+    - iIntros "#Hrec !#". iNext. iIntros (v) "Hv". by iApply ("Hrec" with "Hv").
   Qed.
 
   Section persistent.
