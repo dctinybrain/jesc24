@@ -154,7 +154,7 @@ Section ftlr.
   Proof.
     iIntros "[IHe1 IHe2]". iIntros (γ) "#Hh #Hγ Happ".
     rewrite adv_expr substitute_expr. iDestruct "Happ" as "(He1&He2)".
-    iApply (wp_on_val_app with "[IHe1 He1] [IHe2 He2]").
+    iApply (wp_on_val_app_bind with "[IHe1 He1]").
     - by iApply ("IHe1" with "Hh Hγ He1").
     - by iApply ("IHe2" with "Hh Hγ He2").
   Qed.
@@ -170,7 +170,7 @@ Section ftlr.
   Lemma confined_un_op op e : confined e -∗ confined (UnOp op e).
   Proof.
     iIntros "IHe". iIntros (γ) "Hh Hγ He". rewrite adv_expr substitute_expr.
-    iApply wp_on_val_un_op. by iApply ("IHe" with "Hh Hγ He").
+    iApply wp_on_val_un_op_bind. by iApply ("IHe" with "Hh Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ confined (UnOp _ _)) => rewrite -confined_un_op.
 
@@ -179,7 +179,7 @@ Section ftlr.
   Proof.
     iIntros "[IHe1 IHe2]". iIntros (γ) "#Hh #Hγ Hop".
     rewrite adv_expr substitute_expr. iDestruct "Hop" as "(He1&He2)".
-    iApply (wp_on_val_bin_op with "[IHe1 He1]").
+    iApply (wp_on_val_bin_op_bind with "[IHe1 He1]").
     - by iApply ("IHe1" with "Hh Hγ He1").
     - by iApply ("IHe2" with "Hh Hγ He2").
   Qed.
@@ -190,7 +190,7 @@ Section ftlr.
   Proof.
     iIntros "(IHe&IHe1&IHe2)". iIntros (γ) "#Hh #Hγ Hif".
     rewrite adv_expr substitute_expr. iDestruct "Hif" as "(He&He1&He2)".
-    wp_apply (wp_on_val_if with "[IHe He]"); last iSplit.
+    wp_apply (wp_any_if_bind with "[IHe He]"); last iSplit.
     - by iApply ("IHe" with "Hh Hγ He").
     - by iApply ("IHe1" with "Hh Hγ He1").
     - by iApply ("IHe2" with "Hh Hγ He2").
@@ -209,7 +209,7 @@ Section ftlr.
   Proof.
     iIntros "[IHe1 IHe2]". iIntros (γ) "#Hh #Hγ Hp".
     rewrite adv_expr substitute_expr. iDestruct "Hp" as "(He1&He2)".
-    iApply (wp_on_val_pair with "[IHe1 He1]").
+    iApply (wp_on_val_pair_bind with "[IHe1 He1]").
     - by iApply ("IHe1" with "Hh Hγ He1").
     - by iApply ("IHe2" with "Hh Hγ He2").
   Qed.
@@ -218,28 +218,28 @@ Section ftlr.
   Lemma confined_fst e : confined e -∗ confined (Fst e).
   Proof.
     iIntros "IHe". iIntros (γ) "Hh Hγ He". rewrite adv_expr substitute_expr.
-    iApply wp_on_val_fst. by iApply ("IHe" with "Hh Hγ He").
+    iApply wp_on_val_fst_bind. by iApply ("IHe" with "Hh Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ confined (Fst _)) => rewrite -confined_fst.
 
   Lemma confined_snd e : confined e -∗ confined (Snd e).
   Proof.
     iIntros "IHe". iIntros (γ) "Hh Hγ He". rewrite adv_expr substitute_expr.
-    iApply wp_on_val_snd. by iApply ("IHe" with "Hh Hγ He").
+    iApply wp_on_val_snd_bind. by iApply ("IHe" with "Hh Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ confined (Snd _)) => rewrite -confined_snd.
 
   Lemma confined_inl e : confined e -∗ confined (InjL e).
   Proof.
     iIntros "IHe". iIntros (γ) "Hh Hγ He". rewrite adv_expr substitute_expr.
-    iApply wp_on_val_inl. by iApply ("IHe" with "Hh Hγ He").
+    iApply wp_on_val_inl_bind. by iApply ("IHe" with "Hh Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ confined (InjL _)) => rewrite -confined_inl.
 
   Lemma confined_inr e : confined e -∗ confined (InjR e).
   Proof.
     iIntros "IHe". iIntros (γ) "Hh Hγ He". rewrite adv_expr substitute_expr.
-    iApply wp_on_val_inr. by iApply ("IHe" with "Hh Hγ He").
+    iApply wp_on_val_inr_bind. by iApply ("IHe" with "Hh Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ confined (InjR _)) => rewrite -confined_inr.
 
@@ -248,11 +248,11 @@ Section ftlr.
   Proof.
     iIntros "(IHe&IHe1&IHe2)". iIntros (γ) "#Hh #Hγ Hc".
     rewrite adv_expr substitute_expr. iDestruct "Hc" as "(He&He1&He2)".
-    wp_apply (wp_on_val_case with "[IHe He]"); last (iIntros (v) "Hv"; iSplit).
+    wp_apply (wp_on_val_case_bind with "[IHe He]"); last (iIntros (v) "Hv"; iSplit).
     - by iApply ("IHe" with "Hh Hγ He").
-    - iApply (wp_on_val_app with "[-Hv] [Hv]").
+    - iApply (wp_on_val_app_bind with "[-Hv]").
       by iApply ("IHe1" with "Hh Hγ He1"). by wp_value.
-    - iApply (wp_on_val_app with "[-Hv] [Hv]").
+    - iApply (wp_on_val_app_bind with "[-Hv]").
       by iApply ("IHe2" with "Hh Hγ He2"). by wp_value.
   Qed.
   Hint Extern 1 (_ ⊢ confined (Case _ _ _)) => rewrite -confined_case.
@@ -264,7 +264,7 @@ Section ftlr.
   Lemma confined_fork e : confined e -∗ confined (Fork e).
   Proof.
     iIntros "IHe". iIntros (γ) "Hh Hγ He". rewrite adv_expr substitute_expr.
-    iApply wp_on_val_fork. by iApply ("IHe" with "Hh Hγ He").
+    wp_apply wp_on_val_fork. by iApply ("IHe" with "Hh Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ confined (Fork _)) => rewrite -confined_fork.
 
@@ -278,14 +278,14 @@ Section ftlr.
   Lemma confined_alloc e : confined e -∗ confined (Alloc e).
   Proof.
     iIntros "IHe". iIntros (γ) "#Hh Hγ He". rewrite adv_expr substitute_expr.
-    iApply (wp_low_alloc with "Hh"). done. by iApply ("IHe" with "Hh Hγ He").
+    iApply (wp_low_alloc_bind with "Hh"). done. by iApply ("IHe" with "Hh Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ confined (Alloc _)) => rewrite -confined_alloc.
 
   Lemma confined_load e : confined e -∗ confined (Load e).
   Proof.
     iIntros "IHe". iIntros (γ) "#Hh Hγ He". rewrite adv_expr substitute_expr.
-    iApply (wp_low_load with "Hh"). done. by iApply ("IHe" with "Hh Hγ He").
+    iApply (wp_low_load_bind with "Hh"). done. by iApply ("IHe" with "Hh Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ confined (Load _)) => rewrite -confined_load.
 
@@ -294,7 +294,7 @@ Section ftlr.
   Proof.
     iIntros "[IHe1 IHe2]". iIntros (γ) "#Hh #Hγ Hstore".
     rewrite adv_expr substitute_expr. iDestruct "Hstore" as "(He1&He2)".
-    iApply (wp_low_store with "Hh [IHe1 He1]"); first done.
+    iApply (wp_low_store_bind with "Hh [IHe1 He1]"); first done.
     - by iApply ("IHe1" with "Hh Hγ He1").
     - by iApply ("IHe2" with "Hh Hγ He2").
   Qed.
@@ -305,7 +305,7 @@ Section ftlr.
   Proof.
     iIntros "(IHe0&IHe1&IHe2)". iIntros (γ) "#Hh #Hγ Hcas".
     rewrite adv_expr substitute_expr. iDestruct "Hcas" as "(He0&He1&He2)".
-    iApply (wp_low_cas with "Hh [IHe0 He0] [IHe1 He1]"); first done.
+    iApply (wp_low_cas_bind with "Hh [IHe0 He0] [IHe1 He1]"); first done.
     - by iApply ("IHe0" with "Hh Hγ He0").
     - by iApply ("IHe1" with "Hh Hγ He1").
     - by iApply ("IHe2" with "Hh Hγ He2").
@@ -629,7 +629,7 @@ Section robust_safety.
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Happ #Hγ He /=".
     rewrite adv_ctx substitute_expr. iDestruct "Happ" as "(HC1&He2)".
-    iApply (wp_on_val_app with "[-He2] [He2]").
+    iApply (wp_on_val_app_bind with "[-He2]").
     - by iApply ("IH" with "Hh HC1 Hγ He").
     - by iApply (ftlr with "Hh Hγ He2").
   Qed.
@@ -639,7 +639,7 @@ Section robust_safety.
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Happ #Hγ He /=".
     rewrite adv_ctx substitute_expr. iDestruct "Happ" as "(He1&HC2)".
-    wp_apply (wp_on_val_app with "[He1]").
+    wp_apply (wp_on_val_app_bind with "[He1]").
     - by iApply (ftlr with "Hh Hγ He1").
     - by iApply ("IH" with "Hh HC2 Hγ He").
   Qed.
@@ -649,7 +649,7 @@ Section robust_safety.
   Proof.
     iIntros "IH". iIntros (γ p e) "Hh HC Hγ He /=".
     rewrite adv_ctx substitute_expr.
-    iApply wp_on_val_un_op. by iApply ("IH" with "Hh HC Hγ He").
+    iApply wp_on_val_un_op_bind. by iApply ("IH" with "Hh HC Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CUnOp _ _)) => rewrite -safe_un_op.
 
@@ -657,7 +657,7 @@ Section robust_safety.
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hop #Hγ He /=".
     rewrite adv_ctx substitute_expr. iDestruct "Hop" as "(HC1&He2)".
-    iApply (wp_on_val_bin_op with "[-He2]").
+    iApply (wp_on_val_bin_op_bind with "[-He2]").
     - by iApply ("IH" with "Hh HC1 Hγ He").
     - by iApply (ftlr with "Hh Hγ He2").
   Qed.
@@ -667,7 +667,7 @@ Section robust_safety.
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hop #Hγ He /=".
     rewrite adv_ctx substitute_expr. iDestruct "Hop" as "(He1&HC2)".
-    iApply (wp_on_val_bin_op with "[He1]").
+    iApply (wp_on_val_bin_op_bind with "[He1]").
     - by iApply (ftlr with "Hh Hγ He1").
     - by iApply ("IH" with "Hh HC2 Hγ He").
   Qed.
@@ -677,7 +677,7 @@ Section robust_safety.
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hif #Hγ He /=".
     rewrite adv_ctx substitute_expr. iDestruct "Hif" as "(HC&He1&He2)".
-    wp_apply (wp_on_val_if with "[-He1 He2]"); last iSplit.
+    wp_apply (wp_any_if_bind with "[-He1 He2]"); last iSplit.
     - by iApply ("IH" with "Hh HC Hγ He").
     - by iApply (ftlr with "Hh Hγ He1").
     - by iApply (ftlr with "Hh Hγ He2").
@@ -688,7 +688,7 @@ Section robust_safety.
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hif #Hγ He /=".
     rewrite adv_ctx substitute_expr. iDestruct "Hif" as "(He0&HC&He2)".
-    wp_apply (wp_on_val_if with "[He0]"); last iSplit.
+    wp_apply (wp_any_if_bind with "[He0]"); last iSplit.
     - by iApply (ftlr with "Hh Hγ He0").
     - by iApply ("IH" with "Hh HC Hγ He").
     - by iApply (ftlr with "Hh Hγ He2").
@@ -699,7 +699,7 @@ Section robust_safety.
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hif #Hγ He /=".
     rewrite adv_ctx substitute_expr. iDestruct "Hif" as "(He0&He1&HC)".
-    wp_apply (wp_on_val_if with "[He0]"); last iSplit.
+    wp_apply (wp_any_if_bind with "[He0]"); last iSplit.
     - by iApply (ftlr with "Hh Hγ He0").
     - by iApply (ftlr with "Hh Hγ He1").
     - by iApply ("IH" with "Hh HC Hγ He").
@@ -710,7 +710,7 @@ Section robust_safety.
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hp #Hγ He /=".
     rewrite adv_ctx substitute_expr. iDestruct "Hp" as "(HC1&He2)".
-    wp_apply (wp_on_val_pair with "[-He2]").
+    wp_apply (wp_on_val_pair_bind with "[-He2]").
     - by iApply ("IH" with "Hh HC1 Hγ He").
     - by iApply (ftlr with "Hh Hγ He2").
   Qed.
@@ -720,7 +720,7 @@ Section robust_safety.
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hp #Hγ He /=".
     rewrite adv_ctx substitute_expr. iDestruct "Hp" as "(He1&HC2)".
-    wp_apply (wp_on_val_pair with "[He1]").
+    wp_apply (wp_on_val_pair_bind with "[He1]").
     - by iApply (ftlr with "Hh Hγ He1").
     - by iApply ("IH" with "Hh HC2 Hγ He").
   Qed.
@@ -730,7 +730,7 @@ Section robust_safety.
   Proof.
     iIntros "IH". iIntros (γ p e) "Hh HC Hγ He /=".
     rewrite adv_ctx substitute_expr.
-    wp_apply wp_on_val_fst. by iApply ("IH" with "Hh HC Hγ He").
+    wp_apply wp_on_val_fst_bind. by iApply ("IH" with "Hh HC Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CFst _)) => rewrite -safe_fst.
 
@@ -738,7 +738,7 @@ Section robust_safety.
   Proof.
     iIntros "IH". iIntros (γ p e) "Hh HC Hγ He /=".
     rewrite adv_ctx substitute_expr.
-    wp_apply wp_on_val_snd. by iApply ("IH" with "Hh HC Hγ He").
+    wp_apply wp_on_val_snd_bind. by iApply ("IH" with "Hh HC Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CSnd _)) => rewrite -safe_snd.
 
@@ -746,7 +746,7 @@ Section robust_safety.
   Proof.
     iIntros "IH". iIntros (γ p e) "Hh HC Hγ He /=".
     rewrite adv_ctx substitute_expr.
-    wp_apply wp_on_val_inl. by iApply ("IH" with "Hh HC Hγ He").
+    wp_apply wp_on_val_inl_bind. by iApply ("IH" with "Hh HC Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CInjL _)) => rewrite -safe_inl.
 
@@ -754,7 +754,7 @@ Section robust_safety.
   Proof.
     iIntros "IH". iIntros (γ p e) "Hh HC Hγ He /=".
     rewrite adv_ctx substitute_expr.
-    wp_apply wp_on_val_inr. by iApply ("IH" with "Hh HC Hγ He").
+    wp_apply wp_on_val_inr_bind. by iApply ("IH" with "Hh HC Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CInjR _)) => rewrite -safe_inr.
 
@@ -762,13 +762,13 @@ Section robust_safety.
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hc #Hγ He /=".
     rewrite adv_ctx substitute_expr. iDestruct "Hc" as "(HC&He1&He2)".
-    wp_apply (wp_on_val_case with "[-He1 He2]");
+    wp_apply (wp_on_val_case_bind with "[-He1 He2]");
       last (iIntros (v0) "Hv0"; iSplit; wp_bind (γ _)).
     - by iApply ("IH" with "Hh HC Hγ He").
     - iApply (ftlr_alt with "Hh Hγ He1"). iIntros (f) "Hf".
-      by iApply (wp_on_val_app with "[Hf] [Hv0]"); wp_value.
+      by iApply (wp_on_val_app_bind with "[Hf] [Hv0]"); wp_value.
     - iApply (ftlr_alt with "Hh Hγ He2"). iIntros (f) "Hf".
-      by iApply (wp_on_val_app with "[Hf] [Hv0]"); wp_value.
+      by iApply (wp_on_val_app_bind with "[Hf] [Hv0]"); wp_value.
   Qed.
   Hint Extern 1 (_ ⊢ safe (CCase _ _ _)) => rewrite -safe_case.
 
@@ -776,13 +776,13 @@ Section robust_safety.
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hc #Hγ He /=".
     rewrite adv_ctx substitute_expr. iDestruct "Hc" as "(He0&HC&He2)".
-    wp_apply (wp_on_val_case with "[He0]");
+    wp_apply (wp_on_val_case_bind with "[He0]");
       last (iIntros (v0) "Hv0"; iSplit; wp_bind (γ _)).
     - by iApply (ftlr with "Hh Hγ He0").
     - rewrite safe_alt. iApply ("IH" with "Hh HC Hγ He"). iIntros (f) "Hf".
-      by iApply (wp_on_val_app with "[Hf] [Hv0]"); wp_value.
+      by iApply (wp_on_val_app_bind with "[Hf] [Hv0]"); wp_value.
     - iApply (ftlr_alt with "Hh Hγ He2"). iIntros (f) "Hf".
-      by iApply (wp_on_val_app with "[Hf] [Hv0]"); wp_value.
+      by iApply (wp_on_val_app_bind with "[Hf] [Hv0]"); wp_value.
   Qed.
   Hint Extern 1 (_ ⊢ safe (CCaseL _ _ _)) => rewrite -safe_case_l.
 
@@ -790,13 +790,13 @@ Section robust_safety.
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hc #Hγ He /=".
     rewrite adv_ctx substitute_expr. iDestruct "Hc" as "(He0&He1&HC)".
-    wp_apply (wp_on_val_case with "[He0]");
+    wp_apply (wp_on_val_case_bind with "[He0]");
       last (iIntros (v0) "Hv0"; iSplit; wp_bind (γ _)).
     - by iApply (ftlr with "Hh Hγ He0").
     - iApply (ftlr_alt with "Hh Hγ He1"). iIntros (f) "Hf".
-      by iApply (wp_on_val_app with "[Hf] [Hv0]"); wp_value.
+      by iApply (wp_on_val_app_bind with "[Hf] [Hv0]"); wp_value.
     - rewrite safe_alt. iApply ("IH" with "Hh HC Hγ He"). iIntros (f) "Hf".
-      by iApply (wp_on_val_app with "[Hf] [Hv0]"); wp_value.
+      by iApply (wp_on_val_app_bind with "[Hf] [Hv0]"); wp_value.
   Qed.
   Hint Extern 1 (_ ⊢ safe (CCaseR _ _ _)) => rewrite -safe_case_r.
 
@@ -807,7 +807,7 @@ Section robust_safety.
   Lemma safe_fork C : safe C -∗ safe (CFork C).
   Proof.
     iIntros "IH". iIntros (γ p e) "Hh HC Hγ He /=".
-    rewrite adv_ctx substitute_expr. iApply wp_on_val_fork.
+    rewrite adv_ctx substitute_expr. wp_apply wp_on_val_fork.
     by iApply ("IH" with "Hh HC Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CFork _)) => rewrite -safe_fork.
@@ -816,7 +816,7 @@ Section robust_safety.
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh HC Hγ He /=".
     rewrite adv_ctx substitute_expr.
-    iApply (wp_low_alloc with "Hh"); first done.
+    iApply (wp_low_alloc_bind with "Hh"); first done.
     by iApply ("IH" with "Hh HC Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CAlloc _)) => rewrite -safe_alloc.
@@ -825,7 +825,7 @@ Section robust_safety.
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh HC Hγ He /=".
     rewrite adv_ctx substitute_expr.
-    iApply (wp_low_load with "Hh"); first done.
+    iApply (wp_low_load_bind with "Hh"); first done.
     by iApply ("IH" with "Hh HC Hγ He").
   Qed.
   Hint Extern 1 (_ ⊢ safe (CLoad _)) => rewrite -safe_load.
@@ -834,7 +834,7 @@ Section robust_safety.
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hp #Hγ He /=".
     rewrite adv_ctx substitute_expr. iDestruct "Hp" as "(HC1&He2)".
-    iApply (wp_low_store with "Hh [-He2]"); first done.
+    iApply (wp_low_store_bind with "Hh [-He2]"); first done.
     - by iApply ("IH" with "Hh HC1 Hγ He").
     - by iApply (ftlr with "Hh Hγ He2").
   Qed.
@@ -844,7 +844,7 @@ Section robust_safety.
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hp #Hγ He /=".
     rewrite adv_ctx substitute_expr. iDestruct "Hp" as "(He1&HC2)".
-    iApply (wp_low_store with "Hh [He1]"); first done.
+    iApply (wp_low_store_bind with "Hh [He1]"); first done.
     - by iApply (ftlr with "Hh Hγ He1").
     - by iApply ("IH" with "Hh HC2 Hγ He").
   Qed.
@@ -854,7 +854,7 @@ Section robust_safety.
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hc #Hγ He /=".
     rewrite adv_ctx substitute_expr. iDestruct "Hc" as "(HC&He1&He2)".
-    wp_apply (wp_low_cas with "Hh [-He1 He2] [He1]"); first done.
+    wp_apply (wp_low_cas_bind with "Hh [-He1 He2] [He1]"); first done.
     - by iApply ("IH" with "Hh HC Hγ He").
     - by iApply (ftlr with "Hh Hγ He1").
     - by iApply (ftlr with "Hh Hγ He2").
@@ -865,7 +865,7 @@ Section robust_safety.
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hc #Hγ He /=".
     rewrite adv_ctx substitute_expr. iDestruct "Hc" as "(He0&HC&He2)".
-    wp_apply (wp_low_cas with "Hh [He0] [-He2]"); first done.
+    wp_apply (wp_low_cas_bind with "Hh [He0] [-He2]"); first done.
     - by iApply (ftlr with "Hh Hγ He0").
     - by iApply ("IH" with "Hh HC Hγ He").
     - by iApply (ftlr with "Hh Hγ He2").
@@ -876,7 +876,7 @@ Section robust_safety.
   Proof.
     iIntros "IH". iIntros (γ p e) "#Hh Hc #Hγ He /=".
     rewrite adv_ctx substitute_expr. iDestruct "Hc" as "(He0&He1&HC)".
-    wp_apply (wp_low_cas with "Hh [He0] [He1]"); first done.
+    wp_apply (wp_low_cas_bind with "Hh [He0] [He1]"); first done.
     - by iApply (ftlr with "Hh Hγ He0").
     - by iApply (ftlr with "Hh Hγ He1").
     - by iApply ("IH" with "Hh HC Hγ He").

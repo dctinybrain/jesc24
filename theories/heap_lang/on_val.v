@@ -240,20 +240,27 @@ Section wp_on_val.
 
   (** Use [on_val_elim] or [on_val_rec] for functions. *)
 
-  Lemma wp_on_val_app e1 e2 :
+  Lemma wp_on_val_app v1 v2 :
+    {{{ on_val Ψ v1 ∗ on_val Ψ v2 }}} App (of_val v1) (of_val v2)
+    ?{{{ v, RET v; on_val Ψ v }}}.
+  Proof.
+    iIntros (Φ) "[Hv1 Hv2] HΦ".
+    case: (decide (is_rec (of_val v1)))=>Hrec;
+      last by iApply wp_stuck_app_nrec.
+    destruct (is_rec_val _ Hrec) as (f&x&e&?&->).
+    rewrite on_val_rec always_elim.
+    wp_apply wp_rec. done. by exists v2. by wp_apply ("Hv1" with "Hv2 HΦ").
+  Qed.
+
+  Lemma wp_on_val_app_bind e1 e2 :
     WP e1 ?{{ on_val Ψ }} -∗
     WP e2 ?{{ on_val Ψ }} -∗
     WP App e1 e2 ?{{ on_val Ψ }}.
   Proof.
     iIntros "He1 He2".
-    wp_bind e1. iApply (wp_wand with "He1"). iIntros (v1) "Hv1".
-    wp_bind e2. iApply (wp_wand with "He2"). iIntros (v2) "Hv2".
-    case: (decide (is_rec (of_val v1)))=>Hrec;
-      last by iApply wp_stuck_app_nrec.
-    destruct (is_rec_val _ Hrec) as (f&x&e&?&->).
-    rewrite on_val_rec always_elim.
-    iApply wp_rec; [done|by exists v2|]. iNext.
-    iApply ("Hv1" with "[$Hv2]"). by iIntros.
+    wp_apply (wp_wand with "He1"). iIntros (v1) "Hv1".
+    wp_apply (wp_wand with "He2"). iIntros (v2) "Hv2".
+    by wp_apply (wp_on_val_app with "[$Hv1 $Hv2]"); auto.
   Qed.
 
   Hint Extern 1 (_ -∗ on_val Ψ (LitV ?lit)) =>
@@ -275,14 +282,21 @@ Section wp_on_val.
     repeat (discriminate 1 || injection 1 as <- || destruct lit); auto.
   Qed.
 
-  Lemma wp_on_val_un_op E op e :
+  Lemma wp_on_val_un_op E op v :
+    {{{ on_val Ψ v }}} UnOp op (of_val v) @ E ?{{{ v', RET v'; on_val Ψ v' }}}.
+  Proof.
+    iIntros (Φ) "Hv HΦ".
+    case EV: (un_op_eval op v)=>[v'|]; last by iApply wp_stuck_un_op.
+    wp_apply wp_un_op; eauto. iApply "HΦ".
+    by iApply (on_val_un_op_eval with "Hv").
+  Qed.
+
+  Lemma wp_on_val_un_op_bind E op e :
     WP e @ E ?{{ on_val Ψ }} -∗
     WP UnOp op e @ E ?{{ on_val Ψ }}.
   Proof.
-    iIntros "He". wp_bind e. iApply (wp_wand with "He"). iIntros (v) "Hv".
-    case EV: (un_op_eval op v)=>[v'|]; last by iApply wp_stuck_un_op.
-    iApply wp_un_op; eauto. iNext.
-    by iApply (on_val_un_op_eval with "Hv").
+    iIntros "He". wp_apply (wp_wand with "He"). iIntros (v) "Hv".
+    by iApply (wp_on_val_un_op with "Hv"); auto.
   Qed.
 
   Lemma on_val_bin_op_eval op v1 v2 v3 :
@@ -294,165 +308,250 @@ Section wp_on_val.
       || destruct lit2); auto.
   Qed.
 
-  Lemma wp_on_val_bin_op E op e1 e2 :
+  Lemma wp_on_val_bin_op E op v1 v2 :
+    {{{ on_val Ψ v1 ∗ on_val Ψ v2 }}} BinOp op (of_val v1) (of_val v2) @ E
+    ?{{{ v, RET v; on_val Ψ v }}}.
+  Proof.
+    iIntros (Φ) "[Hv1 Hv2] HΦ".
+    case EV: (bin_op_eval op v1 v2)=>[v'|]; last by iApply wp_stuck_bin_op.
+    wp_apply wp_bin_op; eauto. iApply "HΦ".
+    by iApply (on_val_bin_op_eval with "[$Hv1 $Hv2]").
+  Qed.
+
+  Lemma wp_on_val_bin_op_bind E op e1 e2 :
     WP e1 @ E ?{{ on_val Ψ }} -∗
     WP e2 @ E ?{{ on_val Ψ }} -∗
     WP BinOp op e1 e2 @ E ?{{ on_val Ψ }}.
   Proof.
     iIntros "He1 He2".
-    wp_bind e1. iApply (wp_wand with "He1"). iIntros (v1) "Hv1".
-    wp_bind e2. iApply (wp_wand with "He2"). iIntros (v2) "Hv2".
-    case EV: (bin_op_eval op v1 v2)=>[v'|]; last by iApply wp_stuck_bin_op.
-    iApply wp_bin_op; eauto. iNext.
-    by iApply (on_val_bin_op_eval with "[$Hv1 $Hv2]").
+    wp_apply (wp_wand with "He1"). iIntros (v1) "Hv1".
+    wp_apply (wp_wand with "He2"). iIntros (v2) "Hv2".
+    by iApply (wp_on_val_bin_op with "[$Hv1 $Hv2]"); auto.
   Qed.
 
-  (* Misnamed. *)
-  Lemma wp_on_val_if E e0 e1 e2 Φ0 Φ :
-    WP e0 @ E ?{{ Φ0 }} -∗
+  Lemma wp_any_if E v e1 e2 Φ :
     ▷ (WP e1 @ E ?{{ Φ }} ∧ WP e2 @ E ?{{ Φ }}) -∗
-    WP If e0 e1 e2 @ E ?{{ Φ }}.
+    WP If (of_val v) e1 e2 @ E ?{{ Φ }}.
   Proof.
-    iIntros "He0 Hei".
-    wp_bind e0. iApply (wp_wand with "He0"). iIntros (v) "Hv".
+    iIntros "Hei".
     case: (decide (is_bool (of_val v)))=>Hbool; last by iApply wp_stuck_if.
     case: Hbool=>-[]->.
     - iApply wp_if_true. iNext. by iDestruct "Hei" as "[? _]".
     - iApply wp_if_false. iNext. by iDestruct "Hei" as "[_ ?]".
   Qed.
 
-  Lemma wp_on_val_pair E e1 e2 :
+  Lemma wp_any_if_bind E e0 e1 e2 Φ0 Φ :
+    WP e0 @ E ?{{ Φ0 }} -∗
+    ▷ (WP e1 @ E ?{{ Φ }} ∧ WP e2 @ E ?{{ Φ }}) -∗
+    WP If e0 e1 e2 @ E ?{{ Φ }}.
+  Proof.
+    iIntros "He0 Hei".
+    wp_apply (wp_wand with "He0"). iIntros (v) "_".
+    by iApply (wp_any_if with "Hei").
+  Qed.
+
+  Lemma wp_on_val_pair E v1 v2 :
+    on_val Ψ v1 -∗ on_val Ψ v2 -∗
+    WP Pair (of_val v1) (of_val v2) @ E ?{{ on_val Ψ }}.
+  Proof. iIntros "Hv1 Hv2". wp_value. simpl_on_val. by iFrame. Qed.
+
+  Lemma wp_on_val_pair_bind E e1 e2 :
     WP e1 @ E ?{{ on_val Ψ }} -∗
     WP e2 @ E ?{{ on_val Ψ }} -∗
     WP Pair e1 e2 @ E ?{{ on_val Ψ }}.
   Proof.
     iIntros "He1 He2".
-    wp_bind e1. iApply (wp_wand with "He1"). iIntros (v1) "Hv1".
-    wp_bind e2. iApply (wp_wand with "He2"). iIntros (v2) "Hv2".
-    wp_value. simpl_on_val. by iFrame.
+    wp_apply (wp_wand with "He1"). iIntros (v1) "Hv1".
+    wp_apply (wp_wand with "He2"). iIntros (v2) "Hv2".
+    by iApply (wp_on_val_pair with "Hv1 Hv2").
   Qed.
 
-  Lemma wp_on_val_fst E e :
+  Lemma wp_on_val_fst E v :
+    {{{ on_val Ψ v }}} Fst (of_val v) @ E ?{{{ v', RET v'; on_val Ψ v' }}}.
+  Proof.
+    iIntros (Φ) "Hv HΦ".
+    case: (decide (is_pair (of_val v)))=>Hp; last by iApply wp_stuck_fst.
+    destruct (is_pair_val _ Hp) as (v1&v2&->).
+    wp_apply wp_fst; [done|by exists v2|]. iApply "HΦ".
+    by iDestruct "Hv" as "(?&_)".
+  Qed.
+
+  Lemma wp_on_val_fst_bind E e :
     WP e @ E ?{{ on_val Ψ }} -∗
     WP Fst e @ E ?{{ on_val Ψ }}.
   Proof.
-    iIntros "He". wp_bind e. iApply (wp_wand with "He"). iIntros (v) "Hv".
-    case: (decide (is_pair (of_val v)))=>Hp; last by iApply wp_stuck_fst.
-    destruct (is_pair_val _ Hp) as (v1&v2&->).
-    iApply wp_fst; [done|by exists v2|]. iNext.
-    by iDestruct "Hv" as "(Hv1&_)".
+    iIntros "He".
+    wp_apply (wp_wand with "He"). iIntros (v) "Hv".
+    by iApply (wp_on_val_fst with "Hv"); auto.
   Qed.
 
-  Lemma wp_on_val_snd E e :
+  Lemma wp_on_val_snd E v :
+    {{{ on_val Ψ v }}} Snd (of_val v) @ E ?{{{ v', RET v'; on_val Ψ v' }}}.
+  Proof.
+    iIntros (Φ) "Hv HΦ".
+    case: (decide (is_pair (of_val v)))=>Hp; last by iApply wp_stuck_snd.
+    destruct (is_pair_val _ Hp) as (v1&v2&->).
+    wp_apply wp_snd; [by exists v1|done|]. iApply "HΦ".
+    by iDestruct "Hv" as "(_&?)".
+  Qed.
+
+  Lemma wp_on_val_snd_bind E e :
     WP e @ E ?{{ on_val Ψ }} -∗
     WP Snd e @ E ?{{ on_val Ψ }}.
   Proof.
-    iIntros "He". wp_bind e. iApply (wp_wand with "He"). iIntros (v) "Hv".
-    case: (decide (is_pair (of_val v)))=>Hp; last by iApply wp_stuck_snd.
-    destruct (is_pair_val _ Hp) as (v1&v2&->).
-    iApply wp_snd; [by exists v1|done|]. iNext.
-    by iDestruct "Hv" as "(_&Hv2)".
+    iIntros "He". wp_apply (wp_wand with "He"). iIntros (v) "Hv".
+    by iApply (wp_on_val_snd with "Hv"); auto.
   Qed.
 
-  Lemma wp_on_val_inl E e :
+  Lemma wp_on_val_inl E v :
+    on_val Ψ v -∗
+    WP InjL (of_val v) @ E ?{{ on_val Ψ }}.
+  Proof. iIntros "Hv". wp_value. simpl_on_val. by iNext. Qed.
+
+  Lemma wp_on_val_inl_bind E e :
     WP e @ E ?{{ on_val Ψ }} -∗
     WP InjL e @ E ?{{ on_val Ψ }}.
   Proof.
-    iIntros "He". wp_bind e. iApply (wp_wand with "He"). iIntros (v) "Hv".
-    wp_value. simpl_on_val. by iNext.
+    iIntros "He". wp_apply (wp_wand with "He"). iIntros (v) "Hv".
+    by iApply (wp_on_val_inl with "Hv").
   Qed.
 
-  Lemma wp_on_val_inr E e :
+  Lemma wp_on_val_inr E v :
+    on_val Ψ v -∗
+    WP InjR (of_val v) @ E ?{{ on_val Ψ }}.
+  Proof. iIntros "Hv". wp_value. simpl_on_val. by iNext. Qed.
+
+  Lemma wp_on_val_inr_bind E e :
     WP e @ E ?{{ on_val Ψ }} -∗
     WP InjR e @ E ?{{ on_val Ψ }}.
   Proof.
-    iIntros "He". wp_bind e. iApply (wp_wand with "He"). iIntros (v) "Hv".
-    wp_value. simpl_on_val. by iNext.
+    iIntros "He". wp_apply (wp_wand with "He"). iIntros (v) "Hv".
+    by iApply (wp_on_val_inr with "Hv").
   Qed.
 
-  Lemma wp_on_val_case E e0 e1 e2 Φ :
+  Lemma wp_on_val_case E v e1 e2 Φ :
+    on_val Ψ v -∗
+    ▷ (∀ v0, on_val Ψ v0 -∗
+      WP App e1 (of_val v0) @ E ?{{ Φ }} ∧
+      WP App e2 (of_val v0) @ E ?{{ Φ }}) -∗
+    WP Case (of_val v) e1 e2 @ E ?{{ Φ }}.
+  Proof.
+    iIntros "Hv Hk".
+    case: (decide (is_inl (of_val v) ∨ is_inr (of_val v)))=>Hc;
+      last by iApply wp_stuck_case.
+    case: Hc=>[Hinl | Hinr].
+    - destruct (is_inl_val _ Hinl) as (v0&->). simpl.
+      iApply wp_case_inl; first by exists v0. iNext.
+      setoid_rewrite and_elim_l. by iApply ("Hk" with "Hv").
+    - destruct (is_inr_val _ Hinr) as (v0&->). simpl.
+      iApply wp_case_inr; first by exists v0. iNext.
+      setoid_rewrite and_elim_r. by iApply ("Hk" with "Hv").
+  Qed.
+
+  Lemma wp_on_val_case_bind E e0 e1 e2 Φ :
     WP e0 @ E ?{{ on_val Ψ }} -∗
     ▷ (∀ v0, on_val Ψ v0 -∗
       WP App e1 (of_val v0) @ E ?{{ Φ }} ∧
       WP App e2 (of_val v0) @ E ?{{ Φ }}) -∗
     WP Case e0 e1 e2 @ E ?{{ Φ }}.
   Proof.
-    iIntros "He0 Hk".
-    wp_bind e0. iApply (wp_wand with "He0"). iIntros (v) "Hv".
-    case: (decide (is_inl (of_val v) ∨ is_inr (of_val v)))=>Hc;
-      last by iApply wp_stuck_case.
-    case: Hc=>[Hinl | Hinr].
-    - destruct (is_inl_val _ Hinl) as (v0&->).
-      iApply wp_case_inl; first by exists v0. iNext.
-      setoid_rewrite and_elim_l. by iApply ("Hk" with "[$Hv]").
-    - destruct (is_inr_val _ Hinr) as (v0&->).
-      iApply wp_case_inr; first by exists v0. iNext.
-      setoid_rewrite and_elim_r. by iApply ("Hk" with "[$Hv]").
+    iIntros "He0 Hk". wp_apply (wp_wand with "He0"). iIntros (v) "Hv".
+    by iApply (wp_on_val_case with "Hv").
   Qed.
 
   (** We don't need compatibility for [Assert e]. *)
 
-  Lemma wp_on_val_fork p E e Φ1 :
-    WP e @ p; ⊤ {{ Φ1 }} -∗
+  Lemma wp_on_val_fork p E e Φ :
+    ▷ WP e @ p; ⊤ {{ Φ }} -∗
     WP Fork e @ p; E {{ on_val Ψ }}.
   Proof.
-    iIntros "He". wp_apply wp_fork. iSplitR "He"; first by simpl_on_val.
-    iApply (wp_wand with "He"). by iIntros.
+    iIntros "He". wp_apply wp_fork. iSplitR. by simpl_on_val.
+    by iApply (wp_wand with "He"); auto.
   Qed.
 
   (** The heap may be inspected or modified according to [Ψ]. *)
 
-  Lemma wp_on_val_alloc p E e Φ :
+  Lemma wp_on_val_alloc_bind p E e Φ :
     WP e @ p; E {{ Φ }} -∗
     (∀ v, Φ v -∗ WP Alloc (of_val v) @ p; E {{ on_val Ψ }}) -∗
     WP Alloc e @ p; E {{ on_val Ψ }}.
   Proof.
     iIntros "He Halloc".
-    wp_bind e. iApply (wp_wand with "He"). iIntros (v) "Hv".
+    wp_apply (wp_wand with "He"). iIntros (v) "Hv".
     by iApply ("Halloc" with "Hv").
   Qed.
 
-  Lemma wp_on_val_load E e :
-    WP e @ E ?{{ on_val Ψ }} -∗
-    (∀ l, Ψ l -∗ WP Load (Loc l) @ E ?{{ on_val Ψ }}) -∗
-    WP Load e @ E ?{{ on_val Ψ }}.
+  Lemma wp_on_val_load E v Φ :
+    on_val Ψ v -∗
+    (∀ l, Ψ l -∗ WP Load (Loc l) @ E ?{{ Φ }}) -∗
+    WP Load (of_val v) @ E ?{{ Φ }}.
   Proof.
-    iIntros "He Hload".
-    wp_bind e. iApply (wp_wand with "He"). iIntros (v) "Hv".
+    iIntros "Hv Hload".
     case: (decide (is_loc (of_val v)))=>Hl; last by iApply wp_stuck_load.
     destruct (is_loc_val _ Hl) as (l&->). rewrite on_val_elim.
     by iApply ("Hload" with "Hv").
   Qed.
 
-  Lemma wp_on_val_store E e1 e2 :
-    WP e1 @ E ?{{ on_val Ψ }} -∗
-    WP e2 @ E ?{{ on_val Ψ }} -∗
-    (∀ l1 v2, Ψ l1 -∗ on_val Ψ v2 -∗
-     WP Store (Loc l1) (of_val v2) @ E ?{{ on_val Ψ }}) -∗
-    WP Store e1 e2 @ E ?{{ on_val Ψ }}.
+  Lemma wp_on_val_load_bind E e Φ :
+    WP e @ E ?{{ on_val Ψ }} -∗
+    (∀ l, Ψ l -∗ WP Load (Loc l) @ E ?{{ Φ }}) -∗
+    WP Load e @ E ?{{ Φ }}.
   Proof.
-    iIntros "He1 He2 Hstore".
-    wp_bind e1. iApply (wp_wand with "He1"). iIntros (v1) "Hv1".
-    wp_bind e2. iApply (wp_wand with "He2"). iIntros (v2) "Hv2".
-    case: (decide (is_loc (of_val v1)))=>Hl; last by iApply wp_stuck_store.
-    destruct (is_loc_val _ Hl) as (l1&->). rewrite on_val_elim.
-    by iApply ("Hstore" with "Hv1 Hv2").
+    iIntros "He Hload".
+    wp_apply (wp_wand with "He"). iIntros (v) "Hv".
+    by iApply (wp_on_val_load with "Hv Hload").
   Qed.
 
-  Lemma wp_on_val_cas E e0 e1 e2 Φ1 :
-    WP e0 @ E ?{{ on_val Ψ }} -∗
-    WP e1 @ E ?{{ Φ1 }} -∗
-    WP e2 @ E ?{{ on_val Ψ }} -∗
-    (∀ l0 v1 v2, Ψ l0 -∗ on_val Ψ v2 -∗
-     WP CAS (Loc l0) (of_val v1) (of_val v2) @ E ?{{ on_val Ψ }}) -∗
-    WP CAS e0 e1 e2 @ E ?{{ on_val Ψ }}.
+  Lemma wp_on_val_store E v1 v2 Φ :
+    on_val Ψ v1 -∗
+    (∀ l1, Ψ l1 -∗ WP Store (Loc l1) (of_val v2) @ E ?{{ Φ }}) -∗
+    WP Store (of_val v1) (of_val v2) @ E ?{{ Φ }}.
   Proof.
-    iIntros "He0 He1 He2 Hcas".
-    wp_bind e0. iApply (wp_wand with "He0"). iIntros (v0) "Hv0".
-    wp_bind e1. iApply (wp_wand with "He1"). iIntros (v1) "_".
-    wp_bind e2. iApply (wp_wand with "He2"). iIntros (v2) "Hv2".
+    iIntros "Hv1 Hstore".
+    case: (decide (is_loc (of_val v1)))=>Hl; last by iApply wp_stuck_store.
+    destruct (is_loc_val _ Hl) as (l1&->). rewrite on_val_elim.
+    by iApply ("Hstore" with "Hv1").
+  Qed.
+
+  Lemma wp_on_val_store_bind E e1 e2 Φ2 Φ :
+    WP e1 @ E ?{{ on_val Ψ }} -∗
+    WP e2 @ E ?{{ Φ2 }} -∗
+    (∀ l1 v2, Ψ l1 -∗ Φ2 v2 -∗
+     WP Store (Loc l1) (of_val v2) @ E ?{{ Φ }}) -∗
+    WP Store e1 e2 @ E ?{{ Φ }}.
+  Proof.
+    iIntros "He1 He2 Hstore".
+    wp_apply (wp_wand with "He1"). iIntros (v1) "Hv1".
+    wp_apply (wp_wand with "He2"). iIntros (v2) "Hv2".
+    iApply (wp_on_val_store with "Hv1"). iIntros (l) "Hl".
+    by iApply ("Hstore" with "Hl Hv2").
+  Qed.
+
+  Lemma wp_on_val_cas E v0 v1 v2 Φ :
+    on_val Ψ v0 -∗
+    (∀ l0, Ψ l0 -∗
+     WP CAS (Loc l0) (of_val v1) (of_val v2) @ E ?{{ Φ }}) -∗
+    WP CAS (of_val v0) (of_val v1) (of_val v2) @ E ?{{ Φ }}.
+  Proof.
+    iIntros "Hv0 Hcas".
     case: (decide (is_loc (of_val v0)))=>Hl; last by iApply wp_stuck_cas.
     destruct (is_loc_val _ Hl) as (l0&->). rewrite on_val_elim.
-    by iApply ("Hcas" with "Hv0 Hv2").
+    iApply ("Hcas" with "Hv0").
+  Qed.
+
+  Lemma wp_on_val_cas_bind E e0 e1 e2 Φ1 Φ2 Φ :
+    WP e0 @ E ?{{ on_val Ψ }} -∗
+    WP e1 @ E ?{{ Φ1 }} -∗
+    WP e2 @ E ?{{ Φ2 }} -∗
+    (∀ l0 v1 v2, Ψ l0 -∗ Φ2 v2 -∗
+     WP CAS (Loc l0) (of_val v1) (of_val v2) @ E ?{{ Φ }}) -∗
+    WP CAS e0 e1 e2 @ E ?{{ Φ }}.
+  Proof.
+    iIntros "He0 He1 He2 Hcas".
+    wp_apply (wp_wand with "He0"). iIntros (v0) "Hv0".
+    wp_apply (wp_wand with "He1"). iIntros (v1) "_".
+    wp_apply (wp_wand with "He2"). iIntros (v2) "Hv2".
+    iApply (wp_on_val_cas with "Hv0"). iIntros (l) "Hl".
+    by iApply ("Hcas" with "Hl Hv2").
   Qed.
 End wp_on_val.

@@ -6,6 +6,7 @@ From iris.base_logic.lib Require Import own fractional.
 From iris.base_logic Require Import big_op.
 From iris.heap_lang Require addenda.
 From iris.heap_lang Require Export on_val lifting.
+From iris.heap_lang Require Import proofmode_basics.
 From iris.proofmode Require Import tactics.
 Import uPred.
 Import addenda.fin_maps.
@@ -879,30 +880,29 @@ Section derived.
   Qed.
 
   (** We can always eliminate low values. *)
-  Lemma wp_low_alloc E e :
+  Lemma wp_low_alloc_bind E e :
     ↑heapN ⊆ E →
     heap_ctx -∗
     WP e @ E ?{{ low }} -∗
     WP Alloc e @ E ?{{ low }}.
   Proof.
     iIntros (?) "Hh He".
-    iApply (wp_on_val_alloc with "He [Hh]"). iIntros (v) "Hv".
-    iApply (wp_alloc_low with "[$Hh Hv]"); auto.
-    iNext. iIntros. by simpl_on_val.
+    wp_apply (wp_wand with "He"). iIntros (v) "Hv".
+    by iApply (wp_alloc_low with "[$Hh Hv]"); auto.
   Qed.
 
-  Lemma wp_low_load E e :
+  Lemma wp_low_load_bind E e :
     ↑heapN ⊆ E →
     heap_ctx -∗
     WP e @ E ?{{ low }} -∗
     WP Load e @ E ?{{ low }}.
   Proof.
     iIntros (?) "Hh He".
-    iApply (wp_on_val_load with "He [Hh]"). iIntros (l) "Hl".
+    iApply (wp_on_val_load_bind with "He"). iIntros (l) "Hl".
     by iApply (wp_load_low with "[$Hh Hl]"); auto.
   Qed.
 
-  Lemma wp_low_store E e1 e2:
+  Lemma wp_low_store_bind E e1 e2:
     ↑heapN ⊆ E →
     heap_ctx -∗
     WP e1 @ E ?{{ low }} -∗
@@ -910,12 +910,11 @@ Section derived.
     WP Store e1 e2 @ E ?{{ low }}.
   Proof.
     iIntros (?) "Hh He1 He2".
-    iApply (wp_on_val_store with "He1 He2 [Hh]"). iIntros (l1 v2) "Hl1 Hv2".
-    iApply (wp_store_low with "[$Hh Hl1 Hv2]"); try auto.
-    iNext. iIntros. by simpl_on_val.
+    iApply (wp_on_val_store_bind with "He1 He2 [Hh]"). iIntros (l1 v2) "Hl1 Hv2".
+    by iApply (wp_store_low with "[$Hh Hl1 Hv2]"); auto.
   Qed.
 
-  Lemma wp_low_cas E e0 e1 e2 Φ1 :
+  Lemma wp_low_cas_bind E e0 e1 e2 Φ1 :
     ↑heapN ⊆ E →
     heap_ctx -∗
     WP e0 @ E ?{{ low }} -∗
@@ -924,9 +923,8 @@ Section derived.
     WP CAS e0 e1 e2 @ E ?{{ low }}.
   Proof.
     iIntros (?) "Hh He0 He1 He2".
-    iApply (wp_on_val_cas with "He0 He1 He2 [Hh]").
+    iApply (wp_on_val_cas_bind with "He0 He1 He2").
     iIntros (l0 v1 v2) "Hl0 Hv2".
-    iApply (wp_cas_low with "[$Hh Hl0 Hv2]"); try auto.
-    iNext. iIntros. by simpl_on_val.
+    by iApply (wp_cas_low with "[$Hh $Hl0 $Hv2]"); auto.
   Qed.
 End derived.

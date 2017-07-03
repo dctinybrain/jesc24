@@ -534,19 +534,10 @@ Section proof.
   Proof.
     iIntros (Φ) "(#[Hh Hsync] & #Hv') HΦ".
     wp_apply (wp_alloc_low with "[$Hh]"); auto; first by simpl_low.
-      iIntros (k) "Hk". wp_let.
-    (* TODO: Hack. *)
-    (*
-     * [wp_on_val_app] should be a Texan triple and there's no call to
-     * state those lemmas in terms of expressions.
-     *)
-    wp_bind (v' k). iDestruct (wp_on_val_app lowloc v' k) as "Happ".
-      rewrite (wp_wand _ _ (v' k)%E _ _).
-    wp_apply ("Happ" with "[Hv'] [Hk]");
-      [by rewrite low_val_eq|by rewrite low_loc on_val_elim|].
-    iIntros (?) "_". wp_seq. iClear "Happ".
-    (* TODO: End hack. *)
-    rewrite/is_sync.
+      iIntros (k) "Hk". wp_let. wp_bind (v' k).
+    wp_apply (wp_on_val_app _ _ k with "[$Hv' Hk]");
+      first by rewrite low_loc; simpl_on_val. iIntros (?) "_".
+      wp_seq. rewrite/is_sync.
     wp_apply ("Hsync" with "[%]"). iClear "Hsync". iIntros (Ψ) "HR HΨ".
       iDestruct "HR" as (map m) "(Hl & #Hm & Hw & #Hinv)". wp_load.
     wp_apply (map_lookup_partial_spec _ _  _ k with "Hm")=>//.
