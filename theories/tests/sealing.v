@@ -5,27 +5,6 @@ From iris.tests Require Import even.
 From iris.heap_lang Require Import notation proofmode.
 Import sealing.intf.
 
-Section lifting.	(* TODO: Hoist. *)
-  Context `{ownPG heap_lang Σ}.
-  Local Hint Resolve to_of_val.
-  Implicit Types n : Z.
-  Implicit Types v : val.
-
-  Lemma wp_stuck_lt_l E v1 v2 Φ :
-    ¬ is_int (of_val v1) → WP v1 ≤ v2 @ E ?{{ Φ }}%I.
-  Proof.
-    move=>Hv1. iApply wp_stuck_bin_op=>//.
-    case: v1 Hv1 => //. case=>//. rewrite/is_int. by naive_solver.
-  Qed.
-
-  Lemma wp_stuck_lt_r E n1 v2 Φ :
-    ¬ is_int (of_val v2) → WP #n1 ≤ v2 @ E ?{{ Φ }}%I.
-  Proof.
-    move=>Hv2. iApply wp_stuck_bin_op=>//.
-    case: v2 Hv2 => //. case=>//. rewrite/is_int. by naive_solver.
-  Qed.
-End lifting.
-
 (** * Protected interval manipulating routines *)
 (**
 	Other than the snapshot operation, this is Morris' example.

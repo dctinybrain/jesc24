@@ -228,8 +228,13 @@ Local Hint Extern 1 (uPred_valid True) => unfold uPred_valid.
 
 (** * Eliminating lifted values *)
 (**
-	These lemmas are useful at the boundary between verified and
-	adversarial code.
+	The following lemmas comprise a set of non-progressive triples
+	for working with lifted values. They're useful at the boundary
+	between verified and adversarial code.
+
+	The [*_bind] lemmas support the robust safety proof and are
+	otherwise useless as, when verifying code, our language-level
+	tactics automate binding.
 *)
 Section wp_on_val.
   Context `{ownPG heap_lang Σ} (Ψ : loc → iProp Σ).
@@ -241,7 +246,7 @@ Section wp_on_val.
   (** Use [on_val_elim] or [on_val_rec] for functions. *)
 
   Lemma wp_on_val_app v1 v2 :
-    {{{ on_val Ψ v1 ∗ on_val Ψ v2 }}} App (of_val v1) (of_val v2)
+    {{{ on_val Ψ v1 ∗ ▷ on_val Ψ v2 }}} App (of_val v1) (of_val v2)
     ?{{{ v, RET v; on_val Ψ v }}}.
   Proof.
     iIntros (Φ) "[Hv1 Hv2] HΦ".
@@ -263,6 +268,12 @@ Section wp_on_val.
     by wp_apply (wp_on_val_app with "[$Hv1 $Hv2]"); auto.
   Qed.
 
+  (**
+	The point of the following lemma is that the unary operators
+	we use are robustly safe. (It would be nice to factor things
+	so examples could define and use whatever robustly safe unary
+	operators they need—see the TODO in `./lang.v`.)
+  *)
   Hint Extern 1 (_ -∗ on_val Ψ (LitV ?lit)) =>
     rewrite (on_val_elim Ψ (LitV lit)).
   Hint Extern 1 (_ -∗ on_val Ψ UnitV) =>
@@ -283,7 +294,8 @@ Section wp_on_val.
   Qed.
 
   Lemma wp_on_val_un_op E op v :
-    {{{ on_val Ψ v }}} UnOp op (of_val v) @ E ?{{{ v', RET v'; on_val Ψ v' }}}.
+    {{{ ▷ on_val Ψ v }}} UnOp op (of_val v) @ E
+    ?{{{ v', RET v'; on_val Ψ v' }}}.
   Proof.
     iIntros (Φ) "Hv HΦ".
     case EV: (un_op_eval op v)=>[v'|]; last by iApply wp_stuck_un_op.
@@ -296,9 +308,10 @@ Section wp_on_val.
     WP UnOp op e @ E ?{{ on_val Ψ }}.
   Proof.
     iIntros "He". wp_apply (wp_wand with "He"). iIntros (v) "Hv".
-    by iApply (wp_on_val_un_op with "Hv"); auto.
+    by iApply (wp_on_val_un_op with ">[$Hv]"); auto.
   Qed.
 
+  (** All binary operators are robustly safe. *)
   Lemma on_val_bin_op_eval op v1 v2 v3 :
     bin_op_eval op v1 v2 = Some v3 →
     on_val Ψ v1 ∗ on_val Ψ v2 -∗ on_val Ψ v3.
@@ -309,7 +322,7 @@ Section wp_on_val.
   Qed.
 
   Lemma wp_on_val_bin_op E op v1 v2 :
-    {{{ on_val Ψ v1 ∗ on_val Ψ v2 }}} BinOp op (of_val v1) (of_val v2) @ E
+    {{{ ▷ on_val Ψ v1 ∗ ▷ on_val Ψ v2 }}} BinOp op (of_val v1) (of_val v2) @ E
     ?{{{ v, RET v; on_val Ψ v }}}.
   Proof.
     iIntros (Φ) "[Hv1 Hv2] HΦ".
@@ -326,7 +339,7 @@ Section wp_on_val.
     iIntros "He1 He2".
     wp_apply (wp_wand with "He1"). iIntros (v1) "Hv1".
     wp_apply (wp_wand with "He2"). iIntros (v2) "Hv2".
-    by iApply (wp_on_val_bin_op with "[$Hv1 $Hv2]"); auto.
+    by iApply (wp_on_val_bin_op with ">[$Hv1 $Hv2]"); auto.
   Qed.
 
   Lemma wp_any_if E v e1 e2 Φ :
@@ -351,7 +364,7 @@ Section wp_on_val.
   Qed.
 
   Lemma wp_on_val_pair E v1 v2 :
-    on_val Ψ v1 -∗ on_val Ψ v2 -∗
+    ▷ on_val Ψ v1 -∗ ▷ on_val Ψ v2 -∗
     WP Pair (of_val v1) (of_val v2) @ E ?{{ on_val Ψ }}.
   Proof. iIntros "Hv1 Hv2". wp_value. simpl_on_val. by iFrame. Qed.
 
@@ -363,7 +376,7 @@ Section wp_on_val.
     iIntros "He1 He2".
     wp_apply (wp_wand with "He1"). iIntros (v1) "Hv1".
     wp_apply (wp_wand with "He2"). iIntros (v2) "Hv2".
-    by iApply (wp_on_val_pair with "Hv1 Hv2").
+    by iApply (wp_on_val_pair with ">[$Hv1] >[$Hv2]").
   Qed.
 
   Lemma wp_on_val_fst E v :
@@ -404,29 +417,29 @@ Section wp_on_val.
   Qed.
 
   Lemma wp_on_val_inl E v :
-    on_val Ψ v -∗
+    ▷ on_val Ψ v -∗
     WP InjL (of_val v) @ E ?{{ on_val Ψ }}.
-  Proof. iIntros "Hv". wp_value. simpl_on_val. by iNext. Qed.
+  Proof. iIntros "Hv". wp_value. by simpl_on_val. Qed.
 
   Lemma wp_on_val_inl_bind E e :
     WP e @ E ?{{ on_val Ψ }} -∗
     WP InjL e @ E ?{{ on_val Ψ }}.
   Proof.
     iIntros "He". wp_apply (wp_wand with "He"). iIntros (v) "Hv".
-    by iApply (wp_on_val_inl with "Hv").
+    by iApply (wp_on_val_inl with ">[$Hv]").
   Qed.
 
   Lemma wp_on_val_inr E v :
-    on_val Ψ v -∗
+    ▷ on_val Ψ v -∗
     WP InjR (of_val v) @ E ?{{ on_val Ψ }}.
-  Proof. iIntros "Hv". wp_value. simpl_on_val. by iNext. Qed.
+  Proof. iIntros "Hv". wp_value. by simpl_on_val. Qed.
 
   Lemma wp_on_val_inr_bind E e :
     WP e @ E ?{{ on_val Ψ }} -∗
     WP InjR e @ E ?{{ on_val Ψ }}.
   Proof.
     iIntros "He". wp_apply (wp_wand with "He"). iIntros (v) "Hv".
-    by iApply (wp_on_val_inr with "Hv").
+    by iApply (wp_on_val_inr with ">[$Hv]").
   Qed.
 
   Lemma wp_on_val_case E v e1 e2 Φ :
@@ -441,10 +454,10 @@ Section wp_on_val.
       last by iApply wp_stuck_case.
     case: Hc=>[Hinl | Hinr].
     - destruct (is_inl_val _ Hinl) as (v0&->). simpl.
-      iApply wp_case_inl; first by exists v0. iNext.
+      wp_apply wp_case_inl; first by exists v0.
       setoid_rewrite and_elim_l. by iApply ("Hk" with "Hv").
     - destruct (is_inr_val _ Hinr) as (v0&->). simpl.
-      iApply wp_case_inr; first by exists v0. iNext.
+      wp_apply wp_case_inr; first by exists v0.
       setoid_rewrite and_elim_r. by iApply ("Hk" with "Hv").
   Qed.
 

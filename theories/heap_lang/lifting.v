@@ -229,6 +229,23 @@ Proof.
   case: Ki Hfill => //= ?? [] ???; subst; apply: stuck_by_val Hstep; naive_solver.
 Qed.
 
+(** A few derived rules for stuck binary operators. *)
+Lemma wp_stuck_lt_l E v1 v2 Φ :
+  ¬ is_int (of_val v1) →
+  WP BinOp LeOp (of_val v1) (of_val v2) @ E ?{{ Φ }}%I.
+Proof.
+  move=>Hv1. iApply wp_stuck_bin_op=>//.
+  case: v1 Hv1 => //. case=>//. rewrite/is_int. by naive_solver.
+Qed.
+
+Lemma wp_stuck_lt_r E n1 v2 Φ :
+  ¬ is_int (of_val v2) →
+  WP BinOp LeOp (Lit $ LitInt n1) (of_val v2) @ E ?{{ Φ }}%I.
+Proof.
+  move=>Hv2. iApply wp_stuck_bin_op=>//.
+  case: v2 Hv2 => //. case=>//. rewrite/is_int. by naive_solver.
+Qed.
+
 Lemma wp_bin_op p E op e1 e2 v1 v2 v' Φ :
   to_val e1 = Some v1 → to_val e2 = Some v2 →
   bin_op_eval op v1 v2 = Some v' →
