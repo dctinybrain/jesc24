@@ -248,11 +248,13 @@ End witness.
 <<
 	let r = ref None in
 	let seal x = λ _, r := Some x in
-	let unseal f = (r := None; f (); valOf (! r)) in
+	let unseal f = r := None; f (); let x = valOf (! r) in (r := None; x) in
 	(seal, unseal)
 >>
 	could be adpated to the concurrent setting (e.g., using
-	reentrant locks).
+	reentrant locks). (We thank Matt Rice for explaining to us
+	that the trailing "r := None" in this implementation of unseal
+	is essential [Toby Murray's thesis, page 49].)
 
 	Attribution: This sequential implementation isn't new. It is
 	based on E language code at
@@ -260,6 +262,7 @@ End witness.
 	http://wiki.erights.org/wiki/Walnut/Secure_Distributed_Computing/Capability_Patterns#Sealers_and_Unsealers
 >>
 	(accessed in February 2017).
+
 *)
 Module morris_sealing.
 Import witness.
