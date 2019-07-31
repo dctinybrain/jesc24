@@ -1,13 +1,16 @@
-This is the OCPL Coq development. It's a fork of the Iris Coq
-development (started a bit before the Iris 3.0 release) supporting the
-paper
+This is the OCPL Coq development. It's a fork of the [Iris Coq
+development](http://iris-project.org) (started a bit before the Iris
+3.0 release) supporting the paper
 
 	Robust and Compositional Verification of Object Capability
 	Patterns
 
-See ./Iris_README.md for compilation instructions. We've tested the
-development under Coq 8.6 (January 2017) and ssreflect 1.6.1, as well
-as a few earlier versions.
+The development depends only on Coq, and we've tested it under Coq
+8.9.1 (July 2019). After installing Coq (e.g., [via
+Opam](https://coq.inria.fr/opam-using.html), a simple `make -jN`,
+where `N` is the number of cores you have, should compile everything.
+The file `./Iris_README.md` contains (outdated build instructions and)
+a brief tour of the version of Iris we started with.
 
 To develop OCPL, we changed Iris' sample program logic to support the
 distinction between progressive and non-progressive weakest
