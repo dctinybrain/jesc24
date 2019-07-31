@@ -1,4 +1,5 @@
 From iris.prelude Require Export strings.
+Import String.StringSyntax Ascii.AsciiSyntax.
 
 Inductive intro_pat :=
   | IName : string → intro_pat

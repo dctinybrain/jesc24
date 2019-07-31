@@ -5,7 +5,6 @@ that are used throughout the whole development. Most importantly it contains
 abstract interfaces for ordered structures, collections, and various other data
 structures. *)
 Global Generalizable All Variables.
-Global Set Automatic Coercions Import.
 Global Set Asymmetric Patterns.
 Global Unset Transparent Obligations.
 From Coq Require Export Morphisms RelationClasses List Bool Utf8 Setoid.

@@ -228,4 +228,4 @@ Lemma Fix_F_proper `{R : relation A} (B : A → Type) (E : ∀ x, relation (B x)
       (∀ y Hy Hy', E _ (f y Hy) (g y Hy')) → E _ (F x f) (F x g))
     (x : A) (acc1 acc2 : Acc R x) :
   E _ (Fix_F B F acc1) (Fix_F B F acc2).
-Proof. revert x acc1 acc2. fix 2. intros x [acc1] [acc2]; simpl; auto. Qed.
+Proof. revert x acc1 acc2. fix IH 2. intros x [acc1] [acc2]; simpl; auto. Qed.

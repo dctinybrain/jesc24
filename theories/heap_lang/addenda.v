@@ -1,7 +1,14 @@
 From iris.proofmode Require Import tactics.
+From iris.prelude Require fin_maps.
+From iris.algebra Require auth gmap csum ofe.
+From iris.base_logic.lib Require auth.
+From iris.base_logic Require big_op soundness.
+From iris.program_logic Require ownp weakestpre.
+From iris.program_logic Require ectx_language lifting ectx_lifting.
+From iris.program_logic Require adequacy.
 
 Module fin_maps.	(* cf. ../prelude/fin_maps.v *)
-From iris.prelude Require Import fin_maps.
+Import iris.prelude.fin_maps.
 Section union.
   Context `{FinMap K M}.
 
@@ -67,7 +74,7 @@ End list.
 End list.
 
 Module algebra_auth.	(* cf. ../algebra/auth.v *)
-From iris.algebra Require Import auth.
+Import iris.base_logic.lib.auth.
 
 Section auth.
   Context {A : ucmraT}.
@@ -89,7 +96,7 @@ End algebra_auth.
 
 Module gmap.	(* cf. ../algebra/gmap.v *)
 Section gmap.
-  From iris.algebra Require Import gmap.
+  Import iris.algebra.gmap.
 
   Context `{Countable K} {A : cmraT}.
   Implicit Types m : gmap K A.
@@ -97,21 +104,19 @@ Section gmap.
   Lemma insert_op_r i x m1 m2 :
     m1 !! i = None → <[i:=x]>(m1  ⋅ m2) = m1 ⋅ (<[i:=x]>m2).
   Proof.
-    intros Hdom. rewrite (insert_merge_r _ _ _ _ _ x).
-    done. by rewrite Hdom.
+    intros Hdom. by rewrite (insert_merge_r _ _ _ _ _ x)// Hdom.
   Qed.
   Lemma insert_op_l i x m1 m2 :
     m2 !! i = None → <[i:=x]>(m1  ⋅ m2) = (<[i:=x]>m1) ⋅ m2.
   Proof.
-    intros Hdom. rewrite (insert_merge_l _ _ _ _ _ x).
-    done. by rewrite Hdom.
+    intros Hdom. by rewrite (insert_merge_l _ _ _ _ _ x)// Hdom.
   Qed.
 End gmap.
 End gmap.
 
 Module csum.	(* cf. ../algebra/csum.v *)
 Section csum.
-  From iris.algebra Require Import csum.
+  Import iris.algebra.csum.
 
   Context {A B : cmraT}.
   Implicit Types a : A.
@@ -149,7 +154,7 @@ End csum.
 
 Module option.	(* cf. ../base_logic/primitive.v:/option_equivI *)
 Section option.
-  From iris.algebra Require Import ofe.
+  Import iris.algebra.ofe.
   Context {A : ofeT}.
 
   Lemma option_equivE (mx my : option A) :
@@ -162,7 +167,7 @@ End option.
 
 Module lib_auth.	(* cf. ../base_logic/lib/auth.v *)
 Section auth.
-  From iris.base_logic.lib Require Import auth.
+  Import iris.base_logic.lib.auth.
   Context `{invG Σ, authG Σ A}.
   Context {T : Type} `{!Inhabited T}.
   Context (f : T → A) (φ : T → iProp Σ).
@@ -230,7 +235,7 @@ Arguments auth_open {_ _ _} [_] {_} [_] _ _ _ _ _ _ _.
 End lib_auth.
 
 Module weakestpre.	(* cf. ../program_logic/weakestpre.v *)
-From iris.program_logic Require Import weakestpre.
+Import iris.program_logic.weakestpre.
 
 Definition pbit_le (p1 p2 : pbit) : bool :=
   match p1, p2 with
@@ -253,7 +258,7 @@ End derived.
 End weakestpre.
 
 Module ectx_language.	(* cf. ../program_logic/ectx_language.v *)
-From iris.program_logic Require Import ectx_language.
+Import iris.program_logic.ectx_language.
 Section ectx_language.
   Context {expr val ectx state} {Λ : EctxLanguage expr val ectx state}.
   Implicit Types (e : expr) (K : ectx).
@@ -268,7 +273,8 @@ End ectx_language.
 End ectx_language.
 
 Module ectx_lifting.	(* cf. ../program_logic/ectx_lifting.v *)
-From iris.program_logic Require Import lifting ectx_lifting.
+Import iris.program_logic.lifting.
+Import iris.program_logic.ectx_lifting.
 Section ectx_lifting.
 
   Context {expr val ectx state} {Λ : EctxLanguage expr val ectx state}.
@@ -314,8 +320,9 @@ End ectx_lifting.
 End ectx_lifting.
 
 Module adequacy.
-From iris.base_logic Require Import big_op soundness.
-From iris.program_logic Require Import adequacy.
+Import iris.base_logic.big_op.
+Import iris.base_logic.soundness.
+Import iris.program_logic.adequacy.
 
 Theorem wp_invariance Σ Λ `{invPreG Σ} p e σ1 t2 σ2 φ :
   (∀ `{Hinv : invG Σ},
@@ -336,9 +343,9 @@ Qed.
 End adequacy.
 
 Module ownp.
-From iris.algebra Require Import auth.
-From iris.program_logic Require Import ownp.
-Import adequacy.
+Import iris.algebra.auth.
+Import iris.program_logic.ownp.
+Import iris.program_logic.adequacy.
 
 Theorem ownP_invariance Σ `{ownPPreG Λ Σ} p e σ1 t2 σ2 φ :
   (∀ `{ownPG Λ Σ},

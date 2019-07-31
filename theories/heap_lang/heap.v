@@ -354,15 +354,15 @@ Section internal.
     apply/map_eq=>x. rewrite lookup_op !lookup_to_gmap.
     case: (decide (l = x))=>[<-|?].
     - rewrite lookup_insert option_guard_False.
+      + rewrite not_elem_of_difference elem_of_singleton. by right.
       + rewrite option_guard_True // elem_of_union elem_of_singleton.
         by left.
-      + rewrite not_elem_of_difference elem_of_singleton. by right.
     - rewrite lookup_insert_ne // lookup_op 2!lookup_to_gmap.
       f_equal. crack x L'.
-      + by rewrite option_guard_True.
       + rewrite elem_of_union. by right.
-      + by rewrite option_guard_False.
+      + by rewrite option_guard_True.
       + by rewrite not_elem_of_union not_elem_of_singleton.
+      + by rewrite option_guard_False.
   Qed.
 
   Lemma dom_mark_live h h' L L' l :
@@ -488,7 +488,7 @@ Section internal.
   Proof.
     move=>Hv /to_heap_high_included -/(_ Hv)[_ ?].
     etransitivity; first by apply delete_singleton_local_update, _.
-    rewrite to_heap_delete // to_heap_low_insert; last by rewrite lookup_delete.
+    rewrite to_heap_delete // to_heap_low_insert; first by rewrite lookup_delete.
     apply alloc_singleton_local_update; last done.
     apply lookup_to_heap_None, lookup_union_None. by rewrite lookup_delete.
   Qed.
@@ -511,7 +511,7 @@ Section internal.
     (to_heap h h', ∅) ~l~> (to_heap (<[l:=v]> h) h', {[l := Hval 1 v]}).
   Proof.
     move=>Hdom.
-    rewrite to_heap_high_insert; last by move: Hdom=>/lookup_union_None[].
+    rewrite to_heap_high_insert; first by move: Hdom=>/lookup_union_None[].
     apply alloc_singleton_local_update. by apply lookup_to_heap_None. done.
   Qed.
 
@@ -520,7 +520,7 @@ Section internal.
     (to_dom L L', ∅) ~l~> (to_dom ({[l]} ∪ L) L', {[l := Fresh]}).
   Proof.
     move=>Hdom. rewrite to_dom_fresh_insert;
-      last by move: Hdom=>/not_elem_of_union [].
+      first by move: Hdom=>/not_elem_of_union [].
     apply alloc_singleton_local_update; last done.
     by apply lookup_to_dom_None.
   Qed.

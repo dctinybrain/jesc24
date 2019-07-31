@@ -1,4 +1,5 @@
 From iris.prelude Require Export strings.
+Import String.StringSyntax Ascii.AsciiSyntax.
 
 Inductive sel_pat :=
   | SelPure

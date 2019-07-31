@@ -156,10 +156,10 @@ Section substitution.
       induction γ as [|y v γ Hy IH] using map_ind; first done.
       rewrite -subst_substitute // IH {IH}.
       case: (decide (y ≠ f ∧ y ≠ x))=>[[??]| /not_and_l EQ].
-      { rewrite subst_rec_ne'; [| by left | by left]. f_equal.
-        rewrite subst_substitute; last by do 2!rewrite lookup_delete_ne //.
+      { rewrite subst_rec_ne'; [by left | by left|]. f_equal.
+        rewrite subst_substitute; first by do 2!rewrite lookup_delete_ne //.
         by do 2!rewrite delete_insert_ne //. }
-      rewrite subst_rec'; last by case: EQ=>/dec_stable; [left| right; left].
+      rewrite subst_rec'; first by case: EQ=>/dec_stable; [left| right; left].
       do 2!f_equal. case: EQ=>/dec_stable ?; subst.
       + by rewrite delete_commute [delete f _]delete_notin //
           delete_commute delete_insert //.

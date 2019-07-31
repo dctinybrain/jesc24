@@ -86,7 +86,7 @@ Section proofs.
     rewrite /na_inv. iIntros (??) "#Htlinv Htoks".
     iDestruct "Htlinv" as (i) "[% Hinv]".
     rewrite [F as X in na_own p X](union_difference_L (↑N) F) //.
-    rewrite [X in (X ∪ _)](union_difference_L {[i]} (↑N)) ?na_own_union; [|set_solver..].
+    rewrite [X in (X ∪ _)](union_difference_L {[i]} (↑N)) ?na_own_union; try set_solver.
     iDestruct "Htoks" as "[[Htoki $] $]".
     iInv N as "[[$ >Hdis]|>Htoki2]" "Hclose".
     - iMod ("Hclose" with "[Htoki]") as "_"; first auto.

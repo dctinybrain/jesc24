@@ -142,10 +142,10 @@ Lemma is_pair_val v : is_pair (of_val v) → ∃ v1 v2, v = PairV v1 v2.
 Proof. case=>? [] ?. case: v=>// v1 v2 [] ??; subst. by exists v1, v2. Qed.
 
 Lemma is_inl_val v : is_inl (of_val v) → ∃ v1, v = InjLV v1.
-Proof. case=>? []. case: v=>// v1 [] ?; subst. by exists v1. Qed.
+Proof. case=>?. case: v=>// v1 [] ?; subst. by exists v1. Qed.
 
 Lemma is_inr_val v : is_inr (of_val v) → ∃ v1, v = InjRV v1.
-Proof. case=>? []. case: v=>// v1 [] ?; subst. by exists v1. Qed.
+Proof. case=>?. case: v=>// v1 [] ?; subst. by exists v1. Qed.
 
 Lemma is_loc_val v : is_loc (of_val v) → ∃ l, v = LocV l.
 Proof. case=>l. case: v=>// ? [] ?; subst. by exists l. Qed.

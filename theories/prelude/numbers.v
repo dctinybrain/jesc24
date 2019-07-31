@@ -48,11 +48,11 @@ Instance nat_le_pi: ∀ x y : nat, ProofIrrel (x ≤ y).
 Proof.
   assert (∀ x y (p : x ≤ y) y' (q : x ≤ y'),
     y = y' → eq_dep nat (le x) y p y' q) as aux.
-  { fix 3. intros x ? [|y p] ? [|y' q].
+  { fix IH 3. intros x ? [|y p] ? [|y' q].
     - done.
-    - clear nat_le_pi. intros; exfalso; auto with lia.
-    - clear nat_le_pi. intros; exfalso; auto with lia.
-    - injection 1. intros Hy. by case (nat_le_pi x y p y' q Hy). }
+    - clear IH. intros; exfalso; auto with lia.
+    - clear IH. intros; exfalso; auto with lia.
+    - injection 1. intros Hy. by case (IH x y p y' q Hy). }
   intros x y p q.
   by apply (Eqdep_dec.eq_dep_eq_dec (λ x y, decide (x = y))), aux.
 Qed.
@@ -200,10 +200,10 @@ Proof. by injection 1. Qed.
 
 Instance N_eq_dec: EqDecision N := N.eq_dec.
 Program Instance N_le_dec (x y : N) : Decision (x ≤ y)%N :=
-  match Ncompare x y with Gt => right _ | _ => left _ end.
+  match N.compare x y with Gt => right _ | _ => left _ end.
 Solve Obligations with naive_solver.
 Program Instance N_lt_dec (x y : N) : Decision (x < y)%N :=
-  match Ncompare x y with Lt => left _ | _ => right _ end.
+  match N.compare x y with Lt => left _ | _ => right _ end.
 Solve Obligations with naive_solver.
 Instance N_inhabited: Inhabited N := populate 1%N.
 Instance N_le_po: PartialOrder (≤)%N.
@@ -503,11 +503,11 @@ Definition Qp_minus (x y : Qp) : option Qp :=
   match decide (0 < z)%Qc with left Hz => Some (mk_Qp z Hz) | _ => None end.
 Program Definition Qp_mult (x y : Qp) : Qp := mk_Qp (x * y) _.
 Next Obligation. intros x y. apply Qcmult_pos_pos; apply Qp_prf. Qed.
-Program Definition Qp_div (x : Qp) (y : positive) : Qp := mk_Qp (x / ('y)%Z) _.  
+Program Definition Qp_div (x : Qp) (y : positive) : Qp := mk_Qp (x / Zpos y) _.  
 Next Obligation.
-  intros x y. assert (0 < ('y)%Z)%Qc.
-  { apply (Z2Qc_inj_lt 0%Z (' y)), Pos2Z.is_pos. }
-  by rewrite (Qcmult_lt_mono_pos_r _ _ ('y)%Z), Qcmult_0_l,
+  intros x y. assert (0 < Zpos y)%Qc.
+  { apply (Z2Qc_inj_lt 0%Z (Zpos y)), Pos2Z.is_pos. }
+  by rewrite (Qcmult_lt_mono_pos_r _ _ (Zpos y)), Qcmult_0_l,
     <-Qcmult_assoc, Qcmult_inv_l, Qcmult_1_r.
 Qed.
 

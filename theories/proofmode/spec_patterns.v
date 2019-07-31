@@ -1,4 +1,5 @@
 From iris.prelude Require Export strings.
+Import String.StringSyntax Ascii.AsciiSyntax.
 
 Record spec_goal := SpecGoal {
   spec_goal_modal : bool;

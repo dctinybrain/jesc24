@@ -20,7 +20,7 @@ Notation map := (cFunctor_map F).
 Fixpoint A (k : nat) : ofeT :=
   match k with 0 => unitC | S k => F (A k) end.
 Local Instance: ∀ k, Cofe (A k).
-Proof. induction 0; apply _. Defined.
+Proof. induction k; apply _. Defined.
 Fixpoint f (k : nat) : A k -n> A (S k) :=
   match k with 0 => CofeMor (λ _, inhabitant) | S k => map (g k,f k) end
 with g (k : nat) : A (S k) -n> A k :=

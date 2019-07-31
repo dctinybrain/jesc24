@@ -1,7 +1,7 @@
 From iris.heap_lang Require addenda.
 From iris.heap_lang Require Export heap.
 From iris.heap_lang.lib Require Export constructor.
-From iris.heap_lang Require notation.
+From iris.heap_lang Require Import notation.
 From iris.proofmode Require Import tactics.
 Import uPred addenda.weakestpre.
 

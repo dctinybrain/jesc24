@@ -207,7 +207,7 @@ Section gset_disj.
     Z ⊥ X → (GSet X,GSet Y) ~l~> (GSet (Z ∪ X), GSet (Z ∪ Y)).
   Proof.
     intros. apply local_update_total_valid=> _ _ /gset_disj_included ?.
-    rewrite -!gset_disj_union //; last set_solver.
+    rewrite -!gset_disj_union //; first set_solver.
     auto using gset_disj_alloc_op_local_update.
   Qed.
   Lemma gset_disj_alloc_empty_local_update X Z :

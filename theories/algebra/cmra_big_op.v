@@ -305,7 +305,7 @@ Section gmap.
   Proof.
     intros. rewrite big_opM_insert // fn_lookup_insert.
     apply cmra_op_proper', big_opM_proper; auto=> k y ?.
-    by rewrite fn_lookup_insert_ne; last set_solver.
+    by rewrite fn_lookup_insert_ne; first set_solver.
   Qed.
   Lemma big_opM_fn_insert' (f : K → M) m i x P :
     m !! i = None →
@@ -379,7 +379,7 @@ Section gset.
   Proof.
     intros. rewrite big_opS_insert // fn_lookup_insert.
     apply cmra_op_proper', big_opS_proper; auto=> y ?.
-    by rewrite fn_lookup_insert_ne; last set_solver.
+    by rewrite fn_lookup_insert_ne; first set_solver.
   Qed.
   Lemma big_opS_fn_insert' f X x P :
     x ∉ X → ([⋅ set] y ∈ {[ x ]} ∪ X, <[x:=P]> f y) ≡ (P ⋅ [⋅ set] y ∈ X, f y).
@@ -399,7 +399,7 @@ Section gset.
     x ∈ X → ([⋅ set] y ∈ X, f y) ≡ f x ⋅ [⋅ set] y ∈ X ∖ {[ x ]}, f y.
   Proof.
     intros. rewrite -big_opS_insert; last set_solver.
-    by rewrite -union_difference_L; last set_solver.
+    by rewrite -union_difference_L; first set_solver.
   Qed.
 
   Lemma big_opS_elem_of f X x : x ∈ X → f x ≼ [⋅ set] y ∈ X, f y.

@@ -343,9 +343,9 @@ Section freshness.
     { rewrite -not_elem_of_union -dom_op -not_elem_of_union; apply is_fresh. }
     exists (<[i:=x]>m); split.
     { by apply HQ; last done; apply not_elem_of_dom. }
-    rewrite insert_singleton_op; last by apply not_elem_of_dom.
+    rewrite insert_singleton_op; first by apply not_elem_of_dom.
     rewrite -assoc -insert_singleton_op;
-      last by apply not_elem_of_dom; rewrite dom_op not_elem_of_union.
+      first by apply not_elem_of_dom; rewrite dom_op not_elem_of_union.
     by apply insert_validN; [apply cmra_valid_validN|].
   Qed.
   Lemma alloc_updateP (Q : gmap K A → Prop) m x :

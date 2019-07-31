@@ -1,4 +1,5 @@
 -Q theories iris
+-arg -w -arg -notation-overridden,-redundant-canonical-projection,-several-object-files
 theories/prelude/option.v
 theories/prelude/fin_map_dom.v
 theories/prelude/bset.v

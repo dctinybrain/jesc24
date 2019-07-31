@@ -476,7 +476,7 @@ Section gmap.
       by rewrite pure_True // True_impl.
     - rewrite -IH. apply forall_mono=> k; apply forall_mono=> y.
       apply impl_intro_l, pure_elim_l=> ?.
-      rewrite lookup_insert_ne; last by intros ?; simplify_map_eq.
+      rewrite lookup_insert_ne; first by intros ?; simplify_map_eq.
       by rewrite pure_True // True_impl.
   Qed.
 

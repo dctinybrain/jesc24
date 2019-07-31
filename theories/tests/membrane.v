@@ -122,7 +122,7 @@ Section mix.
     iIntros (n1 n2) "!#". iIntros (Φ) "_ HΦ".
     wp_lam. wp_lam. wp_op=>?; wp_if.
     - rewrite Z.max_r //. by iApply "HΦ".
-    - rewrite Z.max_l. by iApply "HΦ". exact: Z.lt_le_incl.
+    - rewrite Z.max_l. exact: Z.lt_le_incl. by iApply "HΦ".
   Qed.
 End mix.
 

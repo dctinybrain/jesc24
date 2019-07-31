@@ -114,8 +114,8 @@ Proof.
   destruct (decide (c' = c)) as [->|].
   - iDestruct (own_valid_2 with "Hγ Hγf") as %?%auth_frag_valid.
     iMod (own_update_2 with "Hγ Hγf") as "Hγ".
-    { rewrite -auth_frag_op. apply M_update. done. }
-    rewrite (auth_frag_op (S n) (S c)); last omega.
+    { rewrite -auth_frag_op. done. apply M_update. }
+    rewrite (auth_frag_op (S n) (S c)); first omega.
     iDestruct "Hγ" as "[Hγ Hγf]".
     wp_cas_suc. iMod ("Hclose" with "[Hl Hγ]").
     { iNext. iExists (S c). rewrite Nat2Z.inj_succ Z.add_1_l. by iFrame. }
@@ -132,7 +132,7 @@ Proof.
   rewrite /read /=. wp_let. iInv N as (c) "[Hl Hγ]" "Hclose". wp_load.
   iDestruct (own_valid γ (Frag n ⋅ Auth c) with "[-]") as % ?%auth_frag_valid.
   { iApply own_op. by iFrame. }
-  rewrite (auth_frag_op c c); last lia; iDestruct "Hγ" as "[Hγ Hγf']".
+  rewrite (auth_frag_op c c); first lia; iDestruct "Hγ" as "[Hγ Hγf']".
   iMod ("Hclose" with "[Hl Hγ]"); [iNext; iExists c; by iFrame|].
   iModIntro; rewrite /C; eauto 10 with omega.
 Qed.

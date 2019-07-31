@@ -132,13 +132,13 @@ Section ftlr.
     iLöb as "Hvrec". rewrite {2}low_val. iAlways. iNext.
     iIntros (v2) "#Hv2". case: (decide (x = f))=>?.
     { subst. rewrite -> subst_subst'; last done.	(* ssr rewrite fails *)
-      rewrite of_val_rec subst_substitute; last by rewrite lookup_delete.
+      rewrite of_val_rec subst_substitute; first by rewrite lookup_delete.
       iApply ("IHe" with "Hh [] He").
       rewrite insert_delete. iApply (low_env_insert with "Hvrec");
         first by rewrite lookup_delete.
       by iApply (low_env_delete with "Hγ"). }
-    rewrite of_val_rec subst_substitute; last by rewrite lookup_delete.
-    rewrite subst_substitute; last by rewrite
+    rewrite of_val_rec subst_substitute; first by rewrite lookup_delete.
+    rewrite subst_substitute; first by rewrite
       lookup_insert_ne // lookup_delete_ne // lookup_delete.
     iApply ("IHe" with "Hh [] He").
     iApply (low_env_insert with "Hv2"); first by rewrite
@@ -607,13 +607,13 @@ Section robust_safety.
     iLöb as "Hvrec". rewrite {2}low_val. iAlways. iNext.
     iIntros (v2) "#Hv2". case: (decide (x = f))=>?.
     { subst. rewrite -> subst_subst'; last done.	(* ssr rewrite fails *)
-      rewrite of_val_rec subst_substitute; last by rewrite lookup_delete.
+      rewrite of_val_rec subst_substitute; first by rewrite lookup_delete.
       iApply ("IH" with "Hh HC [] [He]"); last iExact "He".	(* iNext bug *)
       rewrite insert_delete. iApply (low_env_insert with "Hvrec");
         first by rewrite lookup_delete.
       by iApply (low_env_delete with "Hγ"). }
-    rewrite of_val_rec subst_substitute; last by rewrite lookup_delete.
-    rewrite subst_substitute; last by rewrite
+    rewrite of_val_rec subst_substitute; first by rewrite lookup_delete.
+    rewrite subst_substitute; first by rewrite
       lookup_insert_ne // lookup_delete_ne // lookup_delete.
     iApply ("IH" with "Hh HC [] [He]"); last iExact "He".	(* iNext bug *)
     iApply (low_env_insert with "Hv2"); first by rewrite
