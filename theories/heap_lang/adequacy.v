@@ -1,4 +1,5 @@
 From iris.algebra Require Import auth.
+From iris.base_logic Require Import big_op.
 From iris.base_logic.lib Require Import auth.
 From iris.program_logic Require Export adequacy.
 From iris.heap_lang Require addenda.
@@ -26,16 +27,25 @@ Proof.
   by iApply (Hwp G). by iApply (@heap_ctx_is_good _ G).
 Qed.
 
-Corollary robust_safety Σ `{heapPreG Σ} C p e t2 σ2 :
-  AdvCtx C → is_closed [] e →
-  (∀ `{heapG Σ}, heap_ctx ⊢ WP e @ p; ⊤ {{ low }}) →
-  rtc step ([ctx_fill C e], good_state ∅) (t2, σ2) → is_good σ2.
+Theorem robust_safety_strong Σ `{heapPreG Σ} c es t2 σ2 :
+  AdvCtx c → (∀ `{heapG Σ}, True ⊢ [∗ list] e ∈ es, verified_code e) →
+  rtc step ([ctx_plug c es], good_state ∅) (t2, σ2) → is_good σ2.
 Proof.
-  move=>?? Hwp Hsteps. apply: (adequacy_safety Σ) Hsteps=>?.
-  iIntros "#Hh". rewrite -(substitute_empty (ctx_fill _ _)).
-  iApply (wp_wand _ _ _ low with "[-] []"); last by iIntros.
-  iApply (robust_safetyI with "Hh [] []"); auto.
-  - by iApply adv_ctx_i.
-  - by rewrite low_env_empty.
-  - iAlways. iSplit. done. by iApply Hwp.
+  move=>Hadv Hcode Hsteps. apply: (adequacy_safety Σ noprogress) Hsteps=>?.
+  iIntros "Hh". iApply (wp_wand _ _ _ low with "[-] []"); last by iIntros.
+  iApply (robust_safetyI with "Hh [] []").
+  by iApply adv_ctx_intro. by iApply Hcode.
+Qed.
+
+(* Compatibility: [ctx_fill] plugs a single expression into a context. *)
+Definition ctx_fill (c : ctx) (e : expr) : expr := ctx_plug c [e].
+
+Corollary robust_safety Σ `{heapPreG Σ} c p e t2 σ2 :
+  AdvCtx c → is_closed [] e →
+  (∀ `{heapG Σ}, heap_ctx ⊢ WP e @ p; ⊤ {{ low }}) →
+  rtc step ([ctx_fill c e], good_state ∅) (t2, σ2) → is_good σ2.
+Proof.
+  move=>?? Hwp Hsteps. apply: robust_safety_strong; eauto.
+  move=>hG. rewrite big_opL_cons big_opL_nil right_id.
+  iExists p. iIntros "!#". iSplit. done. by iApply Hwp.
 Qed.
