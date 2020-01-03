@@ -8,48 +8,6 @@ Import uPred.
 
 Local Hint Resolve to_of_val.
 
-(** * Overview *)
-(**
-	There are at least two ways to prove robust safety.
-
-	My original statement of robust safety said roughly that if
-	context `c` satisfies a syntactic criterion and expression `e`
-	inhabits a semantic model, then `c[e]` inhabits the model. The
-	proof went as follows. First, prove the fundamental theorem of
-	logical relations (FTLR) saying that, for every expression `e`
-	in the language, if `e` satisfies a syntactic criterion, it
-	inhabits the model. The proof is by induction on `e`. Second,
-	use the FTLR to prove the *fundamental theorem of robust
-	safety* (FTRS) saying that, for every context `c`, if `c`
-	satisfies a syntactic criterion, it inhabits the model. The
-	proof is by induction on `c`, using the FTLR to deal with the
-	context's subexpressions. Finally, derive robust safety as a
-	trivial corollary of FTRS.
-
-	While straightforward, this original proof was not entirely
-	satisfying. The problem is that you end up reasoning about
-	every construct in the language *twice*, first when proving
-	the FTLR and second when proving the FTRS.
-
-	When I mentioned this annoyance to Deepak Garg, he suggested
-	switching to multi-holed contexts in order to dispense with
-	the FTLR and prove the FTRS directly. He guessed that
-	everything would work out and the FTLR---should you want
-	it---would be a simple corollary of the FTRS.
-
-	In the following, we apply Deepak's proof technique. The most
-	important property of the proof is that we reason about each
-	construct in the language exactly once. While this may not
-	seem a big deal for our simple heap language, it is
-	potentially a huge win for larger or more complicated
-	languages. Another benefit is that the resulting robust safety
-	theorem is more general, in that you can plug a context with a
-	list of expressions rather than a single expression. It says,
-	roughly, that if `c` satisfies a syntactic criterion and
-	`e_1`, …, `e_n` inhabit a semantic model, then `c[e_1, …,
-	e_n]` inhabits the model.
-**)
-
 (** * Contexts *)
 (**
 	The syntax of contexts is entirely standard, extending the
