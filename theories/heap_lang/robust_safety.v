@@ -736,7 +736,10 @@ End robust_safety.
 Section adv_expr.
   Context `{heapG Σ}.
 
-  Fixpoint adv_expr (e : expr) : iProp Σ :=
+  Definition adv_expr : expr → iProp Σ := adv_ctx ∘ ctx_of_expr.
+
+  Lemma adv_expr_elim e :
+    adv_expr e =
     match e with
     | Var _ | Lit _ | Unit => True
     | Assert _ => False
@@ -749,17 +752,18 @@ Section adv_expr.
     | If e1 e2 e3 | Case e1 e2 e3 | CAS e1 e2 e3
       => adv_expr e1 ∗ adv_expr e2 ∗ adv_expr e3
     end%I.
+  Proof. by induction e. Qed.
   Global Instance adv_expr_timeless e : TimelessP (adv_expr e).
-  Proof. by elim: e=>//; apply _. Qed.
+  Proof. apply _. Qed.
   Global Instance adv_expr_persistent e : PersistentP (adv_expr e).
-  Proof. by elim: e=>//; apply _. Qed.
+  Proof. apply _. Qed.
   Global Instance adv_expr_ne : Proper ((=) ==> dist n) adv_expr.
   Proof. apply _. Qed.
   Global Instance adv_expr_proper : Proper ((=) ==> (≡)) adv_expr.
   Proof. solve_proper. Qed.
 End adv_expr.
 Typeclasses Opaque adv_expr.
-Arguments adv_expr {_ _} !_ / : assert.
+(*Arguments adv_expr {_ _} !_ / : assert.*)
 
 Section ftlr.
   Context `{heapG Σ}.
@@ -788,16 +792,7 @@ Section ftlr.
     end; reflexivity.
   Qed.
   Lemma adv_ctx_of e : adv_expr e -∗ adv_ctx (ctx_of_expr e).
-  Proof.
-    set G := λ e, adv_expr e -∗ adv_ctx (ctx_of_expr e). rewrite -/(G e).
-    elim: e=>//=; intros;
-    match goal with
-    | IH1 : G ?e1, IH2 : G ?e2 |- G (_ ?e1 ?e2) =>
-      iIntros "Hc /="; by rewrite IH1 IH2
-    | IH0 : G ?e0, IH1 : G ?e1, IH2 : G ?e2 |- G (_ ?e0 ?e1 ?e2) =>
-      iIntros "Hc /="; by rewrite IH0 IH1 IH2
-    end.
-  Qed.
+  Proof. by []. Qed.
 
   Theorem fundamental_theorem_logical_relations e : compatible_expr e.
   Proof.
