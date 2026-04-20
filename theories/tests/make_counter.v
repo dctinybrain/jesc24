@@ -5,51 +5,59 @@ Import uPred.
 
 (** * Upward-capability counter client *)
 
-Definition bump_closure (count : loc) : val :=
-  rec: "incr" <> :=
-    let: "n" := !count in
-    let: "n'" := "n" + #1 in
-    let: <> := count <- "n'" in
-    "n'".
+Definition op_assign (op : bin_op) (lhs rhs : expr) : expr :=
+  App
+    (Lam (BNamed "__assign_old")
+      (App
+        (Lam (BNamed "__assign_new")
+          (App
+            (Lam BAnon (Var "__assign_new"))
+            (Store lhs (Var "__assign_new"))))
+        (BinOp op (Var "__assign_old") rhs)))
+    (Load lhs).
 
-Definition bump_cap : val :=
-  λ: "count",
-    rec: "incr" <> :=
-      let: "n" := !"count" in
-      let: "n'" := "n" + #1 in
-      let: <> := "count" <- "n'" in
-      "n'".
+(* The old Closed instance does not unfold op_assign through rec bodies,
+   so keep the update notations expanded at parse time. *)
+Local Notation "e1 += e2" := (
+  App
+    (Lam (BNamed "__assign_old")
+      (App
+        (Lam (BNamed "__assign_new")
+          (App
+            (Lam BAnon (Var "__assign_new"))
+            (Store e1%E (Var "__assign_new"))))
+        (BinOp PlusOp (Var "__assign_old") e2%E)))
+    (Load e1%E)
+)
+  (at level 80, format "e1  +=  e2") : expr_scope.
 
-Definition use_closure (f : val) : val :=
-  rec: "use" <> :=
-    let: "n" := f () in
-    assert: (#0 < "n").
-
-Definition use_cap : val :=
-  λ: "f",
-    rec: "use" <> :=
-      let: "n" := "f" () in
-      assert: (#0 < "n").
-
-Definition decr_cap : val :=
-  λ: "count",
-    rec: "decr" <> :=
-      let: "n" := !"count" in
-      let: "n'" := "n" - #1 in
-      let: <> := "count" <- "n'" in
-      "n'".
+Local Notation "e1 -= e2" := (
+  App
+    (Lam (BNamed "__assign_old")
+      (App
+        (Lam (BNamed "__assign_new")
+          (App
+            (Lam BAnon (Var "__assign_new"))
+            (Store e1%E (Var "__assign_new"))))
+        (BinOp MinusOp (Var "__assign_old") e2%E)))
+    (Load e1%E)
+)
+  (at level 80, format "e1  -=  e2") : expr_scope.
 
 Definition make_counter : val :=
   λ: <>,
     let: "count" := ref #0 in
-    let: "incr" := bump_cap "count" in
-    let: "decr" := decr_cap "count" in
+    let: "incr" := (λ: "count", rec: "incr" <> := "count" += #1) "count" in
+    let: "decr" := (λ: "count", rec: "decr" <> := "count" -= #1) "count" in
     ("incr", "decr").
 
 Definition checked_counter : expr :=
   let: "c" := make_counter () in
   let: "cUp" := Fst "c" in
-  let: "use" := use_cap "cUp" in
+  let: "use" := (λ: "cUp",
+    rec: "use" <> :=
+      let: "n" := "cUp" () in
+      assert: (#0 < "n")) "cUp" in
   ("use", "cUp").
 
 Section proof.
@@ -59,13 +67,9 @@ Section proof.
   Definition counter_inv (count : loc) : iProp Σ :=
     (inv N (∃ z : Z, ⌜0 ≤ z⌝ ∗ count ↦ #z))%I.
 
-  Lemma bump_cap_call_pos count :
+  Lemma incr_call_pos count :
     {{{ heap_ctx ∗ counter_inv count }}}
-      (RecV "incr" <>
-        (let: "n" := !count in
-         let: "n'" := "n" + #1 in
-         let: <> := count <- "n'" in
-         "n'")) ()
+      (RecV "incr" <> (count += #1)) ()
     {{{ v, RET v; ∃ z : Z, ⌜v = #z⌝ ∗ ⌜0 < z⌝ }}}.
   Proof.
     iIntros (Φ) "#(Hh & Hinv) HΦ".
@@ -95,13 +99,9 @@ Section proof.
     - iPureIntro. lia.
   Qed.
 
-  Lemma bump_closure_low count :
+  Lemma incr_closure_low count :
     heap_ctx ∗ counter_inv count ⊢
-      low (RecV "incr" <>
-        (let: "n" := !count in
-         let: "n'" := "n" + #1 in
-         let: <> := count <- "n'" in
-         "n'")).
+      low (RecV "incr" <> (count += #1)).
   Proof.
     iIntros "#(Hh & Hinv)". rewrite low_rec.
     iAlways. iNext. iIntros (? Φ) "_ HΦ". simpl_subst.
@@ -132,17 +132,13 @@ Section proof.
   Lemma use_closure_low count :
     heap_ctx ∗ counter_inv count ⊢
       low (RecV "use" <>
-        (let: "n" := (rec: "incr" <> :=
-          let: "n" := !count in
-          let: "n'" := "n" + #1 in
-          let: <> := count <- "n'" in
-          "n'") () in
+        (let: "n" := (rec: "incr" <> := count += #1) () in
          assert: (#0 < "n"))).
   Proof.
     iIntros "#(Hh & Hinv)". rewrite low_rec.
     iAlways. iNext. iIntros (? Φ) "_ HΦ". simpl_subst.
     wp_apply (wp_forget_progress progress).
-    wp_apply (bump_cap_call_pos with "[$Hh $Hinv]").
+    wp_apply (incr_call_pos with "[$Hh $Hinv]").
     iIntros (v) "Hv".
     iDestruct "Hv" as (z) "Hv".
     iDestruct "Hv" as "[Hv Hpos]".
@@ -163,14 +159,18 @@ Section proof.
     wp_alloc count as "Hcount". wp_let.
     iMod (inv_alloc N _ (∃ z : Z, ⌜0 ≤ z⌝ ∗ count ↦ #z)%I with "[Hcount]") as "#Hinv".
     { iNext. iExists 0. iFrame. done. }
-    wp_lam. wp_let.
-    wp_lam. wp_let.
-    wp_let. wp_proj. wp_let.
-    wp_lam. wp_let.
+    wp_let.
+    wp_let.
+    wp_let.
+    wp_let.
+    wp_let.
+    wp_proj. wp_let.
+    wp_let.
+    wp_let.
     iApply "HΦ". clear Φ. rewrite low_val /=. iNext.
     iSplitL.
     - by iApply (use_closure_low with "[$Hh $Hinv]").
-    - by iApply (bump_closure_low with "[$Hh $Hinv]").
+    - by iApply (incr_closure_low with "[$Hh $Hinv]").
   Qed.
 End proof.
 
