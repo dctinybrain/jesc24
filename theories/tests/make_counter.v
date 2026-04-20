@@ -4,7 +4,7 @@ From iris.proofmode Require Import tactics.
 From iris.heap_lang Require Import proofmode notation.
 Import uPred.
 
-(** * Separation-of-duties counter *)
+(** * Upward-capability counter client *)
 
 Definition bump_closure (l : loc) : val :=
   rec: "bump" <> := incr l ;; read l.
@@ -23,16 +23,23 @@ Definition use_cap : val :=
       let: "n" := "f" () in
       assert: (#0 < "n").
 
+Definition decr_cap : val :=
+  λ: "l",
+    rec: "decr" <> :=
+      let: "n" := !"l" in
+      let: <> := "l" <- ("n" - #1) in
+      !"l".
+
 Definition make_counter : val :=
   λ: <>,
     let: "l" := newcounter () in
     let: "incr" := bump_cap "l" in
-    let: "decr" := rec: "decr" <> := #-1 in
+    let: "decr" := decr_cap "l" in
     ("incr", "decr").
 
 Definition checked_counter : expr :=
-  let: "l" := newcounter () in
-  let: "cUp" := bump_cap "l" in
+  let: "c" := make_counter () in
+  let: "cUp" := Fst "c" in
   let: "use" := use_cap "cUp" in
   ("use", "cUp").
 
@@ -100,10 +107,13 @@ Section proof.
   Lemma checked_counter_spec :
     {{{ heap_ctx }}} checked_counter {{{ v, RET v; low v }}}.
   Proof.
-    iIntros (Φ) "#Hh HΦ". rewrite /checked_counter.
+    iIntros (Φ) "#Hh HΦ". rewrite /checked_counter /make_counter.
+    wp_lam.
     wp_apply (newcounter_mono_spec N True%I with "Hh"); first done.
     iIntros (l) "#Hc". wp_let.
     wp_lam. wp_let.
+    wp_lam. wp_let.
+    wp_let. wp_proj. wp_let.
     wp_lam. wp_let.
     iApply "HΦ". clear Φ. rewrite low_val /=. iNext.
     iSplitL.
