@@ -1,16 +1,24 @@
 From iris.heap_lang Require Import heap adequacy.
-From iris.heap_lang.lib Require Import counter.
 From iris.proofmode Require Import tactics.
 From iris.heap_lang Require Import proofmode notation.
 Import uPred.
 
 (** * Upward-capability counter client *)
 
-Definition bump_closure (l : loc) : val :=
-  rec: "bump" <> := incr l ;; read l.
+Definition bump_closure (count : loc) : val :=
+  rec: "incr" <> :=
+    let: "n" := !count in
+    let: "n'" := "n" + #1 in
+    let: <> := count <- "n'" in
+    "n'".
 
 Definition bump_cap : val :=
-  λ: "l", rec: "bump" <> := incr "l" ;; read "l".
+  λ: "count",
+    rec: "incr" <> :=
+      let: "n" := !"count" in
+      let: "n'" := "n" + #1 in
+      let: <> := "count" <- "n'" in
+      "n'".
 
 Definition use_closure (f : val) : val :=
   rec: "use" <> :=
@@ -24,17 +32,18 @@ Definition use_cap : val :=
       assert: (#0 < "n").
 
 Definition decr_cap : val :=
-  λ: "l",
+  λ: "count",
     rec: "decr" <> :=
-      let: "n" := !"l" in
-      let: <> := "l" <- ("n" - #1) in
-      !"l".
+      let: "n" := !"count" in
+      let: "n'" := "n" - #1 in
+      let: <> := "count" <- "n'" in
+      "n'".
 
 Definition make_counter : val :=
   λ: <>,
-    let: "l" := newcounter () in
-    let: "incr" := bump_cap "l" in
-    let: "decr" := decr_cap "l" in
+    let: "count" := ref #0 in
+    let: "incr" := bump_cap "count" in
+    let: "decr" := decr_cap "count" in
     ("incr", "decr").
 
 Definition checked_counter : expr :=
@@ -44,58 +53,100 @@ Definition checked_counter : expr :=
   ("use", "cUp").
 
 Section proof.
-  Context `{!heapG Σ, !mcounterG Σ}.
+  Context `{heapG Σ}.
   Context (N : namespace) (HN : heapN ⊥ N).
 
-  Lemma bump_cap_call_pos l :
-    {{{ mcounter N l 0 }}} (RecV "bump" <> (incr l ;; read l)) ()
-    {{{ v, RET v; ∃ n : nat, ⌜v = #n⌝ ∗ ⌜(0 < n)%nat⌝ ∗ mcounter N l n }}}.
+  Definition counter_inv (count : loc) : iProp Σ :=
+    (inv N (∃ z : Z, ⌜0 ≤ z⌝ ∗ count ↦ #z))%I.
+
+  Lemma bump_cap_call_pos count :
+    {{{ heap_ctx ∗ counter_inv count }}}
+      (RecV "incr" <>
+        (let: "n" := !count in
+         let: "n'" := "n" + #1 in
+         let: <> := count <- "n'" in
+         "n'")) ()
+    {{{ v, RET v; ∃ z : Z, ⌜v = #z⌝ ∗ ⌜0 < z⌝ }}}.
   Proof.
-    iIntros (Φ) "Hc HΦ".
+    iIntros (Φ) "#(Hh & Hinv) HΦ".
     wp_rec.
-    wp_apply (incr_mono_spec N l 0 with "Hc").
-    iIntros "Hc".
+    wp_bind (! count)%E.
+    iInv N as (z) ">Hz" "Hclose".
+    iDestruct "Hz" as "[Hz Hcount]".
+    iDestruct "Hz" as %Hz.
+    wp_load.
+    iMod ("Hclose" with "[Hcount]") as "_".
+    { iNext. iExists z. iSplit; first done. iFrame "Hcount". }
+    iModIntro.
+    wp_let. wp_op. wp_let.
+    wp_bind (count <- #(z + 1))%E.
+    iInv N as (z') ">Hz'" "Hclose".
+    iDestruct "Hz'" as "[Hz' Hcount]".
+    iDestruct "Hz'" as %Hz'.
+    wp_store.
+    iMod ("Hclose" with "[Hcount]") as "_".
+    { iNext. iExists (z + 1). iSplit.
+      - iPureIntro. lia.
+      - iFrame "Hcount". }
+    iModIntro.
     wp_seq.
-    wp_apply (read_mono_spec N l 1 with "Hc").
-    iIntros (n) "H".
-    iDestruct "H" as "[Hle Hc]".
-    iDestruct "Hle" as %Hle.
-    iApply "HΦ". iExists n. iFrame.
-    iSplit; first done.
-    iPureIntro. lia.
+    iApply "HΦ". iExists (z + 1). iSplit.
+    - done.
+    - iPureIntro. lia.
   Qed.
 
-  Lemma bump_closure_low l :
-    mcounter N l 0 ⊢ low (RecV "bump" <> (incr l ;; read l)).
+  Lemma bump_closure_low count :
+    heap_ctx ∗ counter_inv count ⊢
+      low (RecV "incr" <>
+        (let: "n" := !count in
+         let: "n'" := "n" + #1 in
+         let: <> := count <- "n'" in
+         "n'")).
   Proof.
-    iIntros "#Hc". rewrite low_rec.
+    iIntros "#(Hh & Hinv)". rewrite low_rec.
     iAlways. iNext. iIntros (? Φ) "_ HΦ". simpl_subst.
-    iApply wp_forget_progress.
-    wp_apply (incr_mono_spec N l 0 with "Hc").
-    iIntros "Hc1".
+    wp_apply (wp_forget_progress progress).
+    wp_bind (! count)%E.
+    iInv N as (z) ">Hz" "Hclose".
+    iDestruct "Hz" as "[Hz Hcount]".
+    iDestruct "Hz" as %Hz.
+    wp_load.
+    iMod ("Hclose" with "[Hcount]") as "_".
+    { iNext. iExists z. iSplit; first done. iFrame "Hcount". }
+    iModIntro.
+    wp_let. wp_op. wp_let.
+    wp_bind (count <- #(z + 1))%E.
+    iInv N as (z') ">Hz'" "Hclose".
+    iDestruct "Hz'" as "[Hz' Hcount]".
+    iDestruct "Hz'" as %Hz'.
+    wp_store.
+    iMod ("Hclose" with "[Hcount]") as "_".
+    { iNext. iExists (z + 1). iSplit.
+      - iPureIntro. lia.
+      - iFrame "Hcount". }
+    iModIntro.
     wp_seq.
-    wp_apply (read_mono_spec N l 1 with "Hc1").
-    iIntros (n) "H".
-    iDestruct "H" as "[Hle Hc1]".
-    iDestruct "Hle" as %Hle.
     iApply "HΦ". by simpl_low.
   Qed.
 
-  Lemma use_closure_low l :
-    mcounter N l 0 ⊢
+  Lemma use_closure_low count :
+    heap_ctx ∗ counter_inv count ⊢
       low (RecV "use" <>
-        (let: "n" := (rec: "bump" <> := incr l ;; read l) () in
+        (let: "n" := (rec: "incr" <> :=
+          let: "n" := !count in
+          let: "n'" := "n" + #1 in
+          let: <> := count <- "n'" in
+          "n'") () in
          assert: (#0 < "n"))).
   Proof.
-    iIntros "#Hc". rewrite low_rec.
+    iIntros "#(Hh & Hinv)". rewrite low_rec.
     iAlways. iNext. iIntros (? Φ) "_ HΦ". simpl_subst.
-    iApply wp_forget_progress.
-    wp_apply (bump_cap_call_pos with "Hc").
+    wp_apply (wp_forget_progress progress).
+    wp_apply (bump_cap_call_pos with "[$Hh $Hinv]").
     iIntros (v) "Hv".
-    iDestruct "Hv" as (n) "Hv".
-    iDestruct "Hv" as "[Hv Hrest]".
+    iDestruct "Hv" as (z) "Hv".
+    iDestruct "Hv" as "[Hv Hpos]".
     iDestruct "Hv" as %Hv.
-    iDestruct "Hrest" as "[Hpos _]".
     iDestruct "Hpos" as %Hpos.
     subst v.
     wp_let.
@@ -109,18 +160,17 @@ Section proof.
   Proof.
     iIntros (Φ) "#Hh HΦ". rewrite /checked_counter /make_counter.
     wp_lam.
-    wp_apply (newcounter_mono_spec N True%I with "Hh"); first done.
-    iIntros (l) "#Hc". wp_let.
+    wp_alloc count as "Hcount". wp_let.
+    iMod (inv_alloc N _ (∃ z : Z, ⌜0 ≤ z⌝ ∗ count ↦ #z)%I with "[Hcount]") as "#Hinv".
+    { iNext. iExists 0. iFrame. done. }
     wp_lam. wp_let.
     wp_lam. wp_let.
     wp_let. wp_proj. wp_let.
     wp_lam. wp_let.
     iApply "HΦ". clear Φ. rewrite low_val /=. iNext.
     iSplitL.
-    - iPoseProof (use_closure_low l with "Hc") as "Huse".
-      by iExact "Huse".
-    - iPoseProof (bump_closure_low l with "Hc") as "Hbump".
-      by iExact "Hbump".
+    - by iApply (use_closure_low with "[$Hh $Hinv]").
+    - by iApply (bump_closure_low with "[$Hh $Hinv]").
   Qed.
 End proof.
 
@@ -129,7 +179,7 @@ Lemma checked_counter_safe C t2 σ2 :
   rtc step ([ctx_fill C checked_counter], good_state ∅) (t2, σ2) →
   is_good σ2.
 Proof.
-  set Σ : gFunctors := #[heapΣ; mcounterΣ].
+  set Σ : gFunctors := #[heapΣ].
   set N : namespace := nroot .@ "checked_counter".
   move=>??. eapply (robust_safety Σ); try done.
   { naive_solver eauto using is_closed_of_val. }
