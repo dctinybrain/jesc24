@@ -1,64 +1,28 @@
 From iris.heap_lang Require Import heap adequacy.
 From iris.proofmode Require Import tactics.
 From iris.heap_lang Require Import proofmode notation.
+From iris.tests Require Import jessie_notation.
 Import uPred.
 
 (** * Upward-capability counter client *)
-
-Definition op_assign (op : bin_op) (lhs rhs : expr) : expr :=
-  App
-    (Lam (BNamed "__assign_old")
-      (App
-        (Lam (BNamed "__assign_new")
-          (App
-            (Lam BAnon (Var "__assign_new"))
-            (Store lhs (Var "__assign_new"))))
-        (BinOp op (Var "__assign_old") rhs)))
-    (Load lhs).
-
-(* The old Closed instance does not unfold op_assign through rec bodies,
-   so keep the update notations expanded at parse time. *)
-Local Notation "e1 += e2" := (
-  App
-    (Lam (BNamed "__assign_old")
-      (App
-        (Lam (BNamed "__assign_new")
-          (App
-            (Lam BAnon (Var "__assign_new"))
-            (Store e1%E (Var "__assign_new"))))
-        (BinOp PlusOp (Var "__assign_old") e2%E)))
-    (Load e1%E)
-)
-  (at level 80, format "e1  +=  e2") : expr_scope.
-
-Local Notation "e1 -= e2" := (
-  App
-    (Lam (BNamed "__assign_old")
-      (App
-        (Lam (BNamed "__assign_new")
-          (App
-            (Lam BAnon (Var "__assign_new"))
-            (Store e1%E (Var "__assign_new"))))
-        (BinOp MinusOp (Var "__assign_old") e2%E)))
-    (Load e1%E)
-)
-  (at level 80, format "e1  -=  e2") : expr_scope.
 
 Definition make_counter : val :=
   λ: <>,
     let: "count" := ref #0 in
     let: "incr" := (λ: "count", rec: "incr" <> := "count" += #1) "count" in
     let: "decr" := (λ: "count", rec: "decr" <> := "count" -= #1) "count" in
-    ("incr", "decr").
+    jobj ["incr" := "incr"; "decr" := "decr"].
 
 Definition checked_counter : expr :=
   let: "c" := make_counter () in
-  let: "cUp" := Fst "c" in
-  let: "use" := (λ: "cUp",
+  let: "cUpIncr" := obj_get "c" incr_key in
+  let: "use" := (λ: "cUpIncr",
     rec: "use" <> :=
-      let: "n" := "cUp" () in
-      assert: (#0 < "n")) "cUp" in
-  ("use", "cUp").
+      let: "n" := "cUpIncr" () in
+      assert: (#0 < "n")) "cUpIncr" in
+  (* TODO: change this back to the object-shaped cUp export once the proof
+     goes through cleanly with object lookup in both places. *)
+  ("use", "cUpIncr").
 
 Section proof.
   Context `{heapG Σ}.
@@ -66,6 +30,40 @@ Section proof.
 
   Definition counter_inv (count : loc) : iProp Σ :=
     (inv N (∃ z : Z, ⌜0 ≤ z⌝ ∗ count ↦ #z))%I.
+
+  Lemma wp_obj_get2_first k1 k2 v1 v2 :
+    {{{ True }}}
+      obj_get (jobj [k1 := (of_val v1); k2 := (of_val v2)]) (j_string k1)
+    {{{ RET v1; True }}}.
+  Proof.
+    iIntros (Φ) "HΦ". rewrite /obj_get /obj_get_fields.
+    wp_lam. wp_lam.
+    wp_proj. wp_let.
+    wp_proj. wp_let.
+    wp_apply wp_assert. wp_op=>?; last done.
+    iSplit; first done.
+    iNext. wp_finish. wp_rec. wp_let.
+    wp_op=>[EQ|NEQ].
+    - exfalso. by discriminate EQ.
+    - etrans; [|eapply wp_if_false]. wp_finish.
+    wp_proj. wp_let.
+    wp_proj. wp_let.
+    wp_proj.
+    wp_op=>[EQ'|NEQ']; [etrans; [|eapply wp_if_true]; wp_finish|exfalso; apply NEQ'; reflexivity].
+    wp_proj. by iApply "HΦ".
+  Qed.
+
+  Lemma wp_counter_get_incr (count : loc) :
+    {{{ True }}}
+      obj_get
+        (jobj ["incr" := (of_val (RecV "incr" <> (count += #1)));
+               "decr" := (of_val (RecV "decr" <> (count -= #1)))])
+        incr_key
+    {{{ RET (RecV "incr" <> (count += #1)); True }}}.
+  Proof.
+    rewrite /incr_key.
+    apply (wp_obj_get2_first "incr" "decr").
+  Qed.
 
   Lemma incr_call_pos count :
     {{{ heap_ctx ∗ counter_inv count }}}
@@ -164,10 +162,14 @@ Section proof.
     wp_let.
     wp_let.
     wp_let.
-    wp_proj. wp_let.
+    wp_apply (wp_counter_get_incr count).
+    iIntros "_".
     wp_let.
     wp_let.
-    iApply "HΦ". clear Φ. rewrite low_val /=. iNext.
+    wp_let.
+    iApply "HΦ".
+    clear Φ.
+    rewrite low_val /=. iNext.
     iSplitL.
     - by iApply (use_closure_low with "[$Hh $Hinv]").
     - by iApply (incr_closure_low with "[$Hh $Hinv]").
