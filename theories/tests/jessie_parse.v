@@ -14,11 +14,19 @@ Inductive jexpr :=
 | ENum (n : Z)
 | EAssignPlus (x : string) (n : Z)
 | EAssignMinus (x : string) (n : Z)
+| EField (e : jexpr) (k : string)
+| ECall0 (e : jexpr)
+| ECall1 (e1 e2 : jexpr)
+| EGreater (e1 e2 : jexpr)
 | EObject (fields : list (string * jexpr))
 | EArrow0Expr (e : jexpr)
 | EArrow0Block (ss : list jstmt)
+| EArrow1Block (x : string) (ss : list jstmt)
 with jstmt :=
 | SLet (x : string) (e : jexpr)
+| SConst (x : string) (e : jexpr)
+| SExpr (e : jexpr)
+| SAssert (e : jexpr)
 | SReturn (e : jexpr).
 
 Inductive jdecl :=
@@ -162,6 +170,53 @@ with parse_fields (fuel : nat) : parser (list (string * jexpr)).
 Proof.
   - destruct fuel as [|fuel']; [exact parse_error|].
     refine (fun cs =>
+      let parse_postfixes (e : jexpr) (cs : list ascii) : option (jexpr * list ascii) :=
+          let cs := skip_ws_chars cs in
+          let e_and_rest :=
+            match cs with
+            | "."%char :: rest1 =>
+                match parse_ident rest1 with
+                | Some (k, rest2) =>
+                    let e1 := EField e k in
+                    match skip_ws_chars rest2 with
+                    | "("%char :: ")"%char :: rest3 => Some (ECall0 e1, rest3)
+                    | "("%char :: rest3 =>
+                        match parse_expr fuel' rest3 with
+                        | Some (arg, rest4) =>
+                            match skip_ws_chars rest4 with
+                            | ")"%char :: rest5 => Some (ECall1 e1 arg, rest5)
+                            | _ => None
+                            end
+                        | None => None
+                        end
+                    | _ => Some (e1, rest2)
+                    end
+                | None => None
+                end
+            | "("%char :: ")"%char :: rest1 => Some (ECall0 e, rest1)
+            | "("%char :: rest1 =>
+                match parse_expr fuel' rest1 with
+                | Some (arg, rest2) =>
+                    match skip_ws_chars rest2 with
+                    | ")"%char :: rest3 => Some (ECall1 e arg, rest3)
+                    | _ => None
+                    end
+                | None => None
+                end
+            | _ => Some (e, cs)
+            end in
+          match e_and_rest with
+          | Some (e1, rest1) =>
+              match skip_ws_chars rest1 with
+              | ">"%char :: rest2 =>
+                  match parse_expr fuel' rest2 with
+                  | Some (e2, rest3) => Some (EGreater e1 e2, rest3)
+                  | None => None
+                  end
+              | _ => Some (e1, rest1)
+              end
+          | None => None
+          end in
       let cs := skip_ws_chars cs in
       match cs with
       | "("%char :: ")"%char :: rest1 =>
@@ -185,7 +240,7 @@ Proof.
               match parse_expr fuel' rest1 with
               | Some (e, rest2) =>
                   match skip_ws_chars rest2 with
-                  | ")"%char :: rest3 => Some (e, rest3)
+                  | ")"%char :: rest3 => parse_postfixes e rest3
                   | _ => None
                   end
               | None => None
@@ -195,14 +250,14 @@ Proof.
           match parse_expr fuel' rest1 with
           | Some (e, rest2) =>
               match skip_ws_chars rest2 with
-              | ")"%char :: rest3 => Some (e, rest3)
+              | ")"%char :: rest3 => parse_postfixes e rest3
               | _ => None
               end
           | None => None
           end
       | "{"%char :: rest1 =>
           match parse_fields fuel' rest1 with
-          | Some (fs, rest2) => Some (EObject fs, rest2)
+          | Some (fs, rest2) => parse_postfixes (EObject fs) rest2
           | None => None
           end
       | _ =>
@@ -210,6 +265,16 @@ Proof.
           | Some (x, rest1) =>
               let rest1 := skip_ws_chars rest1 in
               match rest1 with
+              | "="%char :: ">"%char :: rest2 =>
+                  let rest2 := skip_ws_chars rest2 in
+                  match rest2 with
+                  | "{"%char :: _ =>
+                      match parse_stmt_list fuel' rest2 with
+                      | Some (ss, rest3) => Some (EArrow1Block x ss, rest3)
+                      | None => None
+                      end
+                  | _ => None
+                  end
               | "+"%char :: "="%char :: rest2 =>
                   match parse_nat_lit rest2 with
                   | Some (n, rest3) => Some (EAssignPlus x n, rest3)
@@ -220,11 +285,11 @@ Proof.
                   | Some (n, rest3) => Some (EAssignMinus x n, rest3)
                   | None => None
                   end
-              | _ => Some (EVar x, rest1)
+              | _ => parse_postfixes (EVar x) rest1
               end
           | None =>
               match parse_nat_lit cs with
-              | Some (n, rest1) => Some (ENum n, rest1)
+              | Some (n, rest1) => parse_postfixes (ENum n) rest1
               | None => None
               end
           end
@@ -251,22 +316,67 @@ Proof.
           | None => None
           end
       | None =>
-          match literal "return" cs with
+          match literal "const" cs with
           | Some (_, rest1) =>
-              match parse_expr fuel' rest1 with
-              | Some (e, rest2) =>
+              match parse_ident rest1 with
+              | Some (x, rest2) =>
                   match skip_ws_chars rest2 with
-                  | ";"%char :: rest3 => Some (SReturn e, rest3)
+                  | "="%char :: rest3 =>
+                      match parse_expr fuel' rest3 with
+                      | Some (e, rest4) =>
+                          match skip_ws_chars rest4 with
+                          | ";"%char :: rest5 => Some (SConst x e, rest5)
+                          | _ => None
+                          end
+                      | None => None
+                      end
                   | _ => None
                   end
               | None => None
               end
-          | None => None
+          | None =>
+              match literal "assert" cs with
+              | Some (_, rest1) =>
+                  match skip_ws_chars rest1 with
+                  | "("%char :: rest2 =>
+                      match parse_expr fuel' rest2 with
+                      | Some (e, rest3) =>
+                          match skip_ws_chars rest3 with
+                          | ")"%char :: ";"%char :: rest4 => Some (SAssert e, rest4)
+                          | _ => None
+                          end
+                      | None => None
+                      end
+                  | _ => None
+                  end
+              | None =>
+                  match literal "return" cs with
+                  | Some (_, rest1) =>
+                      match parse_expr fuel' rest1 with
+                      | Some (e, rest2) =>
+                          match skip_ws_chars rest2 with
+                          | ";"%char :: rest3 => Some (SReturn e, rest3)
+                          | _ => None
+                          end
+                      | None => None
+                      end
+                  | None =>
+                      match parse_expr fuel' cs with
+                      | Some (e, rest1) =>
+                          match skip_ws_chars rest1 with
+                          | ";"%char :: rest2 => Some (SExpr e, rest2)
+                          | _ => None
+                          end
+                      | None => None
+                      end
+                  end
+              end
           end
       end).
   - destruct fuel as [|fuel']; [exact parse_error|].
     refine (fun cs =>
       match skip_ws_chars cs with
+      | [] => Some ([], [])
       | "{"%char :: rest =>
           match parse_stmt_list fuel' rest with
           | Some (ss, rest') => Some (ss, rest')
@@ -360,6 +470,10 @@ Proof.
     | ENum n => Lit (LitInt n)
     | EAssignPlus x n => op_assign PlusOp (Var x) (Lit (LitInt n))
     | EAssignMinus x n => op_assign MinusOp (Var x) (Lit (LitInt n))
+    | EField e1 k => obj_get (compile_expr env None e1) (j_string k)
+    | ECall0 e1 => App (compile_expr env None e1) Unit
+    | ECall1 e1 e2 => App (compile_expr env None e1) (compile_expr env None e2)
+    | EGreater e1 e2 => BinOp LtOp (compile_expr env None e2) (compile_expr env None e1)
     | EObject fs =>
         j_object (map (fun kv => (fst kv, compile_expr env (Some (fst kv)) (snd kv))) fs)
     | EArrow0Expr e1 =>
@@ -374,6 +488,15 @@ Proof.
             | SLet x e :: ss' =>
                 Let (BNamed x) (Alloc (compile_expr env' None e))
                   (compile_block (x :: env') ss')
+            | SConst x e :: ss' =>
+                Let (BNamed x) (compile_expr env' None e)
+                  (compile_block (x :: env') ss')
+            | SExpr e :: ss' =>
+                Let BAnon (compile_expr env' None e)
+                  (compile_block env' ss')
+            | SAssert e :: ss' =>
+                Let BAnon (Assert (compile_expr env' None e))
+                  (compile_block env' ss')
             | [SReturn e] => compile_expr env' None e
             | SReturn _ :: _ => Unit
             end in
@@ -381,6 +504,29 @@ Proof.
         let rec_name := "f" in
         fold_right (fun x acc => App (Lam (BNamed x) acc) (Var x))
                    (Rec (BNamed rec_name) BAnon body) env
+    | EArrow1Block x ss1 =>
+        let fix compile_block (env' : list string) (ss : list jstmt) : expr :=
+            match ss with
+            | [] => Unit
+            | SLet y e :: ss' =>
+                Let (BNamed y) (Alloc (compile_expr env' None e))
+                  (compile_block (y :: env') ss')
+            | SConst y e :: ss' =>
+                Let (BNamed y) (compile_expr env' None e)
+                  (compile_block (y :: env') ss')
+            | SExpr e :: ss' =>
+                Let BAnon (compile_expr env' None e)
+                  (compile_block env' ss')
+            | SAssert e :: ss' =>
+                Let BAnon (Assert (compile_expr env' None e))
+                  (compile_block env' ss')
+            | [SReturn e] => compile_expr env' None e
+            | SReturn _ :: _ => Unit
+            end in
+        let body := compile_block (x :: env) ss1 in
+        let rec_name := "f" in
+        fold_right (fun y acc => App (Lam (BNamed y) acc) (Var y))
+                   (Rec (BNamed rec_name) (BNamed x) body) env
     end).
 Defined.
 
@@ -390,6 +536,15 @@ Fixpoint compile_stmt_list (env : list string) (ss : list jstmt) : expr :=
   | SLet x e :: ss' =>
       Let (BNamed x) (Alloc (compile_expr env None e))
         (compile_stmt_list (x :: env) ss')
+  | SConst x e :: ss' =>
+      Let (BNamed x) (compile_expr env None e)
+        (compile_stmt_list (x :: env) ss')
+  | SExpr e :: ss' =>
+      Let BAnon (compile_expr env None e)
+        (compile_stmt_list env ss')
+  | SAssert e :: ss' =>
+      Let BAnon (Assert (compile_expr env None e))
+        (compile_stmt_list env ss')
   | [SReturn e] => compile_expr env None e
   | SReturn _ :: _ => Unit
   end.
@@ -422,6 +577,25 @@ Definition compile_decl_expr (d : jdecl) : option expr :=
 Definition compile_parsed_decl_expr (s : string) : option expr :=
   match parse_decl_only s with
   | Some d => compile_decl_expr d
+  | None => None
+  end.
+
+Definition parse_program_only (s : string) : option (list jstmt) :=
+  match parse_stmt_list (String.length s + 40)%nat (explode s) with
+  | Some (ss, rest) =>
+      match skip_ws_chars rest with
+      | [] => Some ss
+      | _ => None
+      end
+  | None => None
+  end.
+
+Definition compile_program_expr (ss : list jstmt) : expr :=
+  compile_stmt_list [] ss.
+
+Definition compile_parsed_program_expr (s : string) : option expr :=
+  match parse_program_only s with
+  | Some ss => Some (compile_program_expr ss)
   | None => None
   end.
 
