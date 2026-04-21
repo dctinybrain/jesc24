@@ -21,35 +21,14 @@ const cUp = { incr: c.incr };
 attacker(cUp);
 assert(c.incr() > 0);".
 
-Definition makeCounter_decl : jdecl :=
-  DConst "makeCounter"
+Definition makeCounter_program : list jstmt :=
+  [SConst "makeCounter"
     (EArrow [] (JArrowBlock
       [SLet "count" (ENum 0);
        SReturn
          (EObject
            [("incr", EArrow [] (JArrowExpr (EOpAssign PlusOp "count" 1)));
-            ("decr", EArrow [] (JArrowExpr (EOpAssign MinusOp "count" 1)))])])).
-
-Lemma makeCounter_compiled_closed :
-  Closed (<> :b: <> :b: [])
-    (compile_stmt_list []
-      [SLet "count" (ENum 0);
-       SReturn
-         (EObject
-           [("incr", EArrow [] (JArrowExpr (EOpAssign PlusOp "count" 1)));
-            ("decr", EArrow [] (JArrowExpr (EOpAssign MinusOp "count" 1)))])]).
-Proof. vm_compute. reflexivity. Qed.
-
-Existing Instance makeCounter_compiled_closed.
-
-Definition compiled_makeCounter : val :=
-  locked (RecV BAnon BAnon
-    (compile_stmt_list []
-      [SLet "count" (ENum 0);
-       SReturn
-         (EObject
-           [("incr", EArrow [] (JArrowExpr (EOpAssign PlusOp "count" 1)));
-            ("decr", EArrow [] (JArrowExpr (EOpAssign MinusOp "count" 1)))])])).
+            ("decr", EArrow [] (JArrowExpr (EOpAssign MinusOp "count" 1)))])]))].
 
 Definition make_counter : val :=
   λ: <>,
@@ -59,41 +38,24 @@ Definition make_counter : val :=
       "decr" := (λ: "count", rec: "f" <> := "count" -= #1) "count"
     ].
 
-Definition makeCounter_decl_term : expr :=
-  let: "makeCounter" := make_counter in "makeCounter".
+Definition makeCounter_program_term : expr :=
+  let: "makeCounter" := make_counter in Unit.
 
-Definition compiled_makeCounter_decl_term : expr :=
-  let: "makeCounter" := compiled_makeCounter in "makeCounter".
-
-Example parse_makeCounter_source_decl :
-  parse_decl_only makeCounter_source = Some makeCounter_decl.
+Example parse_makeCounter_source_program :
+  parse_program_only makeCounter_source = Some makeCounter_program.
 Proof. vm_compute. reflexivity. Qed.
 
-Lemma compile_makeCounter_decl_expr :
-  compile_decl_expr makeCounter_decl = Some compiled_makeCounter_decl_term.
+Lemma compile_makeCounter_program_expr :
+  compile_program_expr makeCounter_program = makeCounter_program_term.
 Proof.
-  rewrite /compile_decl_expr /makeCounter_decl /compiled_makeCounter_decl_term.
-  rewrite /compile_decl_body /compiled_makeCounter.
-  cbn.
-  destruct (decide True) as [HT|HF].
-  - rewrite (proof_irrel HT makeCounter_compiled_closed). reflexivity.
-  - contradiction.
+  vm_compute. reflexivity.
 Qed.
 
-Lemma compiled_makeCounter_decl_term_eq :
-  compiled_makeCounter_decl_term = makeCounter_decl_term.
+Lemma parse_makeCounter_source_program_term :
+  compile_parsed_program_expr makeCounter_source = Some makeCounter_program_term.
 Proof.
-  rewrite /compiled_makeCounter_decl_term /makeCounter_decl_term.
-  rewrite /compiled_makeCounter /make_counter.
-  vm_compute.
-  reflexivity.
-Qed.
-
-Lemma parse_makeCounter_source_decl_term :
-  compile_parsed_decl_expr makeCounter_source = Some makeCounter_decl_term.
-Proof.
-  rewrite /compile_parsed_decl_expr parse_makeCounter_source_decl.
-  rewrite compile_makeCounter_decl_expr compiled_makeCounter_decl_term_eq.
+  rewrite /compile_parsed_program_expr parse_makeCounter_source_program.
+  rewrite compile_makeCounter_program_expr.
   reflexivity.
 Qed.
 
