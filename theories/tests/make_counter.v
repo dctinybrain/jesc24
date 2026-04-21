@@ -98,10 +98,10 @@ Proof.
 Qed.
 
 Definition checkedCounter_program : list jstmt :=
-  [SConst "c" (ECall0 (EVar "makeCounter"));
+  [SConst "c" (ECall (EVar "makeCounter") []);
    SConst "cUp" (EObject [("incr", EField (EVar "c") "incr")]);
-   SExpr (ECall1 (EVar "attacker") (EVar "cUp"));
-   SAssert (EGreater (ECall0 (EField (EVar "c") "incr")) (ENum 0))].
+   SExpr (ECall (EVar "attacker") [EVar "cUp"]);
+   SAssert (EGreater (ECall (EField (EVar "c") "incr") []) (ENum 0))].
 
 Definition checkedCounter_program_term : expr :=
   let: "c" := "makeCounter" () in

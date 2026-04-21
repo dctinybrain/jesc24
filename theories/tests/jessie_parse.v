@@ -14,8 +14,7 @@ Inductive jexpr :=
 | ENum (n : Z)
 | EOpAssign (op : bin_op) (x : string) (n : Z)
 | EField (e : jexpr) (k : string)
-| ECall0 (e : jexpr)
-| ECall1 (e1 e2 : jexpr)
+| ECall (e : jexpr) (args : list jexpr)
 | EGreater (e1 e2 : jexpr)
 | EObject (fields : list (string * jexpr))
 | EArrow0Expr (e : jexpr)
@@ -178,12 +177,12 @@ Proof.
                 | Some (k, rest2) =>
                     let e1 := EField e k in
                     match skip_ws_chars rest2 with
-                    | "("%char :: ")"%char :: rest3 => Some (ECall0 e1, rest3)
+                    | "("%char :: ")"%char :: rest3 => Some (ECall e1 [], rest3)
                     | "("%char :: rest3 =>
                         match parse_expr fuel' rest3 with
                         | Some (arg, rest4) =>
                             match skip_ws_chars rest4 with
-                            | ")"%char :: rest5 => Some (ECall1 e1 arg, rest5)
+                            | ")"%char :: rest5 => Some (ECall e1 [arg], rest5)
                             | _ => None
                             end
                         | None => None
@@ -192,12 +191,12 @@ Proof.
                     end
                 | None => None
                 end
-            | "("%char :: ")"%char :: rest1 => Some (ECall0 e, rest1)
+            | "("%char :: ")"%char :: rest1 => Some (ECall e [], rest1)
             | "("%char :: rest1 =>
                 match parse_expr fuel' rest1 with
                 | Some (arg, rest2) =>
                     match skip_ws_chars rest2 with
-                    | ")"%char :: rest3 => Some (ECall1 e arg, rest3)
+                    | ")"%char :: rest3 => Some (ECall e [arg], rest3)
                     | _ => None
                     end
                 | None => None
@@ -469,8 +468,10 @@ Proof.
     | ENum n => Lit (LitInt n)
     | EOpAssign op x n => op_assign op (Var x) (Lit (LitInt n))
     | EField e1 k => obj_get (compile_expr env None e1) (j_string k)
-    | ECall0 e1 => App (compile_expr env None e1) Unit
-    | ECall1 e1 e2 => App (compile_expr env None e1) (compile_expr env None e2)
+    | ECall e1 [] => App (compile_expr env None e1) Unit
+    | ECall e1 args =>
+        fold_left (fun acc arg => App acc (compile_expr env None arg))
+                  args (compile_expr env None e1)
     | EGreater e1 e2 => BinOp LtOp (compile_expr env None e2) (compile_expr env None e1)
     | EObject fs =>
         j_object (map (fun kv => (fst kv, compile_expr env (Some (fst kv)) (snd kv))) fs)
