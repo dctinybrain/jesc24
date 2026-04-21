@@ -23,12 +23,12 @@ assert(c.incr() > 0);".
 
 Definition makeCounter_decl : jdecl :=
   DConst "makeCounter"
-    (EArrow0Block
+    (EArrow [] (JArrowBlock
       [SLet "count" (ENum 0);
        SReturn
          (EObject
-           [("incr", EArrow0Expr (EOpAssign PlusOp "count" 1));
-            ("decr", EArrow0Expr (EOpAssign MinusOp "count" 1))])]).
+           [("incr", EArrow [] (JArrowExpr (EOpAssign PlusOp "count" 1)));
+            ("decr", EArrow [] (JArrowExpr (EOpAssign MinusOp "count" 1)))])])).
 
 Lemma makeCounter_compiled_closed :
   Closed (<> :b: <> :b: [])
@@ -36,8 +36,8 @@ Lemma makeCounter_compiled_closed :
       [SLet "count" (ENum 0);
        SReturn
          (EObject
-           [("incr", EArrow0Expr (EOpAssign PlusOp "count" 1));
-            ("decr", EArrow0Expr (EOpAssign MinusOp "count" 1))])]).
+           [("incr", EArrow [] (JArrowExpr (EOpAssign PlusOp "count" 1)));
+            ("decr", EArrow [] (JArrowExpr (EOpAssign MinusOp "count" 1)))])]).
 Proof. vm_compute. reflexivity. Qed.
 
 Existing Instance makeCounter_compiled_closed.
@@ -48,8 +48,8 @@ Definition compiled_makeCounter : val :=
       [SLet "count" (ENum 0);
        SReturn
          (EObject
-           [("incr", EArrow0Expr (EOpAssign PlusOp "count" 1));
-            ("decr", EArrow0Expr (EOpAssign MinusOp "count" 1))])])).
+           [("incr", EArrow [] (JArrowExpr (EOpAssign PlusOp "count" 1)));
+            ("decr", EArrow [] (JArrowExpr (EOpAssign MinusOp "count" 1)))])])).
 
 Definition make_counter : val :=
   λ: <>,
@@ -99,9 +99,9 @@ Qed.
 
 Definition checkedCounter_program : list jstmt :=
   [SConst "c" (ECall (EVar "makeCounter") []);
-   SConst "cUp" (EObject [("incr", EField (EVar "c") "incr")]);
+   SConst "cUp" (EObject [("incr", EGet (EVar "c") "incr")]);
    SExpr (ECall (EVar "attacker") [EVar "cUp"]);
-   SAssert (EGreater (ECall (EField (EVar "c") "incr") []) (ENum 0))].
+   SAssert (EGreater (ECall (EGet (EVar "c") "incr") []) (ENum 0))].
 
 Definition checkedCounter_program_term : expr :=
   let: "c" := "makeCounter" () in
