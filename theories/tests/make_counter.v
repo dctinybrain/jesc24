@@ -15,6 +15,12 @@ Definition makeCounter_source : string :=
   };
 };".
 
+Definition checkedCounter_source : string :=
+  "const c = makeCounter();
+const cUp = { incr: c.incr };
+attacker(cUp);
+assert(c.incr() > 0);".
+
 Definition makeCounter_decl : jdecl :=
   DConst "makeCounter"
     (EArrow0Block
@@ -32,7 +38,7 @@ Lemma makeCounter_compiled_closed :
          (EObject
            [("incr", EArrow0Expr (EAssignPlus "count" 1));
             ("decr", EArrow0Expr (EAssignMinus "count" 1))])]).
-Proof. vm_compute. done. Qed.
+Proof. vm_compute. reflexivity. Qed.
 
 Existing Instance makeCounter_compiled_closed.
 
@@ -91,6 +97,35 @@ Proof.
   reflexivity.
 Qed.
 
+Definition checkedCounter_program : list jstmt :=
+  [SConst "c" (ECall0 (EVar "makeCounter"));
+   SConst "cUp" (EObject [("incr", EField (EVar "c") "incr")]);
+   SExpr (ECall1 (EVar "attacker") (EVar "cUp"));
+   SAssert (EGreater (ECall0 (EField (EVar "c") "incr")) (ENum 0))].
+
+Definition checkedCounter_program_term : expr :=
+  let: "c" := "makeCounter" () in
+  let: "cUp" := jobj ["incr" := "c" @["incr"]] in
+  let: <> := "attacker" "cUp" in
+  let: <> := assert: (#0 < (("c" @["incr"]) ())) in
+  Unit.
+
+Example parse_checkedCounter_source_program :
+  parse_program_only checkedCounter_source = Some checkedCounter_program.
+Proof. vm_compute. reflexivity. Qed.
+
+Lemma compile_checkedCounter_program_expr :
+  compile_program_expr checkedCounter_program = checkedCounter_program_term.
+Proof. vm_compute. reflexivity. Qed.
+
+Lemma parse_checkedCounter_source_program_term :
+  compile_parsed_program_expr checkedCounter_source = Some checkedCounter_program_term.
+Proof.
+  rewrite /compile_parsed_program_expr parse_checkedCounter_source_program.
+  rewrite compile_checkedCounter_program_expr.
+  reflexivity.
+Qed.
+
 Definition checked_counter : expr :=
   let: "c" := make_counter () in
   let: "cUpIncr" := obj_get "c" incr_key in
@@ -101,6 +136,10 @@ Definition checked_counter : expr :=
   (* TODO: change this back to the object-shaped cUp export once the proof
      goes through cleanly with object lookup in both places. *)
   ("use", "cUpIncr").
+
+(* TODO: Relate the parsed [checkedCounter_program_term], which keeps the
+   object-shaped [cUp] and an external [attacker], to the narrower
+   proof-oriented [checked_counter] term below. *)
 
 Definition counter_val (count : loc) : val :=
   j_objectV2 "incr" (RecV "f" <> (count += #1))
