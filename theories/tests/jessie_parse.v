@@ -12,8 +12,7 @@ Open Scope Z_scope.
 Inductive jexpr :=
 | EVar (x : string)
 | ENum (n : Z)
-| EAssignPlus (x : string) (n : Z)
-| EAssignMinus (x : string) (n : Z)
+| EOpAssign (op : bin_op) (x : string) (n : Z)
 | EField (e : jexpr) (k : string)
 | ECall0 (e : jexpr)
 | ECall1 (e1 e2 : jexpr)
@@ -277,12 +276,12 @@ Proof.
                   end
               | "+"%char :: "="%char :: rest2 =>
                   match parse_nat_lit rest2 with
-                  | Some (n, rest3) => Some (EAssignPlus x n, rest3)
+                  | Some (n, rest3) => Some (EOpAssign PlusOp x n, rest3)
                   | None => None
                   end
               | "-"%char :: "="%char :: rest2 =>
                   match parse_nat_lit rest2 with
-                  | Some (n, rest3) => Some (EAssignMinus x n, rest3)
+                  | Some (n, rest3) => Some (EOpAssign MinusOp x n, rest3)
                   | None => None
                   end
               | _ => parse_postfixes (EVar x) rest1
@@ -468,8 +467,7 @@ Proof.
     match e with
     | EVar x => Var x
     | ENum n => Lit (LitInt n)
-    | EAssignPlus x n => op_assign PlusOp (Var x) (Lit (LitInt n))
-    | EAssignMinus x n => op_assign MinusOp (Var x) (Lit (LitInt n))
+    | EOpAssign op x n => op_assign op (Var x) (Lit (LitInt n))
     | EField e1 k => obj_get (compile_expr env None e1) (j_string k)
     | ECall0 e1 => App (compile_expr env None e1) Unit
     | ECall1 e1 e2 => App (compile_expr env None e1) (compile_expr env None e2)
@@ -600,12 +598,12 @@ Definition compile_parsed_program_expr (s : string) : option expr :=
   end.
 
 Example parse_expr_assign_generic :
-  parse_expr_only "total += 7" = Some (EAssignPlus "total" 7).
+  parse_expr_only "total += 7" = Some (EOpAssign PlusOp "total" 7).
 Proof. vm_compute. reflexivity. Qed.
 
 Example parse_expr_object_generic :
   parse_expr_only "{ up: () => (cell += 1), down: () => (cell -= 1), }" =
     Some (EObject
-      [("up", EArrow0Expr (EAssignPlus "cell" 1));
-       ("down", EArrow0Expr (EAssignMinus "cell" 1))]).
+      [("up", EArrow0Expr (EOpAssign PlusOp "cell" 1));
+       ("down", EArrow0Expr (EOpAssign MinusOp "cell" 1))]).
 Proof. vm_compute. reflexivity. Qed.

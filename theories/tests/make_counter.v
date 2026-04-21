@@ -27,8 +27,8 @@ Definition makeCounter_decl : jdecl :=
       [SLet "count" (ENum 0);
        SReturn
          (EObject
-           [("incr", EArrow0Expr (EAssignPlus "count" 1));
-            ("decr", EArrow0Expr (EAssignMinus "count" 1))])]).
+           [("incr", EArrow0Expr (EOpAssign PlusOp "count" 1));
+            ("decr", EArrow0Expr (EOpAssign MinusOp "count" 1))])]).
 
 Lemma makeCounter_compiled_closed :
   Closed (<> :b: <> :b: [])
@@ -36,8 +36,8 @@ Lemma makeCounter_compiled_closed :
       [SLet "count" (ENum 0);
        SReturn
          (EObject
-           [("incr", EArrow0Expr (EAssignPlus "count" 1));
-            ("decr", EArrow0Expr (EAssignMinus "count" 1))])]).
+           [("incr", EArrow0Expr (EOpAssign PlusOp "count" 1));
+            ("decr", EArrow0Expr (EOpAssign MinusOp "count" 1))])]).
 Proof. vm_compute. reflexivity. Qed.
 
 Existing Instance makeCounter_compiled_closed.
@@ -48,8 +48,8 @@ Definition compiled_makeCounter : val :=
       [SLet "count" (ENum 0);
        SReturn
          (EObject
-           [("incr", EArrow0Expr (EAssignPlus "count" 1));
-            ("decr", EArrow0Expr (EAssignMinus "count" 1))])])).
+           [("incr", EArrow0Expr (EOpAssign PlusOp "count" 1));
+            ("decr", EArrow0Expr (EOpAssign MinusOp "count" 1))])])).
 
 Definition make_counter : val :=
   λ: <>,
