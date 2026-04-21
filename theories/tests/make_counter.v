@@ -24,6 +24,10 @@ Definition checked_counter : expr :=
      goes through cleanly with object lookup in both places. *)
   ("use", "cUpIncr").
 
+Definition counter_val (count : loc) : val :=
+  j_objectV2 "incr" (RecV "incr" <> (count += #1))
+             "decr" (RecV "decr" <> (count -= #1)).
+
 Section proof.
   Context `{heapG Σ}.
   Context (N : namespace) (HN : heapN ⊥ N).
@@ -55,14 +59,28 @@ Section proof.
 
   Lemma wp_counter_get_incr (count : loc) :
     {{{ True }}}
-      obj_get
-        (jobj ["incr" := (of_val (RecV "incr" <> (count += #1)));
-               "decr" := (of_val (RecV "decr" <> (count -= #1)))])
-        incr_key
+      obj_get (counter_val count) incr_key
     {{{ RET (RecV "incr" <> (count += #1)); True }}}.
   Proof.
-    rewrite /incr_key.
+    rewrite /counter_val /incr_key.
     apply (wp_obj_get2_first "incr" "decr").
+  Qed.
+
+  Lemma make_counter_spec :
+    {{{ heap_ctx }}}
+      make_counter ()
+    {{{ count, RET (counter_val count); counter_inv count }}}.
+  Proof.
+    iIntros (Φ) "#Hh HΦ". rewrite /make_counter /counter_val.
+    wp_lam.
+    wp_alloc count as "Hcount". wp_let.
+    iMod (inv_alloc N _ (∃ z : Z, ⌜0 ≤ z⌝ ∗ count ↦ #z)%I with "[Hcount]") as "#Hinv".
+    { iNext. iExists 0. iFrame. done. }
+    wp_let.
+    wp_let.
+    wp_let.
+    wp_let.
+    by iApply ("HΦ" $! count with "Hinv").
   Qed.
 
   Lemma incr_call_pos count :
@@ -152,15 +170,9 @@ Section proof.
   Lemma checked_counter_spec :
     {{{ heap_ctx }}} checked_counter {{{ v, RET v; low v }}}.
   Proof.
-    iIntros (Φ) "#Hh HΦ". rewrite /checked_counter /make_counter.
-    wp_lam.
-    wp_alloc count as "Hcount". wp_let.
-    iMod (inv_alloc N _ (∃ z : Z, ⌜0 ≤ z⌝ ∗ count ↦ #z)%I with "[Hcount]") as "#Hinv".
-    { iNext. iExists 0. iFrame. done. }
-    wp_let.
-    wp_let.
-    wp_let.
-    wp_let.
+    iIntros (Φ) "#Hh HΦ". rewrite /checked_counter.
+    wp_apply (make_counter_spec with "Hh").
+    iIntros (count) "#Hinv".
     wp_let.
     wp_apply (wp_counter_get_incr count).
     iIntros "_".
