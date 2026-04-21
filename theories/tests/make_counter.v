@@ -1,17 +1,95 @@
 From iris.heap_lang Require Import heap adequacy.
 From iris.proofmode Require Import tactics.
 From iris.heap_lang Require Import proofmode notation.
-From iris.tests Require Import jessie_notation.
+From iris.tests Require Import jessie_notation jessie_parse.
 Import uPred.
 
 (** * Upward-capability counter client *)
 
+Definition makeCounter_source : string :=
+  "const makeCounter = () => {
+  let count = 0;
+  return {
+    incr: () => (count += 1),
+    decr: () => (count -= 1),
+  };
+};".
+
+Definition makeCounter_decl : jdecl :=
+  DConst "makeCounter"
+    (EArrow0Block
+      [SLet "count" (ENum 0);
+       SReturn
+         (EObject
+           [("incr", EArrow0Expr (EAssignPlus "count" 1));
+            ("decr", EArrow0Expr (EAssignMinus "count" 1))])]).
+
+Lemma makeCounter_compiled_closed :
+  Closed (<> :b: <> :b: [])
+    (compile_stmt_list []
+      [SLet "count" (ENum 0);
+       SReturn
+         (EObject
+           [("incr", EArrow0Expr (EAssignPlus "count" 1));
+            ("decr", EArrow0Expr (EAssignMinus "count" 1))])]).
+Proof. vm_compute. done. Qed.
+
+Existing Instance makeCounter_compiled_closed.
+
+Definition compiled_makeCounter : val :=
+  locked (RecV BAnon BAnon
+    (compile_stmt_list []
+      [SLet "count" (ENum 0);
+       SReturn
+         (EObject
+           [("incr", EArrow0Expr (EAssignPlus "count" 1));
+            ("decr", EArrow0Expr (EAssignMinus "count" 1))])])).
+
 Definition make_counter : val :=
   λ: <>,
     let: "count" := ref #0 in
-    let: "incr" := (λ: "count", rec: "incr" <> := "count" += #1) "count" in
-    let: "decr" := (λ: "count", rec: "decr" <> := "count" -= #1) "count" in
-    jobj ["incr" := "incr"; "decr" := "decr"].
+    jobj [
+      "incr" := (λ: "count", rec: "f" <> := "count" += #1) "count";
+      "decr" := (λ: "count", rec: "f" <> := "count" -= #1) "count"
+    ].
+
+Definition makeCounter_decl_term : expr :=
+  let: "makeCounter" := make_counter in "makeCounter".
+
+Definition compiled_makeCounter_decl_term : expr :=
+  let: "makeCounter" := compiled_makeCounter in "makeCounter".
+
+Example parse_makeCounter_source_decl :
+  parse_decl_only makeCounter_source = Some makeCounter_decl.
+Proof. vm_compute. reflexivity. Qed.
+
+Lemma compile_makeCounter_decl_expr :
+  compile_decl_expr makeCounter_decl = Some compiled_makeCounter_decl_term.
+Proof.
+  rewrite /compile_decl_expr /makeCounter_decl /compiled_makeCounter_decl_term.
+  rewrite /compile_decl_body /compiled_makeCounter.
+  cbn.
+  destruct (decide True) as [HT|HF].
+  - rewrite (proof_irrel HT makeCounter_compiled_closed). reflexivity.
+  - contradiction.
+Qed.
+
+Lemma compiled_makeCounter_decl_term_eq :
+  compiled_makeCounter_decl_term = makeCounter_decl_term.
+Proof.
+  rewrite /compiled_makeCounter_decl_term /makeCounter_decl_term.
+  rewrite /compiled_makeCounter /make_counter.
+  vm_compute.
+  reflexivity.
+Qed.
+
+Lemma parse_makeCounter_source_decl_term :
+  compile_parsed_decl_expr makeCounter_source = Some makeCounter_decl_term.
+Proof.
+  rewrite /compile_parsed_decl_expr parse_makeCounter_source_decl.
+  rewrite compile_makeCounter_decl_expr compiled_makeCounter_decl_term_eq.
+  reflexivity.
+Qed.
 
 Definition checked_counter : expr :=
   let: "c" := make_counter () in
@@ -25,8 +103,8 @@ Definition checked_counter : expr :=
   ("use", "cUpIncr").
 
 Definition counter_val (count : loc) : val :=
-  j_objectV2 "incr" (RecV "incr" <> (count += #1))
-             "decr" (RecV "decr" <> (count -= #1)).
+  j_objectV2 "incr" (RecV "f" <> (count += #1))
+             "decr" (RecV "f" <> (count -= #1)).
 
 Section proof.
   Context `{heapG Σ}.
@@ -60,7 +138,7 @@ Section proof.
   Lemma wp_counter_get_incr (count : loc) :
     {{{ True }}}
       obj_get (counter_val count) incr_key
-    {{{ RET (RecV "incr" <> (count += #1)); True }}}.
+    {{{ RET (RecV "f" <> (count += #1)); True }}}.
   Proof.
     rewrite /counter_val /incr_key.
     apply (wp_obj_get2_first "incr" "decr").
@@ -76,16 +154,16 @@ Section proof.
     wp_alloc count as "Hcount". wp_let.
     iMod (inv_alloc N _ (∃ z : Z, ⌜0 ≤ z⌝ ∗ count ↦ #z)%I with "[Hcount]") as "#Hinv".
     { iNext. iExists 0. iFrame. done. }
-    wp_let.
-    wp_let.
-    wp_let.
-    wp_let.
+    wp_bind ((λ: "count", rec: "f" <> := "count" += #1) count)%E.
+    wp_lam.
+    wp_bind ((λ: "count", rec: "f" <> := "count" -= #1) count)%E.
+    wp_lam.
     by iApply ("HΦ" $! count with "Hinv").
   Qed.
 
   Lemma incr_call_pos count :
     {{{ heap_ctx ∗ counter_inv count }}}
-      (RecV "incr" <> (count += #1)) ()
+      (RecV "f" <> (count += #1)) ()
     {{{ v, RET v; ∃ z : Z, ⌜v = #z⌝ ∗ ⌜0 < z⌝ }}}.
   Proof.
     iIntros (Φ) "#(Hh & Hinv) HΦ".
@@ -117,7 +195,7 @@ Section proof.
 
   Lemma incr_closure_low count :
     heap_ctx ∗ counter_inv count ⊢
-      low (RecV "incr" <> (count += #1)).
+      low (RecV "f" <> (count += #1)).
   Proof.
     iIntros "#(Hh & Hinv)". rewrite low_rec.
     iAlways. iNext. iIntros (? Φ) "_ HΦ". simpl_subst.
@@ -148,7 +226,7 @@ Section proof.
   Lemma use_closure_low count :
     heap_ctx ∗ counter_inv count ⊢
       low (RecV "use" <>
-        (let: "n" := (rec: "incr" <> := count += #1) () in
+        (let: "n" := (rec: "f" <> := count += #1) () in
          assert: (#0 < "n"))).
   Proof.
     iIntros "#(Hh & Hinv)". rewrite low_rec.
