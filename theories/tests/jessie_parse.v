@@ -13,13 +13,11 @@ Inductive jexpr :=
 | EVar (x : string)
 | ENum (n : Z)
 | EOpAssign (op : bin_op) (x : string) (n : Z)
-| EField (e : jexpr) (k : string)
+| EGet (e : jexpr) (k : string)
 | ECall (e : jexpr) (args : list jexpr)
 | EGreater (e1 e2 : jexpr)
 | EObject (fields : list (string * jexpr))
-| EArrow0Expr (e : jexpr)
-| EArrow0Block (ss : list jstmt)
-| EArrow1Block (x : string) (ss : list jstmt)
+| EArrow (params : list string) (body : jarrow_body)
 with jstmt :=
 | SLet (x : string) (e : jexpr)
 | SConst (x : string) (e : jexpr)
@@ -27,12 +25,17 @@ with jstmt :=
 | SAssert (e : jexpr)
 | SReturn (e : jexpr).
 
+Inductive jarrow_body :=
+| JArrowExpr (e : jexpr)
+| JArrowBlock (ss : list jstmt).
+
 Inductive jdecl :=
 | DConst (x : string) (e : jexpr).
 
 Scheme jexpr_ind' := Induction for jexpr Sort Prop
-with jstmt_ind' := Induction for jstmt Sort Prop.
-Combined Scheme jsyntax_ind from jexpr_ind', jstmt_ind'.
+with jstmt_ind' := Induction for jstmt Sort Prop
+with jarrow_body_ind' := Induction for jarrow_body Sort Prop.
+Combined Scheme jsyntax_ind from jexpr_ind', jstmt_ind', jarrow_body_ind'.
 
 Definition parser (A : Type) := list ascii -> option (A * list ascii).
 
@@ -175,7 +178,7 @@ Proof.
             | "."%char :: rest1 =>
                 match parse_ident rest1 with
                 | Some (k, rest2) =>
-                    let e1 := EField e k in
+                    let e1 := EGet e k in
                     match skip_ws_chars rest2 with
                     | "("%char :: ")"%char :: rest3 => Some (ECall e1 [], rest3)
                     | "("%char :: rest3 =>
@@ -225,12 +228,12 @@ Proof.
               match rest2 with
               | "{"%char :: _ =>
                   match parse_stmt_list fuel' rest2 with
-                  | Some (ss, rest3) => Some (EArrow0Block ss, rest3)
+                  | Some (ss, rest3) => Some (EArrow [] (JArrowBlock ss), rest3)
                   | None => None
                   end
               | _ =>
                   match parse_expr fuel' rest2 with
-                  | Some (e, rest3) => Some (EArrow0Expr e, rest3)
+                  | Some (e, rest3) => Some (EArrow [] (JArrowExpr e), rest3)
                   | None => None
                   end
               end
@@ -268,7 +271,7 @@ Proof.
                   match rest2 with
                   | "{"%char :: _ =>
                       match parse_stmt_list fuel' rest2 with
-                      | Some (ss, rest3) => Some (EArrow1Block x ss, rest3)
+                      | Some (ss, rest3) => Some (EArrow [x] (JArrowBlock ss), rest3)
                       | None => None
                       end
                   | _ => None
@@ -467,7 +470,7 @@ Proof.
     | EVar x => Var x
     | ENum n => Lit (LitInt n)
     | EOpAssign op x n => op_assign op (Var x) (Lit (LitInt n))
-    | EField e1 k => obj_get (compile_expr env None e1) (j_string k)
+    | EGet e1 k => obj_get (compile_expr env None e1) (j_string k)
     | ECall e1 [] => App (compile_expr env None e1) Unit
     | ECall e1 args =>
         fold_left (fun acc arg => App acc (compile_expr env None arg))
@@ -475,35 +478,7 @@ Proof.
     | EGreater e1 e2 => BinOp LtOp (compile_expr env None e2) (compile_expr env None e1)
     | EObject fs =>
         j_object (map (fun kv => (fst kv, compile_expr env (Some (fst kv)) (snd kv))) fs)
-    | EArrow0Expr e1 =>
-        let body := compile_expr env None e1 in
-        let rec_name := "f" in
-        fold_right (fun x acc => App (Lam (BNamed x) acc) (Var x))
-                   (Rec (BNamed rec_name) BAnon body) env
-    | EArrow0Block ss1 =>
-        let fix compile_block (env' : list string) (ss : list jstmt) : expr :=
-            match ss with
-            | [] => Unit
-            | SLet x e :: ss' =>
-                Let (BNamed x) (Alloc (compile_expr env' None e))
-                  (compile_block (x :: env') ss')
-            | SConst x e :: ss' =>
-                Let (BNamed x) (compile_expr env' None e)
-                  (compile_block (x :: env') ss')
-            | SExpr e :: ss' =>
-                Let BAnon (compile_expr env' None e)
-                  (compile_block env' ss')
-            | SAssert e :: ss' =>
-                Let BAnon (Assert (compile_expr env' None e))
-                  (compile_block env' ss')
-            | [SReturn e] => compile_expr env' None e
-            | SReturn _ :: _ => Unit
-            end in
-        let body := compile_block env ss1 in
-        let rec_name := "f" in
-        fold_right (fun x acc => App (Lam (BNamed x) acc) (Var x))
-                   (Rec (BNamed rec_name) BAnon body) env
-    | EArrow1Block x ss1 =>
+    | EArrow params body1 =>
         let fix compile_block (env' : list string) (ss : list jstmt) : expr :=
             match ss with
             | [] => Unit
@@ -522,10 +497,24 @@ Proof.
             | [SReturn e] => compile_expr env' None e
             | SReturn _ :: _ => Unit
             end in
-        let body := compile_block (x :: env) ss1 in
+        let body :=
+          match body1 with
+          | JArrowExpr e1 => compile_expr env None e1
+          | JArrowBlock ss1 => compile_block (rev params ++ env) ss1
+          end in
         let rec_name := "f" in
-        fold_right (fun y acc => App (Lam (BNamed y) acc) (Var y))
-                   (Rec (BNamed rec_name) (BNamed x) body) env
+        let arg_binder :=
+          match params with
+          | [] => BAnon
+          | x :: _ => BNamed x
+          end in
+        let rec_body :=
+          match params with
+          | [] => Rec (BNamed rec_name) BAnon body
+          | x :: _ => Rec (BNamed rec_name) (BNamed x) body
+          end in
+        fold_right (fun x acc => App (Lam (BNamed x) acc) (Var x))
+                   rec_body env
     end).
 Defined.
 
@@ -550,7 +539,7 @@ Fixpoint compile_stmt_list (env : list string) (ss : list jstmt) : expr :=
 
 Definition compile_decl_body (d : jdecl) : option val :=
   match d with
-  | DConst _ (EArrow0Block ss) =>
+  | DConst _ (EArrow [] (JArrowBlock ss)) =>
       let body := compile_stmt_list [] ss in
       if decide (Closed (BAnon :b: BAnon :b: []) body)
       then Some (locked (LamV BAnon body))
@@ -605,6 +594,6 @@ Proof. vm_compute. reflexivity. Qed.
 Example parse_expr_object_generic :
   parse_expr_only "{ up: () => (cell += 1), down: () => (cell -= 1), }" =
     Some (EObject
-      [("up", EArrow0Expr (EOpAssign PlusOp "cell" 1));
-       ("down", EArrow0Expr (EOpAssign MinusOp "cell" 1))]).
+      [("up", EArrow [] (JArrowExpr (EOpAssign PlusOp "cell" 1)));
+       ("down", EArrow [] (JArrowExpr (EOpAssign MinusOp "cell" 1)))]).
 Proof. vm_compute. reflexivity. Qed.
