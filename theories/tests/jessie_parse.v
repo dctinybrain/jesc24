@@ -171,6 +171,46 @@ with parse_fields (fuel : nat) : parser (list (string * jexpr)).
 Proof.
   - destruct fuel as [|fuel']; [exact parse_error|].
     refine (fun cs =>
+      let fix parse_param_list (cs : list ascii) : option (list string * list ascii) :=
+          let cs := skip_ws_chars cs in
+          match cs with
+          | ")"%char :: rest => Some ([], rest)
+          | _ =>
+              match parse_ident cs with
+              | Some (x, rest1) =>
+                  let rest1 := skip_ws_chars rest1 in
+                  match rest1 with
+                  | ","%char :: rest2 =>
+                      match parse_param_list rest2 with
+                      | Some (xs, rest3) => Some (x :: xs, rest3)
+                      | None => None
+                      end
+                  | ")"%char :: rest2 => Some ([x], rest2)
+                  | _ => None
+                  end
+              | None => None
+              end
+          end in
+      let fix parse_arg_list (cs : list ascii) : option (list jexpr * list ascii) :=
+          let cs := skip_ws_chars cs in
+          match cs with
+          | ")"%char :: rest => Some ([], rest)
+          | _ =>
+              match parse_expr fuel' cs with
+              | Some (arg, rest1) =>
+                  let rest1 := skip_ws_chars rest1 in
+                  match rest1 with
+                  | ","%char :: rest2 =>
+                      match parse_arg_list rest2 with
+                      | Some (args, rest3) => Some (arg :: args, rest3)
+                      | None => None
+                      end
+                  | ")"%char :: rest2 => Some ([arg], rest2)
+                  | _ => None
+                  end
+              | None => None
+              end
+          end in
       let parse_postfixes (e : jexpr) (cs : list ascii) : option (jexpr * list ascii) :=
           let cs := skip_ws_chars cs in
           let e_and_rest :=
@@ -180,28 +220,18 @@ Proof.
                 | Some (k, rest2) =>
                     let e1 := EGet e k in
                     match skip_ws_chars rest2 with
-                    | "("%char :: ")"%char :: rest3 => Some (ECall e1 [], rest3)
                     | "("%char :: rest3 =>
-                        match parse_expr fuel' rest3 with
-                        | Some (arg, rest4) =>
-                            match skip_ws_chars rest4 with
-                            | ")"%char :: rest5 => Some (ECall e1 [arg], rest5)
-                            | _ => None
-                            end
+                        match parse_arg_list rest3 with
+                        | Some (args, rest4) => Some (ECall e1 args, rest4)
                         | None => None
                         end
                     | _ => Some (e1, rest2)
                     end
                 | None => None
                 end
-            | "("%char :: ")"%char :: rest1 => Some (ECall e [], rest1)
             | "("%char :: rest1 =>
-                match parse_expr fuel' rest1 with
-                | Some (arg, rest2) =>
-                    match skip_ws_chars rest2 with
-                    | ")"%char :: rest3 => Some (ECall e [arg], rest3)
-                    | _ => None
-                    end
+                match parse_arg_list rest1 with
+                | Some (args, rest2) => Some (ECall e args, rest2)
                 | None => None
                 end
             | _ => Some (e, cs)
@@ -220,24 +250,36 @@ Proof.
           end in
       let cs := skip_ws_chars cs in
       match cs with
-      | "("%char :: ")"%char :: rest1 =>
-          let rest1 := skip_ws_chars rest1 in
-          match rest1 with
-          | "="%char :: ">"%char :: rest2 =>
+      | "("%char :: rest1 =>
+          match parse_param_list rest1 with
+          | Some (params, rest2) =>
               let rest2 := skip_ws_chars rest2 in
               match rest2 with
-              | "{"%char :: _ =>
-                  match parse_stmt_list fuel' rest2 with
-                  | Some (ss, rest3) => Some (EArrow [] (JArrowBlock ss), rest3)
-                  | None => None
+              | "="%char :: ">"%char :: rest3 =>
+                  let rest3 := skip_ws_chars rest3 in
+                  match rest3 with
+                  | "{"%char :: _ =>
+                      match parse_stmt_list fuel' rest3 with
+                      | Some (ss, rest4) => Some (EArrow params (JArrowBlock ss), rest4)
+                      | None => None
+                      end
+                  | _ =>
+                      match parse_expr fuel' rest3 with
+                      | Some (e, rest4) => Some (EArrow params (JArrowExpr e), rest4)
+                      | None => None
+                      end
                   end
               | _ =>
-                  match parse_expr fuel' rest2 with
-                  | Some (e, rest3) => Some (EArrow [] (JArrowExpr e), rest3)
+                  match parse_expr fuel' rest1 with
+                  | Some (e, rest3) =>
+                      match skip_ws_chars rest3 with
+                      | ")"%char :: rest4 => parse_postfixes e rest4
+                      | _ => None
+                      end
                   | None => None
                   end
               end
-          | _ =>
+          | None =>
               match parse_expr fuel' rest1 with
               | Some (e, rest2) =>
                   match skip_ws_chars rest2 with
@@ -246,15 +288,6 @@ Proof.
                   end
               | None => None
               end
-          end
-      | "("%char :: rest1 =>
-          match parse_expr fuel' rest1 with
-          | Some (e, rest2) =>
-              match skip_ws_chars rest2 with
-              | ")"%char :: rest3 => parse_postfixes e rest3
-              | _ => None
-              end
-          | None => None
           end
       | "{"%char :: rest1 =>
           match parse_fields fuel' rest1 with
@@ -274,7 +307,11 @@ Proof.
                       | Some (ss, rest3) => Some (EArrow [x] (JArrowBlock ss), rest3)
                       | None => None
                       end
-                  | _ => None
+                  | _ =>
+                      match parse_expr fuel' rest2 with
+                      | Some (e, rest3) => Some (EArrow [x] (JArrowExpr e), rest3)
+                      | None => None
+                      end
                   end
               | "+"%char :: "="%char :: rest2 =>
                   match parse_nat_lit rest2 with
@@ -497,21 +534,19 @@ Proof.
             | [SReturn e] => compile_expr env' None e
             | SReturn _ :: _ => Unit
             end in
+        let closed_env := rev params ++ env in
         let body :=
           match body1 with
-          | JArrowExpr e1 => compile_expr env None e1
-          | JArrowBlock ss1 => compile_block (rev params ++ env) ss1
+          | JArrowExpr e1 => compile_expr closed_env None e1
+          | JArrowBlock ss1 => compile_block closed_env ss1
           end in
         let rec_name := "f" in
-        let arg_binder :=
-          match params with
-          | [] => BAnon
-          | x :: _ => BNamed x
-          end in
         let rec_body :=
           match params with
           | [] => Rec (BNamed rec_name) BAnon body
-          | x :: _ => Rec (BNamed rec_name) (BNamed x) body
+          | x :: xs =>
+              Rec (BNamed rec_name) (BNamed x)
+                (fold_right (fun y acc => Lam (BNamed y) acc) body xs)
           end in
         fold_right (fun x acc => App (Lam (BNamed x) acc) (Var x))
                    rec_body env
