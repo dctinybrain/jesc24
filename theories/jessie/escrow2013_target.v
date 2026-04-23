@@ -8,6 +8,11 @@ Open Scope Z_scope.
 Module Escrow2013Target.
   Import JessicaAst.
 
+  (* Constructor-rich JessicaAst target for the current escrow2013 rendition.
+     This is intended to track the same underlying structure as the in-tree
+     escrow2013.jessie.json / escrow2013.jessie.lisp artifacts, just rendered
+     with JessieAst constructors instead of JSON or Lisp surface syntax. *)
+
   Definition u (x : string) : jexpr := JUse x.
   Definition s (x : string) : jexpr := JDataString x.
   Definition n (x : Z) : jexpr := JDataNum x.

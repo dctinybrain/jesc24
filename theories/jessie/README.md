@@ -4,8 +4,21 @@ Current result:
 - `make_counter.v` now lives in `theories/jessie/` and still carries the upward-capability counter robust-safety proof line.
 - The same directory now also contains a `peg`-based Jessie parser line:
   - `make_counter.v` proves a structured PEG-backed parse of `makeCounter_source` into `JessicaAst`.
-  - `escrow2013.v` proves an exact-source PEG parse of `escrow2013_source` into `escrow2013_program`.
+  - `escrow2013.v` proves an exact-source PEG parse of `escrow2013_source` into `escrow2013_program`, with that target declared separately in `escrow2013_target.v` from the in-tree `.jessie.json` / `.jessie.lisp` rendition shape.
 - `makeCounter_source` and `escrow2013_source` now come from checked-in `.js` files under `theories/jessie/sources/`, generated one-per-file into `*_js.v` modules during `make`.
+
+Context:
+- This directory is part of the broader Zoe2 Escrow line of work described in [packages/zoe/spec/jessie-iris.md](/home/connolly/projects/ag-escrow-formal/packages/zoe/spec/jessie-iris.md:1).
+- The presentation-level running example there is the separation-of-duties `makeCounter` story:
+  trusted code exports only upward authority, attacker code receives that reduced capability, and the final `c.incr() > 0` assertion should still hold.
+- The broader goal is not only the counter example. It is a source-facing Jessie path for the Zoe2 Escrow work, with `escrow2013` as a larger target alongside `makeCounter`.
+- `theories/jessie/` is the place where that source-facing Jessie work now lives inside the active `ocpl-coq` proof workspace, rather than in a separate spike directory.
+
+Relevant broader escrow renditions already in-tree:
+- `packages/zoe/spec/escrow2013.js`
+- `packages/zoe/spec/escrow2013.scm`
+- `packages/zoe/spec/escrow2013.jessie.json`
+- `packages/zoe/spec/escrow2013.jessie.lisp`
 
 The directory currently has four layers:
 
@@ -29,13 +42,14 @@ The directory currently has four layers:
 
 4. Example targets and proofs
 - `make_counter.v`
-- `escrow2013_target.v`
+- `escrow2013_target.v`: constructor-rich `JessicaAst` target for the current `escrow2013` rendition, aligned with the in-tree `.jessie.json` and `.jessie.lisp`
 - `escrow2013.v`
 
 Current limitations:
 - `makeCounter` goes through the current structured PEG grammar.
 - `escrow2013` currently uses an exact-source PEG wrapper via `exact_module_source`; it is not yet parsed by a fully structured Jessie grammar.
-- `jessie_parse.v` remains as the legacy `list jstmt -> HeapLang` bridge used by the existing robust-safety result. The PEG/Jessica path has not yet replaced that compiler path.
+- `jessie_parse.v` remains as the legacy `list jstmt -> HeapLang` bridge used by the existing robust-safety result.
+- The PEG/Jessica path has not yet replaced that compiler path, and `JThrow` should be treated with `escrow2013`/promise semantics in mind rather than as a simple stuckness construct.
 
 Build:
 - Use the same switch the OCPL proof line uses:
