@@ -13,3 +13,4 @@
 Makefile.coq
 Makefile.coq.conf
 *.crashcoqide
+theories/jessie/*_js.v
