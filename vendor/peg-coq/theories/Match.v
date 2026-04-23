@@ -3,10 +3,10 @@ From Coq Require Import Strings.Ascii.
 From Coq Require Import Strings.String.
 From Coq Require Import Arith.PeanoNat.
 From Coq Require Import Lia.
-From iris.jessie.peg Require Import syntax.
-From iris.jessie.peg Require Import tactics.
-From iris.jessie.peg Require Import suffix.
-From iris.jessie.peg Require Import charset.
+From Peg Require Import Syntax.
+From Peg Require Import Tactics.
+From Peg Require Import Suffix.
+From Peg Require Import Charset.
 
 Inductive MatchResult : Type :=
   | Failure : MatchResult            (* Pattern failed to match.            *)

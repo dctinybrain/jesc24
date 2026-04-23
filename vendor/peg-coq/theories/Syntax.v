@@ -1,7 +1,7 @@
 From Coq Require Import Strings.Ascii.
 From Coq Require Import Lists.List.
 From Coq Require Import Lia.
-From iris.jessie.peg Require Import charset.
+From Peg Require Import Charset.
 
 (** Pattern (a.k.a. expression) **)
 

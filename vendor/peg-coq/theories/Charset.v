@@ -1,7 +1,7 @@
 From Coq Require Import Bool.
 From Coq Require Import Strings.Ascii.
 From Coq Require Import Logic.FunctionalExtensionality.
-From iris.jessie.peg Require Import tactics.
+From Peg Require Import Tactics.
 
 Definition charset : Type := (ascii -> bool).
 

@@ -1,5 +1,5 @@
 From Coq Require Import Lists.List Strings.Ascii Strings.String.
-From iris.jessie.peg Require Import charset syntax peg_match.
+From Peg Require Import Charset Syntax Match.
 
 Import ListNotations.
 Open Scope string_scope.
@@ -7,8 +7,9 @@ Open Scope string_scope.
 Module QuasiJson.
   (* Experimental peg-coq lexical/recognizer layer, parallel to quasi-json,
      but intentionally much narrower: only the token-level pieces needed by
-     the current makeCounter example. This file defines PEG patterns, not an
-     AST-producing parser. *)
+     the current makeCounter example. This file defines PEG patterns over the
+     vendored peg-coq slice under vendor/peg-coq/theories, imported here through
+     the upstream-style Peg namespace, not an AST-producing parser. *)
 
   Definition char_pat (c : ascii) : pat :=
     PSet (fun a => Ascii.eqb a c).

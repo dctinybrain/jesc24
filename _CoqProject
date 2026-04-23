@@ -1,4 +1,5 @@
 -Q theories iris
+-R vendor/peg-coq/theories Peg
 -arg -w -arg -notation-overridden,-redundant-canonical-projection,-several-object-files
 theories/prelude/option.v
 theories/prelude/fin_map_dom.v
@@ -126,11 +127,11 @@ theories/heap_lang/lib/sealing.v
 theories/heap_lang/adequacy.v
 theories/tests/assert.v
 theories/tests/readonly.v
-theories/jessie/peg/tactics.v
-theories/jessie/peg/charset.v
-theories/jessie/peg/syntax.v
-theories/jessie/peg/suffix.v
-theories/jessie/peg/peg_match.v
+vendor/peg-coq/theories/Tactics.v
+vendor/peg-coq/theories/Charset.v
+vendor/peg-coq/theories/Syntax.v
+vendor/peg-coq/theories/Suffix.v
+vendor/peg-coq/theories/Match.v
 theories/jessie/jessica_ast.v
 theories/jessie/quasi_json.v
 theories/jessie/quasi_justin.v
