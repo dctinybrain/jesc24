@@ -1,7 +1,9 @@
 From iris.heap_lang Require Import heap adequacy.
 From iris.proofmode Require Import tactics.
 From iris.heap_lang Require Import proofmode notation.
-From iris.tests Require Import jessie_notation jessie_parse.
+From iris.jessie.peg Require Import peg_match.
+From iris.jessie Require Import jessie_notation jessie_parse.
+From iris.jessie Require Import jessica_ast quasi_jessie.
 Import uPred.
 
 (** * Upward-capability counter client *)
@@ -21,6 +23,45 @@ const cUp = { incr: c.incr };
 attacker(cUp);
 assert(c.incr() > 0);".
 
+Module PegMakeCounter.
+  Module JA := JessicaAst.
+
+  Definition count_use : JA.jexpr := JA.JUse "count".
+  Definition data0 : JA.jexpr := JA.JDataNum 0.
+  Definition data1 : JA.jexpr := JA.JDataNum 1.
+
+  Definition incr_prop : JA.jprop :=
+    JA.JProp "incr"
+      (JA.JArrow [] (JA.JBodyExpr (JA.JAssignOp "+=" count_use data1))).
+
+  Definition decr_prop : JA.jprop :=
+    JA.JProp "decr"
+      (JA.JArrow [] (JA.JBodyExpr (JA.JAssignOp "-=" count_use data1))).
+
+  Definition count_let : JA.jstmt :=
+    JA.JLet [JA.JBind (JA.JDef "count") data0].
+
+  Definition counter_record : JA.jexpr :=
+    JA.JRecord [incr_prop; decr_prop].
+
+  Definition makeCounter_jessica_program : JA.jmodule :=
+    JA.JModule
+      [JA.JConst
+        [JA.JBind
+          (JA.JDef "makeCounter")
+          (JA.JArrow [] (JA.JBodyBlock [count_let; JA.JReturn counter_record]))]].
+
+  Example parse_makeCounter_module :
+    matches_comp QuasiJessie.grammar QuasiJessie.moduleBody
+      makeCounter_source 4096 = Some (Success EmptyString).
+  Proof. vm_compute. reflexivity. Qed.
+
+  Example parse_makeCounter_source_program :
+    QuasiJessie.parse_program_only makeCounter_source =
+      Some makeCounter_jessica_program.
+  Proof. vm_compute. reflexivity. Qed.
+End PegMakeCounter.
+
 Definition makeCounter_program : list jstmt :=
   [SConst "makeCounter"
     (EArrow [] (JArrowBlock
@@ -39,7 +80,7 @@ Definition make_counter : val :=
     ].
 
 Definition makeCounter_program_term : expr :=
-  let: "makeCounter" := make_counter in Unit.
+  compile_program_expr makeCounter_program.
 
 Example parse_makeCounter_source_program :
   parse_program_only makeCounter_source = Some makeCounter_program.
@@ -66,11 +107,7 @@ Definition checkedCounter_program : list jstmt :=
    SAssert (EGreater (ECall (EGet (EVar "c") "incr") []) (ENum 0))].
 
 Definition checkedCounter_program_term : expr :=
-  let: "c" := "makeCounter" () in
-  let: "cUp" := jobj ["incr" := "c" @["incr"]] in
-  let: <> := "attacker" "cUp" in
-  let: <> := assert: (#0 < (("c" @["incr"]) ())) in
-  Unit.
+  compile_program_expr checkedCounter_program.
 
 Example parse_checkedCounter_source_program :
   parse_program_only checkedCounter_source = Some checkedCounter_program.

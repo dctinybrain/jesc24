@@ -1,6 +1,6 @@
 From Coq Require Import Ascii List String ZArith.
 From iris.heap_lang Require Import lang notation.
-From iris.tests Require Import jessie_notation.
+From iris.jessie Require Import jessie_notation.
 
 Import ListNotations.
 Open Scope char_scope.
@@ -23,9 +23,8 @@ with jstmt :=
 | SConst (x : string) (e : jexpr)
 | SExpr (e : jexpr)
 | SAssert (e : jexpr)
-| SReturn (e : jexpr).
-
-Inductive jarrow_body :=
+| SReturn (e : jexpr)
+with jarrow_body :=
 | JArrowExpr (e : jexpr)
 | JArrowBlock (ss : list jstmt).
 
@@ -171,44 +170,54 @@ with parse_fields (fuel : nat) : parser (list (string * jexpr)).
 Proof.
   - destruct fuel as [|fuel']; [exact parse_error|].
     refine (fun cs =>
-      let fix parse_param_list (cs : list ascii) : option (list string * list ascii) :=
-          let cs := skip_ws_chars cs in
-          match cs with
-          | ")"%char :: rest => Some ([], rest)
-          | _ =>
-              match parse_ident cs with
-              | Some (x, rest1) =>
-                  let rest1 := skip_ws_chars rest1 in
-                  match rest1 with
-                  | ","%char :: rest2 =>
-                      match parse_param_list rest2 with
-                      | Some (xs, rest3) => Some (x :: xs, rest3)
-                      | None => None
+      let fix parse_param_list (fuel0 : nat) (cs : list ascii)
+        {struct fuel0} : option (list string * list ascii) :=
+          match fuel0 with
+          | O => None
+          | S fuel1 =>
+              let cs := skip_ws_chars cs in
+              match cs with
+              | ")"%char :: rest => Some ([], rest)
+              | _ =>
+                  match parse_ident cs with
+                  | Some (x, rest1) =>
+                      let rest1 := skip_ws_chars rest1 in
+                      match rest1 with
+                      | ","%char :: rest2 =>
+                          match parse_param_list fuel1 rest2 with
+                          | Some (xs, rest3) => Some (x :: xs, rest3)
+                          | None => None
+                          end
+                      | ")"%char :: rest2 => Some ([x], rest2)
+                      | _ => None
                       end
-                  | ")"%char :: rest2 => Some ([x], rest2)
-                  | _ => None
+                  | None => None
                   end
-              | None => None
               end
           end in
-      let fix parse_arg_list (cs : list ascii) : option (list jexpr * list ascii) :=
-          let cs := skip_ws_chars cs in
-          match cs with
-          | ")"%char :: rest => Some ([], rest)
-          | _ =>
-              match parse_expr fuel' cs with
-              | Some (arg, rest1) =>
-                  let rest1 := skip_ws_chars rest1 in
-                  match rest1 with
-                  | ","%char :: rest2 =>
-                      match parse_arg_list rest2 with
-                      | Some (args, rest3) => Some (arg :: args, rest3)
-                      | None => None
+      let fix parse_arg_list (fuel0 : nat) (cs : list ascii)
+        {struct fuel0} : option (list jexpr * list ascii) :=
+          match fuel0 with
+          | O => None
+          | S fuel1 =>
+              let cs := skip_ws_chars cs in
+              match cs with
+              | ")"%char :: rest => Some ([], rest)
+              | _ =>
+                  match parse_expr fuel' cs with
+                  | Some (arg, rest1) =>
+                      let rest1 := skip_ws_chars rest1 in
+                      match rest1 with
+                      | ","%char :: rest2 =>
+                          match parse_arg_list fuel1 rest2 with
+                          | Some (args, rest3) => Some (arg :: args, rest3)
+                          | None => None
+                          end
+                      | ")"%char :: rest2 => Some ([arg], rest2)
+                      | _ => None
                       end
-                  | ")"%char :: rest2 => Some ([arg], rest2)
-                  | _ => None
+                  | None => None
                   end
-              | None => None
               end
           end in
       let parse_postfixes (e : jexpr) (cs : list ascii) : option (jexpr * list ascii) :=
@@ -221,7 +230,7 @@ Proof.
                     let e1 := EGet e k in
                     match skip_ws_chars rest2 with
                     | "("%char :: rest3 =>
-                        match parse_arg_list rest3 with
+                        match parse_arg_list fuel' rest3 with
                         | Some (args, rest4) => Some (ECall e1 args, rest4)
                         | None => None
                         end
@@ -230,7 +239,7 @@ Proof.
                 | None => None
                 end
             | "("%char :: rest1 =>
-                match parse_arg_list rest1 with
+                match parse_arg_list fuel' rest1 with
                 | Some (args, rest2) => Some (ECall e args, rest2)
                 | None => None
                 end
@@ -251,7 +260,7 @@ Proof.
       let cs := skip_ws_chars cs in
       match cs with
       | "("%char :: rest1 =>
-          match parse_param_list rest1 with
+          match parse_param_list fuel' rest1 with
           | Some (params, rest2) =>
               let rest2 := skip_ws_chars rest2 in
               match rest2 with
@@ -534,7 +543,7 @@ Proof.
             | [SReturn e] => compile_expr env' None e
             | SReturn _ :: _ => Unit
             end in
-        let closed_env := rev params ++ env in
+        let closed_env := (rev params ++ env)%list in
         let body :=
           match body1 with
           | JArrowExpr e1 => compile_expr closed_env None e1
