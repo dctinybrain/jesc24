@@ -4,7 +4,7 @@ From iris.heap_lang Require Import proofmode notation.
 From Peg Require Import Match.
 From iris.jessie Require Import makeCounter_js.
 From iris.jessie Require Import jessie_notation jessie_parse.
-From iris.jessie Require Import jessica_ast quasi_jessie.
+From iris.jessie Require Import jessica_ast jessica_to_hla quasi_jessie.
 Import uPred.
 
 (** * Upward-capability counter client *)
@@ -73,6 +73,11 @@ Definition make_counter : val :=
 
 Definition makeCounter_program_term : expr :=
   compile_program_expr makeCounter_program.
+
+Lemma jessica_to_hla_makeCounter_program_term :
+  JessicaToHla.jessica_to_hla_module PegMakeCounter.makeCounter_jessica_program =
+    Some makeCounter_program_term.
+Proof. vm_compute. reflexivity. Qed.
 
 Example parse_makeCounter_source_program :
   parse_program_only makeCounter_source = Some makeCounter_program.

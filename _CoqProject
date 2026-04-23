@@ -141,6 +141,7 @@ theories/jessie/escrow2013_js.v
 theories/jessie/escrow2013_target.v
 theories/jessie/jessie_notation.v
 theories/jessie/jessie_parse.v
+theories/jessie/jessica_to_hla.v
 theories/jessie/make_counter.v
 theories/jessie/escrow2013.v
 theories/tests/even.v
