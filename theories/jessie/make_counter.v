@@ -3,7 +3,7 @@ From iris.proofmode Require Import tactics.
 From iris.heap_lang Require Import proofmode notation.
 From Peg Require Import Match.
 From iris.jessie Require Import makeCounter_js.
-From iris.jessie Require Import jessie_notation jessie_parse.
+From iris.jessie Require Import jessie_notation.
 From iris.jessie Require Import jessica_ast jessica_to_hla quasi_jessie.
 Import uPred.
 
@@ -54,15 +54,6 @@ Module PegMakeCounter.
   Proof. vm_compute. reflexivity. Qed.
 End PegMakeCounter.
 
-Definition makeCounter_program : list jstmt :=
-  [SConst "makeCounter"
-    (EArrow [] (JArrowBlock
-      [SLet "count" (ENum 0);
-       SReturn
-         (EObject
-           [("incr", EArrow [] (JArrowExpr (EOpAssign PlusOp "count" 1)));
-            ("decr", EArrow [] (JArrowExpr (EOpAssign MinusOp "count" 1)))])]))].
-
 Definition make_counter : val :=
   λ: <>,
     let: "count" := ref #0 in
@@ -72,54 +63,23 @@ Definition make_counter : val :=
     ].
 
 Definition makeCounter_program_term : expr :=
-  compile_program_expr makeCounter_program.
+  match JessicaToHla.jessica_to_hla_module PegMakeCounter.makeCounter_jessica_program with
+  | Some e => e
+  | None => Unit
+  end.
 
 Lemma jessica_to_hla_makeCounter_program_term :
   JessicaToHla.jessica_to_hla_module PegMakeCounter.makeCounter_jessica_program =
     Some makeCounter_program_term.
 Proof. vm_compute. reflexivity. Qed.
 
-Example parse_makeCounter_source_program :
-  parse_program_only makeCounter_source = Some makeCounter_program.
-Proof. vm_compute. reflexivity. Qed.
-
-Lemma compile_makeCounter_program_expr :
-  compile_program_expr makeCounter_program = makeCounter_program_term.
+Lemma parse_makeCounter_source_program_term :
+  match QuasiJessie.parse_program_only makeCounter_source with
+  | Some m => JessicaToHla.jessica_to_hla_module m
+  | None => None
+  end = Some makeCounter_program_term.
 Proof.
   vm_compute. reflexivity.
-Qed.
-
-Lemma parse_makeCounter_source_program_term :
-  compile_parsed_program_expr makeCounter_source = Some makeCounter_program_term.
-Proof.
-  rewrite /compile_parsed_program_expr parse_makeCounter_source_program.
-  rewrite compile_makeCounter_program_expr.
-  reflexivity.
-Qed.
-
-Definition checkedCounter_program : list jstmt :=
-  [SConst "c" (ECall (EVar "makeCounter") []);
-   SConst "cUp" (EObject [("incr", EGet (EVar "c") "incr")]);
-   SExpr (ECall (EVar "attacker") [EVar "cUp"]);
-   SAssert (EGreater (ECall (EGet (EVar "c") "incr") []) (ENum 0))].
-
-Definition checkedCounter_program_term : expr :=
-  compile_program_expr checkedCounter_program.
-
-Example parse_checkedCounter_source_program :
-  parse_program_only checkedCounter_source = Some checkedCounter_program.
-Proof. vm_compute. reflexivity. Qed.
-
-Lemma compile_checkedCounter_program_expr :
-  compile_program_expr checkedCounter_program = checkedCounter_program_term.
-Proof. vm_compute. reflexivity. Qed.
-
-Lemma parse_checkedCounter_source_program_term :
-  compile_parsed_program_expr checkedCounter_source = Some checkedCounter_program_term.
-Proof.
-  rewrite /compile_parsed_program_expr parse_checkedCounter_source_program.
-  rewrite compile_checkedCounter_program_expr.
-  reflexivity.
 Qed.
 
 Definition checked_counter : expr :=
@@ -132,10 +92,6 @@ Definition checked_counter : expr :=
   (* TODO: change this back to the object-shaped cUp export once the proof
      goes through cleanly with object lookup in both places. *)
   ("use", "cUpIncr").
-
-(* TODO: Relate the parsed [checkedCounter_program_term], which keeps the
-   object-shaped [cUp] and an external [attacker], to the narrower
-   proof-oriented [checked_counter] term below. *)
 
 Definition counter_val (count : loc) : val :=
   j_objectV2 "incr" (RecV "f" <> (count += #1))
