@@ -1,5 +1,5 @@
 From Coq Require Import Bool Lists.List Strings.Ascii Strings.String.
-From iris.jessie.peg Require Import syntax peg_match.
+From Peg Require Import Syntax Match.
 From iris.jessie Require Import quasi_json.
 
 Import ListNotations.
@@ -11,7 +11,9 @@ Module QuasiJustin.
   (* Experimental peg-coq expression/recognizer layer, parallel to
      quasi-justin, but limited to the fragments used by the current Jessie
      makeCounter examples. This file defines PEG patterns and executable
-     recognition tests, not AST construction. *)
+     recognition tests over the vendored peg-coq slice under
+     vendor/peg-coq/theories, imported here through the upstream-style Peg
+     namespace, not AST construction. *)
 
   Definition ident_start : pat :=
     charset_pat (fun a =>

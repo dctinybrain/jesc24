@@ -1,5 +1,5 @@
 From Coq Require Import Lists.List Strings.Ascii Strings.String ZArith.
-From iris.jessie.peg Require Import syntax peg_match.
+From Peg Require Import Syntax Match.
 From iris.jessie Require Import jessica_ast quasi_json quasi_justin.
 
 Import ListNotations.
@@ -12,8 +12,10 @@ Module QuasiJessie.
 
   (* Experimental peg-coq Jessie layer, parallel to quasi-jessie, but only
      broad enough for the current makeCounter path. The PEG definitions below
-     are the sole grammar for this workspace; the AST helpers later in the
-     file build JessicaAst terms by consuming those PEG matches. *)
+     are the sole grammar for this workspace; they run over the vendored
+     peg-coq slice under vendor/peg-coq/theories, imported here through the
+     upstream-style Peg namespace, and the AST helpers later in the file
+     build JessicaAst terms by consuming those PEG matches. *)
 
   (* quasi-jessie.js.ts: lValue <- ... ; here narrowed to identifiers only. *)
   Definition lvalue : pat := ident.
@@ -76,7 +78,7 @@ Module QuasiJessie.
   Definition block : pat :=
     seq (sym "{") (seq (star (PNT 3)) (sym "}")).
 
-  Definition grammar : syntax.grammar :=
+  Definition grammar : Syntax.grammar :=
     [ (* 0 expr *)
       (* quasi-jessie.js.ts: assignExpr production subset. *)
       alt arrow_func
@@ -115,7 +117,7 @@ Module QuasiJessie.
     matches_comp grammar expr "() => (count += 1)" 1024 = Some (Success EmptyString).
   Proof. vm_compute. reflexivity. Qed.
 
-  Definition run_pat (g : syntax.grammar) (p : pat) (fuel : nat) (s : string)
+  Definition run_pat (g : Syntax.grammar) (p : pat) (fuel : nat) (s : string)
       : option string :=
     match matches_comp g p s fuel with
     | Some (Success rest) => Some rest

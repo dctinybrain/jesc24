@@ -28,7 +28,8 @@ The directory currently has four layers:
 - the legacy parser/compiler surface used by `make_counter.v`
 
 2. PEG-backed Jessie parser path
-- `peg/`: minimal vendored PEG library slice needed by the current parser
+- `vendor/peg-coq/theories/`: minimal vendored `peg-coq` slice needed by the current parser, kept in the upstream-style `Peg` namespace so the copied theories can stay close to verbatim
+- local delta from upstream is intended to stay minimal and explicit; at present the main adaptation is the Coq 8.9 compatibility patch in `vendor/peg-coq/theories/Match.v`
 - `jessica_ast.v`
 - `quasi_json.v`
 - `quasi_justin.v`

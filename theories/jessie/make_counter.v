@@ -1,7 +1,7 @@
 From iris.heap_lang Require Import heap adequacy.
 From iris.proofmode Require Import tactics.
 From iris.heap_lang Require Import proofmode notation.
-From iris.jessie.peg Require Import peg_match.
+From Peg Require Import Match.
 From iris.jessie Require Import makeCounter_js.
 From iris.jessie Require Import jessie_notation jessie_parse.
 From iris.jessie Require Import jessica_ast quasi_jessie.

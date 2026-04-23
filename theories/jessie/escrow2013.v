@@ -1,5 +1,5 @@
 From Coq Require Import List String ZArith.
-From iris.jessie.peg Require Import peg_match.
+From Peg Require Import Match.
 From iris.jessie Require Import escrow2013_js.
 From iris.jessie Require Import escrow2013_target jessica_ast quasi_jessie.
 
