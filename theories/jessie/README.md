@@ -4,6 +4,7 @@ Current result:
 - `make_counter.v` now lives in `theories/jessie/` and still carries the upward-capability counter robust-safety proof line.
 - The same directory now also contains a `peg`-based Jessie parser line:
   - `make_counter.v` proves a structured PEG-backed parse of `makeCounter_source` into `JessicaAst`.
+  - `make_counter.v` also proves the direct `makeCounter_source -> JessicaAst -> HLA` path through `jessica_to_hla.v`, without routing that example through the legacy `list jstmt` compiler.
   - `escrow2013.v` proves an exact-source PEG parse of `escrow2013_source` into `escrow2013_program`, with that target declared separately in `escrow2013_target.v` from the in-tree `.jessie.json` / `.jessie.lisp` rendition shape.
 - `makeCounter_source` and `escrow2013_source` now come from checked-in `.js` files under `theories/jessie/sources/`, generated one-per-file into `*_js.v` modules during `make`.
 
@@ -31,6 +32,7 @@ The directory currently has four layers:
 - `vendor/peg-coq/theories/`: minimal vendored `peg-coq` slice needed by the current parser, kept in the upstream-style `Peg` namespace so the copied theories can stay close to verbatim
 - local delta from upstream is intended to stay minimal and explicit; at present the main adaptation is the Coq 8.9 compatibility patch in `vendor/peg-coq/theories/Match.v`
 - `jessica_ast.v`
+- `jessica_to_hla.v`: current partial `JessicaAst -> HeapLang AST` lowering, broad enough for the `makeCounter` path
 - `quasi_json.v`
 - `quasi_justin.v`
 - `quasi_jessie.v`
@@ -48,9 +50,11 @@ The directory currently has four layers:
 
 Current limitations:
 - `makeCounter` goes through the current structured PEG grammar.
+- `makeCounter` now has a direct `JessicaAst -> HLA` lowering theorem and no longer depends on the legacy `list jstmt` compiler inside `make_counter.v`.
 - `escrow2013` currently uses an exact-source PEG wrapper via `exact_module_source`; it is not yet parsed by a fully structured Jessie grammar.
-- `jessie_parse.v` remains as the legacy `list jstmt -> HeapLang` bridge used by the existing robust-safety result.
-- The PEG/Jessica path has not yet replaced that compiler path, and `JThrow` should be treated with `escrow2013`/promise semantics in mind rather than as a simple stuckness construct.
+- `jessica_to_hla.v` is intentionally partial today; it is only broad enough for the current `makeCounter` fragment and does not yet cover constructs such as `JIf` that show up in `escrow2013`.
+- `jessie_parse.v` remains in-tree as the older `list jstmt -> HeapLang` bridge, but the active `makeCounter` source-to-HLA path in `make_counter.v` no longer depends on it.
+- `JThrow` should be treated with `escrow2013`/promise semantics in mind rather than as a simple stuckness construct.
 
 Build:
 - Use the same switch the OCPL proof line uses:
