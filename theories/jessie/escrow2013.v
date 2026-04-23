@@ -12,6 +12,10 @@ Module Escrow2013.
   Import JessicaAst.
   Import QuasiJessie.
 
+  (* Current PEG milestone for escrow2013: exact-source recognition wired to a
+     separately declared JessicaAst target. This is intentionally narrower
+     than the structured makeCounter path until the Jessie grammar grows to
+     cover imports, arrays, promise-oriented control flow, and throw. *)
   Definition parse_program_only (s : string) : option jmodule :=
     match run_pat [] (exact_module_source escrow2013_source) 65536 s with
     | Some EmptyString => Some escrow2013_program
