@@ -10,10 +10,14 @@ Import uPred.
 (** * Upward-capability counter client *)
 
 Definition checkedCounter_source : string :=
-  "const c = makeCounter();
-const cUp = { incr: c.incr };
-attacker(cUp);
-assert(c.incr() > 0);".
+  "const checkedCounter = () => {
+  const c = makeCounter();
+  const cUp = { incr: c.incr };
+  const use = () => {
+    assert(0 < c.incr());
+  };
+  return { _fst: use, _snd: cUp };
+};".
 
 Module PegMakeCounter.
   Import JessicaAst.
