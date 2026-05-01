@@ -16,32 +16,23 @@ attacker(cUp);
 assert(c.incr() > 0);".
 
 Module PegMakeCounter.
-  Module JA := JessicaAst.
+  Import JessicaAst.
 
-  Definition count_use : JA.jexpr := JA.JUse "count".
-  Definition data0 : JA.jexpr := JA.JDataNum 0.
-  Definition data1 : JA.jexpr := JA.JDataNum 1.
-
-  Definition incr_prop : JA.jprop :=
-    JA.JProp "incr"
-      (JA.JArrow [] (JA.JBodyExpr (JA.JAssignOp "+=" count_use data1))).
-
-  Definition decr_prop : JA.jprop :=
-    JA.JProp "decr"
-      (JA.JArrow [] (JA.JBodyExpr (JA.JAssignOp "-=" count_use data1))).
-
-  Definition count_let : JA.jstmt :=
-    JA.JLet [JA.JBind (JA.JDef "count") data0].
-
-  Definition counter_record : JA.jexpr :=
-    JA.JRecord [incr_prop; decr_prop].
-
-  Definition makeCounter_jessica_program : JA.jmodule :=
-    JA.JModule
-      [JA.JConst
-        [JA.JBind
-          (JA.JDef "makeCounter")
-          (JA.JArrow [] (JA.JBodyBlock [count_let; JA.JReturn counter_record]))]].
+  Definition makeCounter_jessica_program : jmodule :=
+    JModule
+      [JConst
+        [JBind
+          (JDef "makeCounter")
+          (JArrow [] 
+            (JBodyBlock [
+              JLet [JBind (JDef "count") (JDataNum 0)];
+              JReturn (JRecord [
+                JProp "incr"
+                  (JArrow [] (JBodyExpr (JAssignOp "+=" (JUse "count") (JDataNum 1))));
+                JProp "decr"
+                  (JArrow [] (JBodyExpr (JAssignOp "-=" (JUse "count") (JDataNum 1))))
+              ])
+            ]))]].
 
   Example parse_makeCounter_module :
     matches_comp QuasiJessie.grammar QuasiJessie.moduleBody
