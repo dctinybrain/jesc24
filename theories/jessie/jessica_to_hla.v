@@ -66,8 +66,9 @@ Module JessicaToHla.
           end).
       + exact (
           match jessica_expr_to_hla env callee, option_all (map (jessica_expr_to_hla env) args) with
-          | Some callee1, Some args1 =>
-              Some (fold_left (fun acc arg => App acc arg) args1 callee1)
+          | Some callee1, Some [] => Some (App callee1 Unit)
+          | Some callee1, Some (a :: args1) =>
+              Some (fold_left (fun acc arg => App acc arg) args1 (App callee1 a))
           | _, _ => None
           end).
       + exact (
@@ -219,3 +220,22 @@ Module JessicaToHla.
     | JModule ds => jessica_decls_to_hla [] ds
     end.
 End JessicaToHla.
+
+(** Regression: a zero-arg call [f()] must lower to [App f ()], not to bare [f]. *)
+Example call_zero_args_lowers_to_unit_application :
+  JessicaToHla.jessica_expr_to_hla []
+    (JessicaAst.JCall (JessicaAst.JUse "f") []) =
+    Some ("f" ())%E.
+Proof. vm_compute. reflexivity. Qed.
+
+(** Regression: [const x = e] (JConstStmt) must lower to a plain [Let], not
+    to [Let _ (Alloc _) _].  Only [let] (JLet) introduces a ref cell. *)
+Example const_stmt_does_not_allocate :
+  JessicaToHla.jessica_expr_to_hla []
+    (JessicaAst.JArrow []
+      (JessicaAst.JBodyBlock
+        [JessicaAst.JConstStmt
+          [JessicaAst.JBind (JessicaAst.JDef "x") (JessicaAst.JDataNum 0)];
+         JessicaAst.JReturn (JessicaAst.JUse "x")])) =
+    Some (λ: <>, let: "x" := #0 in "x")%E.
+Proof. vm_compute. reflexivity. Qed.

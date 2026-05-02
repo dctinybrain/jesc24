@@ -41,6 +41,29 @@ Module PegMakeCounter.
     QuasiJessie.parse_program_only makeCounter_source =
       Some makeCounter_jessica_program.
   Proof. vm_compute. reflexivity. Qed.
+
+  (** checkedCounter source parsing *)
+
+  Definition checkedCounter_jessica_fn : jexpr :=
+    JArrow []
+      (JBodyBlock [
+        JConstStmt [JBind (JDef "c") (JCall (JUse "makeCounter") [])];
+        JConstStmt [JBind (JDef "cUp") (JRecord [JProp "incr" (JGet (JUse "c") "incr")])];
+        JConstStmt [JBind (JDef "use")
+          (JArrow [] (JBodyBlock [JAssert (JGreater (JCall (JGet (JUse "c") "incr") []) (JDataNum 0))]))];
+        JReturn (JRecord [
+          JProp "_fst" (JUse "use");
+          JProp "_snd" (JUse "cUp")
+        ])
+      ]).
+
+  Definition checkedCounter_jessica_program : jmodule :=
+    JModule [JConst [JBind (JDef "checkedCounter") checkedCounter_jessica_fn]].
+
+  Example parse_checkedCounter_source_program :
+    QuasiJessie.parse_program_only checkedCounter_source =
+      Some checkedCounter_jessica_program.
+  Proof. vm_compute. reflexivity. Qed.
 End PegMakeCounter.
 
 Definition make_counter : val :=
@@ -71,6 +94,25 @@ Proof. vm_compute. reflexivity. Qed.
 Lemma jessica_to_hla_makeCounter_is_make_counter_binding :
   JessicaToHla.jessica_to_hla_module PegMakeCounter.makeCounter_jessica_program =
     Some (let: "makeCounter" := make_counter_expr in ())%E.
+Proof. vm_compute. reflexivity. Qed.
+
+Definition checkedCounter_lowered_expr : expr :=
+  λ: <>,
+    let: "c" := "makeCounter" () in
+    let: "cUp" := j_object1 "incr" (obj_get "c" (j_string "incr")) in
+    let: "use" := (λ: "cUp",
+      (λ: "c",
+        λ: <>, assert: (#0 < (obj_get "c" (j_string "incr")) ());; ()) "c") "cUp" in
+    j_object2 "_fst" "use" "_snd" "cUp".
+
+Lemma jessica_to_hla_checkedCounter_fn :
+  JessicaToHla.jessica_expr_to_hla [] PegMakeCounter.checkedCounter_jessica_fn =
+    Some checkedCounter_lowered_expr.
+Proof. vm_compute. reflexivity. Qed.
+
+Lemma jessica_to_hla_checkedCounter_program :
+  JessicaToHla.jessica_to_hla_module PegMakeCounter.checkedCounter_jessica_program =
+    Some (let: "checkedCounter" := checkedCounter_lowered_expr in ())%E.
 Proof. vm_compute. reflexivity. Qed.
 
 Definition checked_counter : expr :=
