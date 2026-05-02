@@ -99,11 +99,11 @@ Proof. vm_compute. reflexivity. Qed.
 Definition checkedCounter_lowered_expr : expr :=
   λ: <>,
     let: "c" := "makeCounter" () in
-    let: "cUp" := j_object1 "incr" (obj_get "c" (j_string "incr")) in
+    let: "cUp" := jobj ["incr" := "c" @[ "incr" ]] in
     let: "use" := (λ: "cUp",
       (λ: "c",
-        λ: <>, assert: (#0 < (obj_get "c" (j_string "incr")) ());; ()) "c") "cUp" in
-    j_object2 "_fst" "use" "_snd" "cUp".
+        λ: <>, assert: (#0 < "c" @[ "incr" ] ());; ()) "c") "cUp" in
+    jobj ["_fst" := "use"; "_snd" := "cUp"].
 
 Lemma jessica_to_hla_checkedCounter_fn :
   JessicaToHla.jessica_expr_to_hla [] PegMakeCounter.checkedCounter_jessica_fn =
@@ -117,10 +117,10 @@ Proof. vm_compute. reflexivity. Qed.
 
 Definition checked_counter : expr :=
   let: "c" := make_counter () in
-  let: "cUp" := jobj ["incr" := obj_get "c" incr_key] in
+  let: "cUp" := jobj ["incr" := "c" @[ "incr" ]] in
   let: "use" := (λ: "cUp",
     λ: <>,
-      let: "cUpIncr" := obj_get "cUp" incr_key in
+      let: "cUpIncr" := "cUp" @[ "incr" ] in
       let: "n" := "cUpIncr" () in
       assert: (#0 < "n")) "cUp" in
   ("use", "cUp").
@@ -141,7 +141,7 @@ Section proof.
 
   Lemma wp_obj_get1 k v :
     {{{ True }}}
-      obj_get (jobj [k := (of_val v)]) (j_string k)
+      (jobj [k := (of_val v)]) @[ k ]
     {{{ RET v; True }}}.
   Proof.
     iIntros (Φ) "HΦ". rewrite /obj_get /obj_get_fields.
@@ -163,7 +163,7 @@ Section proof.
 
   Lemma wp_obj_get2_first k1 k2 v1 v2 :
     {{{ True }}}
-      obj_get (jobj [k1 := (of_val v1); k2 := (of_val v2)]) (j_string k1)
+      (jobj [k1 := (of_val v1); k2 := (of_val v2)]) @[ k1 ]
     {{{ RET v1; True }}}.
   Proof.
     iIntros (Φ) "HΦ". rewrite /obj_get /obj_get_fields.
@@ -185,7 +185,7 @@ Section proof.
 
   Lemma wp_counter_get_incr (count : loc) :
     {{{ True }}}
-      obj_get (counter_val count) incr_key
+      (counter_val count) @[ "incr" ]
     {{{ RET (LamV <> (count += #1)); True }}}.
   Proof.
     rewrite /counter_val /incr_key.
@@ -194,7 +194,7 @@ Section proof.
 
   Lemma wp_c_up_get_incr (count : loc) :
     {{{ True }}}
-      obj_get (c_up_val count) incr_key
+      (c_up_val count) @[ "incr" ]
     {{{ RET (LamV <> (count += #1)); True }}}.
   Proof.
     rewrite /c_up_val.
@@ -308,7 +308,7 @@ Section proof.
   Lemma use_closure_low count :
     heap_ctx ∗ counter_inv count ⊢
       low (LamV <>
-        (let: "cUpIncr" := obj_get (c_up_val count) incr_key in
+        (let: "cUpIncr" := (c_up_val count) @[ "incr" ] in
          let: "n" := "cUpIncr" () in
          assert: (#0 < "n"))).
   Proof.
