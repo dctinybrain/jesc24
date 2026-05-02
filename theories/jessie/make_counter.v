@@ -22,26 +22,20 @@ Definition checkedCounter_source : string :=
 Module PegMakeCounter.
   Import JessicaAst.
 
-  Definition makeCounter_jessica_program : jmodule :=
-    JModule
-      [JConst
-        [JBind
-          (JDef "makeCounter")
-          (JArrow [] 
-            (JBodyBlock [
-              JLet [JBind (JDef "count") (JDataNum 0)];
-              JReturn (JRecord [
-                JProp "incr"
-                  (JArrow [] (JBodyExpr (JAssignOp "+=" (JUse "count") (JDataNum 1))));
-                JProp "decr"
-                  (JArrow [] (JBodyExpr (JAssignOp "-=" (JUse "count") (JDataNum 1))))
-              ])
-            ]))]].
+  Definition makeCounter_jessica_fn : jexpr :=
+    JArrow []
+      (JBodyBlock [
+        JLet [JBind (JDef "count") (JDataNum 0)];
+        JReturn (JRecord [
+          JProp "incr"
+            (JArrow [] (JBodyExpr (JAssignOp "+=" (JUse "count") (JDataNum 1))));
+          JProp "decr"
+            (JArrow [] (JBodyExpr (JAssignOp "-=" (JUse "count") (JDataNum 1))))
+        ])
+      ]).
 
-  Example parse_makeCounter_module :
-    matches_comp QuasiJessie.grammar QuasiJessie.moduleBody
-      makeCounter_source 4096 = Some (Success EmptyString).
-  Proof. vm_compute. reflexivity. Qed.
+  Definition makeCounter_jessica_program : jmodule :=
+    JModule [JConst [JBind (JDef "makeCounter") makeCounter_jessica_fn]].
 
   Example parse_makeCounter_source_program :
     QuasiJessie.parse_program_only makeCounter_source =
@@ -57,25 +51,27 @@ Definition make_counter : val :=
       "decr" := (λ: "count", λ: <>, "count" -= #1) "count"
     ].
 
-Definition makeCounter_program_term : expr :=
-  match JessicaToHla.jessica_to_hla_module PegMakeCounter.makeCounter_jessica_program with
-  | Some e => e
-  | None => Unit
-  end.
+Definition make_counter_expr : expr :=
+  λ: <>,
+    let: "count" := ref #0 in
+    jobj [
+      "incr" := (λ: "count", λ: <>, "count" += #1) "count";
+      "decr" := (λ: "count", λ: <>, "count" -= #1) "count"
+    ].
 
-Lemma jessica_to_hla_makeCounter_program_term :
-  JessicaToHla.jessica_to_hla_module PegMakeCounter.makeCounter_jessica_program =
-    Some makeCounter_program_term.
+Lemma make_counter_expr_of_val :
+  of_val make_counter = make_counter_expr.
+Proof. solve_of_val_unlock. Qed.
+
+Lemma jessica_to_hla_makeCounter_fn :
+  JessicaToHla.jessica_expr_to_hla [] PegMakeCounter.makeCounter_jessica_fn =
+    Some make_counter_expr.
 Proof. vm_compute. reflexivity. Qed.
 
-Lemma parse_makeCounter_source_program_term :
-  match QuasiJessie.parse_program_only makeCounter_source with
-  | Some m => JessicaToHla.jessica_to_hla_module m
-  | None => None
-  end = Some makeCounter_program_term.
-Proof.
-  vm_compute. reflexivity.
-Qed.
+Lemma jessica_to_hla_makeCounter_is_make_counter_binding :
+  JessicaToHla.jessica_to_hla_module PegMakeCounter.makeCounter_jessica_program =
+    Some (let: "makeCounter" := make_counter_expr in ())%E.
+Proof. vm_compute. reflexivity. Qed.
 
 Definition checked_counter : expr :=
   let: "c" := make_counter () in
