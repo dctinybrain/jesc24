@@ -53,8 +53,8 @@ Definition make_counter : val :=
   λ: <>,
     let: "count" := ref #0 in
     jobj [
-      "incr" := (λ: "count", rec: "f" <> := "count" += #1) "count";
-      "decr" := (λ: "count", rec: "f" <> := "count" -= #1) "count"
+      "incr" := (λ: "count", λ: <>, "count" += #1) "count";
+      "decr" := (λ: "count", λ: <>, "count" -= #1) "count"
     ].
 
 Definition makeCounter_program_term : expr :=
@@ -81,18 +81,18 @@ Definition checked_counter : expr :=
   let: "c" := make_counter () in
   let: "cUp" := jobj ["incr" := obj_get "c" incr_key] in
   let: "use" := (λ: "cUp",
-    rec: "use" <> :=
+    λ: <>,
       let: "cUpIncr" := obj_get "cUp" incr_key in
       let: "n" := "cUpIncr" () in
       assert: (#0 < "n")) "cUp" in
   ("use", "cUp").
 
 Definition counter_val (count : loc) : val :=
-  j_objectV2 "incr" (RecV "f" <> (count += #1))
-             "decr" (RecV "f" <> (count -= #1)).
+  j_objectV2 "incr" (LamV <> (count += #1))
+             "decr" (LamV <> (count -= #1)).
 
 Definition c_up_val (count : loc) : val :=
-  (#object_tag, ((incr_key, RecV "f" <> (count += #1)), ()))%V.
+  (#object_tag, ((incr_key, LamV <> (count += #1)), ()))%V.
 
 Section proof.
   Context `{heapG Σ}.
@@ -148,7 +148,7 @@ Section proof.
   Lemma wp_counter_get_incr (count : loc) :
     {{{ True }}}
       obj_get (counter_val count) incr_key
-    {{{ RET (RecV "f" <> (count += #1)); True }}}.
+    {{{ RET (LamV <> (count += #1)); True }}}.
   Proof.
     rewrite /counter_val /incr_key.
     apply (wp_obj_get2_first "incr" "decr").
@@ -157,7 +157,7 @@ Section proof.
   Lemma wp_c_up_get_incr (count : loc) :
     {{{ True }}}
       obj_get (c_up_val count) incr_key
-    {{{ RET (RecV "f" <> (count += #1)); True }}}.
+    {{{ RET (LamV <> (count += #1)); True }}}.
   Proof.
     rewrite /c_up_val.
     iIntros (Φ) "HΦ". rewrite /obj_get /obj_get_fields.
@@ -187,20 +187,20 @@ Section proof.
     wp_alloc count as "Hcount". wp_let.
     iMod (inv_alloc N _ (∃ z : Z, ⌜0 ≤ z⌝ ∗ count ↦ #z)%I with "[Hcount]") as "#Hinv".
     { iNext. iExists 0. iFrame. done. }
-    wp_bind ((λ: "count", rec: "f" <> := "count" += #1) count)%E.
+    wp_bind ((λ: "count", λ: <>, "count" += #1) count)%E.
     wp_lam.
-    wp_bind ((λ: "count", rec: "f" <> := "count" -= #1) count)%E.
+    wp_bind ((λ: "count", λ: <>, "count" -= #1) count)%E.
     wp_lam.
     by iApply ("HΦ" $! count with "Hinv").
   Qed.
 
   Lemma incr_call_pos count :
     {{{ heap_ctx ∗ counter_inv count }}}
-      (RecV "f" <> (count += #1)) ()
+      (LamV <> (count += #1)) ()
     {{{ v, RET v; ∃ z : Z, ⌜v = #z⌝ ∗ ⌜0 < z⌝ }}}.
   Proof.
     iIntros (Φ) "#(Hh & Hinv) HΦ".
-    wp_rec.
+    wp_lam.
     wp_bind (! count)%E.
     iInv N as (z) ">Hz" "Hclose".
     iDestruct "Hz" as "[Hz Hcount]".
@@ -228,7 +228,7 @@ Section proof.
 
   Lemma incr_closure_low count :
     heap_ctx ∗ counter_inv count ⊢
-      low (RecV "f" <> (count += #1)).
+      low (LamV <> (count += #1)).
   Proof.
     iIntros "#(Hh & Hinv)". rewrite low_rec.
     iAlways. iNext. iIntros (? Φ) "_ HΦ". simpl_subst.
@@ -269,7 +269,7 @@ Section proof.
 
   Lemma use_closure_low count :
     heap_ctx ∗ counter_inv count ⊢
-      low (RecV "use" <>
+      low (LamV <>
         (let: "cUpIncr" := obj_get (c_up_val count) incr_key in
          let: "n" := "cUpIncr" () in
          assert: (#0 < "n"))).

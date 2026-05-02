@@ -90,15 +90,14 @@ Module JessicaToHla.
           | Some xs =>
               match jessica_body_to_hla ((rev xs ++ env)%list) body with
               | Some body1 =>
-                  let rec_name := "f" in
-                  let rec_body :=
+                  let arrow_body :=
                     match xs with
-                    | [] => Rec (BNamed rec_name) BAnon body1
+                    | [] => Lam BAnon body1
                     | x :: xs' =>
-                        Rec (BNamed rec_name) (BNamed x)
+                        Lam (BNamed x)
                           (fold_right (fun y acc => Lam (BNamed y) acc) body1 xs')
                     end in
-                  Some (fold_right (fun x acc => App (Lam (BNamed x) acc) (Var x)) rec_body env)
+                  Some (fold_right (fun x acc => App (Lam (BNamed x) acc) (Var x)) arrow_body env)
               | None => None
               end
           | None => None
