@@ -7,7 +7,12 @@ Open Scope char_scope.
 Open Scope string_scope.
 Open Scope Z_scope.
 
-(** * Parser for the Jessie fragment used by the makeCounter example *)
+(** * Legacy parser for the Jessie fragment - superseded by quasi_jessie.v
+    This parser was used in earlier versions but has been replaced by the
+    PEG-based parser in quasi_jessie.v. The active makeCounter source-to-HLA
+    path in make_counter.v now uses quasi_jessie instead.
+    
+    This file is kept for reference but should not be used for new developments. *)
 
 Inductive jexpr :=
 | EVar (x : string)
