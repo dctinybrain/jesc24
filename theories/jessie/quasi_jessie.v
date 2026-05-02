@@ -55,6 +55,12 @@ Module QuasiJessie.
   *)
   Definition expr_post_op : pat := QuasiJustin.post_op 0.
 
+  Definition less_than : pat :=
+    seq (PNT 1)
+      (seq (star expr_post_op)
+        (seq (sym "<")
+          (seq (PNT 1) (star expr_post_op)))).
+
   Definition const_decl : pat :=
     seq (kw "const")
       (seq ident
@@ -74,6 +80,12 @@ Module QuasiJessie.
   (* quasi-jessie.js.ts: exprStatement <- ~cantStartExprStatement expr SEMI. *)
   Definition expr_stmt : pat := seq (PNT 0) (sym ";").
 
+  Definition assert_stmt : pat :=
+    seq (kw "assert")
+      (seq (sym "(")
+        (seq (PNT 0)
+          (seq (sym ")") (sym ";")))).
+
   (* quasi-jessie.js.ts: block production subset. *)
   Definition block : pat :=
     seq (sym "{") (seq (star (PNT 3)) (sym "}")).
@@ -83,7 +95,8 @@ Module QuasiJessie.
       (* quasi-jessie.js.ts: assignExpr production subset. *)
       alt arrow_func
         (alt op_assign
-          (seq (PNT 1) (star expr_post_op)));
+          (alt less_than
+            (seq (PNT 1) (star expr_post_op))));
       (* 1 primaryExpr *)
       (* quasi-jessie.js.ts: primaryExpr inherits Justin primaryExpr. *)
       alt number
@@ -95,7 +108,8 @@ Module QuasiJessie.
       (* quasi-jessie.js.ts: binding / exprStatement / declOp subset. *)
       alt const_decl
         (alt let_decl
-          (alt return_stmt expr_stmt));
+          (alt return_stmt
+            (alt assert_stmt expr_stmt)));
       (* 4 block / arrow body block *)
       block;
       (* 5 module body *)
@@ -383,7 +397,27 @@ Module QuasiJessie.
                                 end
                             end
                         end in
-                    parse_post_ops fuel' base rest0
+                    match run_pat grammar less_than (S fuel') s with
+                    | Some _ =>
+                        match parse_post_ops fuel' base rest0 with
+                        | Some (lhs, rest1) =>
+                            match expect_sym_tok "<" (S fuel') rest1 with
+                            | Some rest2 =>
+                                match parse_primary_ast fuel' rest2 with
+                                | Some (right0, rest3) =>
+                                    match parse_post_ops fuel' right0 rest3 with
+                                    | Some (rhs, rest4) =>
+                                        Some (JGreater rhs lhs, rest4)
+                                    | None => None
+                                    end
+                                | None => None
+                                end
+                            | None => None
+                            end
+                        | None => None
+                        end
+                    | None => parse_post_ops fuel' base rest0
+                    end
                 | None => None
                 end
             end
@@ -470,9 +504,9 @@ Module QuasiJessie.
         end).
     - destruct fuel as [| fuel']; [exact (@None (jstmt * string)) |].
       refine (
-        match run_pat grammar let_decl (S fuel') s with
+        match run_pat grammar const_decl (S fuel') s with
         | Some _ =>
-            match expect_kw_tok "let" (S fuel') s with
+            match expect_kw_tok "const" (S fuel') s with
             | Some rest1 =>
                 match parse_ident_token (S fuel') rest1 with
                 | Some (x, rest2) =>
@@ -482,7 +516,7 @@ Module QuasiJessie.
                         | Some (rhs, rest4) =>
                             match expect_sym_tok ";" (S fuel') rest4 with
                             | Some rest5 =>
-                                Some (JLet [JBind (JDef x) rhs], rest5)
+                                Some (JConstStmt [JBind (JDef x) rhs], rest5)
                             | None => None
                             end
                         | None => None
@@ -494,14 +528,23 @@ Module QuasiJessie.
             | None => None
             end
         | None =>
-            match run_pat grammar return_stmt (S fuel') s with
+            match run_pat grammar let_decl (S fuel') s with
             | Some _ =>
-                match expect_kw_tok "return" (S fuel') s with
+                match expect_kw_tok "let" (S fuel') s with
                 | Some rest1 =>
-                    match parse_expr_ast fuel' rest1 with
-                    | Some (e, rest2) =>
-                        match expect_sym_tok ";" (S fuel') rest2 with
-                        | Some rest3 => Some (JReturn e, rest3)
+                    match parse_ident_token (S fuel') rest1 with
+                    | Some (x, rest2) =>
+                        match expect_sym_tok "=" (S fuel') rest2 with
+                        | Some rest3 =>
+                            match parse_expr_ast fuel' rest3 with
+                            | Some (rhs, rest4) =>
+                                match expect_sym_tok ";" (S fuel') rest4 with
+                                | Some rest5 =>
+                                    Some (JLet [JBind (JDef x) rhs], rest5)
+                                | None => None
+                                end
+                            | None => None
+                            end
                         | None => None
                         end
                     | None => None
@@ -509,17 +552,57 @@ Module QuasiJessie.
                 | None => None
                 end
             | None =>
-                match run_pat grammar expr_stmt (S fuel') s with
+                match run_pat grammar return_stmt (S fuel') s with
                 | Some _ =>
-                    match parse_expr_ast fuel' s with
-                    | Some (e, rest1) =>
-                        match expect_sym_tok ";" (S fuel') rest1 with
-                        | Some rest2 => Some (JExprStmt e, rest2)
+                    match expect_kw_tok "return" (S fuel') s with
+                    | Some rest1 =>
+                        match parse_expr_ast fuel' rest1 with
+                        | Some (e, rest2) =>
+                            match expect_sym_tok ";" (S fuel') rest2 with
+                            | Some rest3 => Some (JReturn e, rest3)
+                            | None => None
+                            end
                         | None => None
                         end
                     | None => None
                     end
-                | None => None
+                | None =>
+                    match run_pat grammar assert_stmt (S fuel') s with
+                    | Some _ =>
+                        match expect_kw_tok "assert" (S fuel') s with
+                        | Some rest1 =>
+                            match expect_sym_tok "(" (S fuel') rest1 with
+                            | Some rest2 =>
+                                match parse_expr_ast fuel' rest2 with
+                                | Some (e, rest3) =>
+                                    match expect_sym_tok ")" (S fuel') rest3 with
+                                    | Some rest4 =>
+                                        match expect_sym_tok ";" (S fuel') rest4 with
+                                        | Some rest5 => Some (JAssert e, rest5)
+                                        | None => None
+                                        end
+                                    | None => None
+                                    end
+                                | None => None
+                                end
+                            | None => None
+                            end
+                        | None => None
+                        end
+                    | None =>
+                        match run_pat grammar expr_stmt (S fuel') s with
+                        | Some _ =>
+                            match parse_expr_ast fuel' s with
+                            | Some (e, rest1) =>
+                                match expect_sym_tok ";" (S fuel') rest1 with
+                                | Some rest2 => Some (JExprStmt e, rest2)
+                                | None => None
+                                end
+                            | None => None
+                            end
+                        | None => None
+                        end
+                    end
                 end
             end
         end).
@@ -601,4 +684,65 @@ Module QuasiJessie.
         end
     | _ => None
     end.
+
+  (** Parser tests *)
+
+  (* Test 1: Can a module start with whitespace? *)
+  Example test_whitespace_prefix :
+    matches_comp grammar moduleBody " const x = 1;" 512 = Some (Success EmptyString).
+  Proof. vm_compute. reflexivity. Qed.
+
+  (* Test 2: Does the parser accept property names starting with underscore? *)
+  Example test_underscore_property :
+    matches_comp grammar moduleBody "const obj = { _fst: 1 };" 512 = Some (Success EmptyString).
+  Proof. vm_compute. reflexivity. Qed.
+
+  (* Test 3: Does assert work? *)
+  Example test_assert_statement :
+    matches_comp grammar moduleBody "const f = () => { assert(true); };" 1024 = Some (Success EmptyString).
+  Proof. vm_compute. reflexivity. Qed.
+
+  (* Test 4: Complex function with nested blocks *)
+  Example test_nested_function :
+    matches_comp grammar moduleBody "const f = () => { const g = () => 2; };" 1024 = Some (Success EmptyString).
+  Proof. vm_compute. reflexivity. Qed.
+
+  Definition checkedCounter_source : string :=
+    "const checkedCounter = () => {
+  const c = makeCounter();
+  const cUp = { incr: c.incr };
+  const use = () => {
+    assert(0 < c.incr());
+  };
+  return { _fst: use, _snd: cUp };
+};".
+
+  Definition checkedCounter_jessica_program : jmodule :=
+    JModule
+      [JConst
+        [JBind
+          (JDef "checkedCounter")
+          (JArrow []
+            (JBodyBlock
+              [JConstStmt [JBind (JDef "c") (JCall (JUse "makeCounter") [])];
+               JConstStmt
+                 [JBind (JDef "cUp")
+                   (JRecord [JProp "incr" (JGet (JUse "c") "incr")])];
+               JConstStmt
+                 [JBind (JDef "use")
+                   (JArrow []
+                     (JBodyBlock
+                       [JAssert
+                         (JGreater
+                           (JCall (JGet (JUse "c") "incr") [])
+                           (JDataNum 0))]))];
+               JReturn
+                 (JRecord
+                   [JProp "_fst" (JUse "use");
+                    JProp "_snd" (JUse "cUp")])]))]].
+
+  Example parse_checkedCounter_source_program :
+    parse_program_only checkedCounter_source = Some checkedCounter_jessica_program.
+  Proof. vm_compute. reflexivity. Qed.
+
 End QuasiJessie.
