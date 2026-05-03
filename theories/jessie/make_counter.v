@@ -102,9 +102,14 @@ Definition checkedCounter_lowered_expr : expr :=
     let: "cUp" := jobj ["incr" := "c" @[ "incr" ]] in
     let: "use" := (λ: "cUp",
       (λ: "c",
-        λ: <>, assert: (#0 < "c" @[ "incr" ] ());; ()) "c") "cUp" in
+        λ: <>, (App (Lam BAnon Unit) (Assert ((#0 < "c" @[ "incr" ] ())%E)))) "c") "cUp" in
     jobj ["_fst" := "use"; "_snd" := "cUp"].
 
+(** This term is derived from [checkedCounter_source] through the Jessie parser
+    and [JessicaToHla] lowering. The original robust-safety theorem below is
+    still proved over the proof-oriented [checked_counter] term; the
+    source-linked theorem uses the same lowered client shape with [makeCounter]
+    linked to [make_counter]. *)
 Lemma jessica_to_hla_checkedCounter_fn :
   JessicaToHla.jessica_expr_to_hla [] PegMakeCounter.checkedCounter_jessica_fn =
     Some checkedCounter_lowered_expr.
@@ -120,10 +125,20 @@ Definition checked_counter : expr :=
   let: "cUp" := jobj ["incr" := "c" @[ "incr" ]] in
   let: "use" := (λ: "cUp",
     λ: <>,
-      let: "cUpIncr" := "cUp" @[ "incr" ] in
-      let: "n" := "cUpIncr" () in
+      let: "n" := ("cUp" @[ "incr" ]) () in
       assert: (#0 < "n")) "cUp" in
   ("use", "cUp").
+
+Definition checked_counter_from_source : expr :=
+  (* Same lowered checkedCounter client shape, with the free source-level
+     [makeCounter] binding linked to the proved HeapLang constructor. *)
+  ((λ: <>,
+    let: "c" := make_counter () in
+    let: "cUp" := jobj ["incr" := "c" @[ "incr" ]] in
+    let: "use" := (λ: "cUp",
+      (λ: "c",
+        λ: <>, (App (Lam BAnon Unit) (Assert ((#0 < "c" @[ "incr" ] ())%E)))) "c") "cUp" in
+    jobj ["_fst" := "use"; "_snd" := "cUp"])%E) Unit.
 
 Definition counter_val (count : loc) : val :=
   j_objectV2 "incr" (LamV <> (count += #1))
@@ -138,6 +153,12 @@ Section proof.
 
   Definition counter_inv (count : loc) : iProp Σ :=
     (inv N (∃ z : Z, ⌜0 ≤ z⌝ ∗ count ↦ #z))%I.
+
+  Lemma j_string_low s :
+    low (j_string s).
+  Proof.
+    rewrite /j_string. simpl_low. iNext. iSplit; done.
+  Qed.
 
   Lemma wp_obj_get1 k v :
     {{{ True }}}
@@ -308,8 +329,7 @@ Section proof.
   Lemma use_closure_low count :
     heap_ctx ∗ counter_inv count ⊢
       low (LamV <>
-        (let: "cUpIncr" := (c_up_val count) @[ "incr" ] in
-         let: "n" := "cUpIncr" () in
+        (let: "n" := ((c_up_val count) @[ "incr" ]) () in
          assert: (#0 < "n"))).
   Proof.
     iIntros "#(Hh & Hinv)". rewrite low_rec.
@@ -317,7 +337,6 @@ Section proof.
     wp_apply (wp_forget_progress progress).
     wp_apply (wp_c_up_get_incr count).
     iIntros "_".
-    wp_let.
     wp_apply (incr_call_pos with "[$Hh $Hinv]").
     iIntros (v) "Hv".
     iDestruct "Hv" as (z) "Hv".
@@ -328,6 +347,29 @@ Section proof.
     wp_let.
     wp_apply wp_assert. wp_op=>?; last by exfalso; lia.
     iSplit; first done.
+    by iApply "HΦ"; simpl_low.
+  Qed.
+
+  Lemma source_use_closure_low count :
+    heap_ctx ∗ counter_inv count ⊢
+      low (LamV <> (App (Lam BAnon Unit)
+        (Assert ((#0 < (counter_val count) @[ "incr" ] ())%E)))).
+  Proof.
+    iIntros "#(Hh & Hinv)". rewrite low_rec.
+    iAlways. iNext. iIntros (? Φ) "_ HΦ". simpl_subst.
+    wp_apply (wp_forget_progress progress).
+    wp_apply (wp_counter_get_incr count).
+    iIntros "_".
+    wp_apply (incr_call_pos with "[$Hh $Hinv]").
+    iIntros (v) "Hv".
+    iDestruct "Hv" as (z) "Hv".
+    iDestruct "Hv" as "[Hv Hpos]".
+    iDestruct "Hv" as %Hv.
+    iDestruct "Hpos" as %Hpos.
+    subst v.
+    wp_apply wp_assert. wp_op=>?; last by exfalso; lia.
+    iSplit; first done.
+    iNext. wp_seq.
     by iApply "HΦ"; simpl_low.
   Qed.
 
@@ -352,7 +394,6 @@ Section proof.
       wp_apply (wp_forget_progress progress).
       wp_apply (wp_c_up_get_incr count).
       iIntros "_".
-      wp_let.
       wp_apply (incr_call_pos with "[$Hh $Hinv]").
       iIntros (v) "Hv".
       iDestruct "Hv" as (z) "Hv".
@@ -365,6 +406,49 @@ Section proof.
       iSplit; first done.
       by iApply "HΨ"; simpl_low.
     - by iApply (c_up_low with "[$Hh $Hinv]").
+  Qed.
+
+  Lemma checked_counter_from_source_spec :
+    {{{ heap_ctx }}} checked_counter_from_source {{{ v, RET v; low v }}}.
+  Proof.
+    iIntros (Φ) "#Hh HΦ". rewrite /checked_counter_from_source.
+    wp_lam.
+    wp_apply (make_counter_spec with "Hh").
+    iIntros (count) "#Hinv".
+    wp_let.
+    wp_apply (wp_counter_get_incr count).
+    iIntros "_".
+    wp_let.
+    wp_lam.
+    wp_lam.
+    wp_let.
+    iApply "HΦ".
+    clear Φ.
+    rewrite low_val /=. iNext.
+    iSplitL.
+    - by simpl_low.
+    - rewrite low_val /=. iNext. iSplitL.
+      + rewrite low_val /=. iNext. iSplit; first by iApply (j_string_low "_fst").
+        rewrite low_rec.
+        iAlways. iNext. iIntros (? Ψ) "_ HΨ". simpl_subst.
+        wp_apply (wp_forget_progress progress).
+        wp_apply (wp_counter_get_incr count).
+        iIntros "_".
+        wp_apply (incr_call_pos with "[$Hh $Hinv]").
+        iIntros (v) "Hv".
+        iDestruct "Hv" as (z) "Hv".
+        iDestruct "Hv" as "[Hv Hpos]".
+        iDestruct "Hv" as %Hv.
+        iDestruct "Hpos" as %Hpos.
+        subst v.
+        wp_apply wp_assert. wp_op=>?; last by exfalso; lia.
+        iSplit; first done.
+        iNext. wp_seq.
+        by iApply "HΨ"; simpl_low.
+      + rewrite low_val /=. iNext. iSplitL.
+        * rewrite low_val /=. iNext. iSplit; first by iApply (j_string_low "_snd").
+          by iApply (c_up_low with "[$Hh $Hinv]").
+        * by simpl_low.
   Qed.
 End proof.
 
@@ -381,3 +465,17 @@ Proof.
 Qed.
 
 Print Assumptions checked_counter_safe.
+
+Lemma checked_counter_from_source_safe C t2 σ2 :
+  AdvCtx C →
+  rtc step ([ctx_fill C checked_counter_from_source], good_state ∅) (t2, σ2) →
+  is_good σ2.
+Proof.
+  set Σ : gFunctors := #[heapΣ].
+  set N : namespace := nroot .@ "checked_counter_from_source".
+  move=>??. eapply (robust_safety Σ); try done.
+  { naive_solver eauto using is_closed_of_val. }
+  iIntros (?) "Hh". wp_apply (checked_counter_from_source_spec N with "Hh"); auto with ndisj.
+Qed.
+
+Print Assumptions checked_counter_from_source_safe.

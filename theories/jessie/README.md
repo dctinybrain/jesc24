@@ -5,6 +5,7 @@ Current result:
 - The same directory now also contains a `peg`-based Jessie parser line:
   - `make_counter.v` proves a structured PEG-backed parse of `makeCounter_source` into `JessicaAst`.
   - `make_counter.v` also proves the direct `makeCounter_source -> JessicaAst -> HLA` path through `jessica_to_hla.v`, without routing that example through the legacy `list jstmt` compiler.
+  - `make_counter.v` proves `checked_counter_from_source_safe`, a robust-safety theorem for a source-linked client that keeps the lowered `checkedCounter` shape and links its free `makeCounter` binding to the proved HeapLang `make_counter` constructor.
   - `escrow2013.v` proves an exact-source PEG parse of `escrow2013_source` into `escrow2013_program`, with that target declared separately in `escrow2013_target.v` from the in-tree `.jessie.json` / `.jessie.lisp` rendition shape.
 - `makeCounter_source` and `escrow2013_source` now come from checked-in `.js` files under `theories/jessie/sources/`, generated one-per-file into `*_js.v` modules during `make`.
 
@@ -51,6 +52,7 @@ The directory currently has four layers:
 Current limitations:
 - `makeCounter` goes through the current structured PEG grammar.
 - `makeCounter` now has a direct `JessicaAst -> HLA` lowering theorem and no longer depends on the legacy `list jstmt` compiler inside `make_counter.v`.
+- The source-linked counter safety theorem still links the lowered checked-client shape manually in Coq; it is not yet a general module-linking or compiler-correctness theorem for arbitrary parsed Jessie modules.
 - `escrow2013` currently uses an exact-source PEG wrapper via `exact_module_source`; it is not yet parsed by a fully structured Jessie grammar.
 - `jessica_to_hla.v` is intentionally partial today; it is only broad enough for the current `makeCounter` fragment and does not yet cover constructs such as `JIf` that show up in `escrow2013`.
 - `jessie_parse.v` remains in-tree as the older `list jstmt -> HeapLang` bridge, but the active `makeCounter` source-to-HLA path in `make_counter.v` no longer depends on it.
