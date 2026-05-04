@@ -1,5 +1,5 @@
 From Coq Require Import Lists.List Strings.Ascii Strings.String ZArith.
-From Peg Require Import Syntax Match.
+From Peg Require Import Charset Syntax Match.
 From iris.jessie Require Import jessica_ast quasi_json quasi_justin.
 
 Import ListNotations.
@@ -9,6 +9,14 @@ Module QuasiJessie.
   Import JessicaAst.
   Import QuasiJson.
   Import QuasiJustin.
+
+  (* String literal: matches '...' (single quoted, no escape handling) *)
+  Definition string_lit_single : pat :=
+    seq (sym "'")
+      (seq (star (seq (PNot (sym "'")) (PSet fullcharset)))
+            (sym "'")).
+
+  Definition string_lit : pat := tok string_lit_single.
 
   (* Experimental peg-coq Jessie layer, parallel to quasi-jessie, but only
      broad enough for the current makeCounter path. The PEG definitions below
@@ -99,9 +107,10 @@ Module QuasiJessie.
             (seq (PNT 1) (star expr_post_op))));
       (* 1 primaryExpr *)
       (* quasi-jessie.js.ts: primaryExpr inherits Justin primaryExpr. *)
-      alt number
-        (alt object_pat
-          (alt paren_expr ident));
+      alt string_lit
+        (alt number
+          (alt object_pat
+            (alt paren_expr ident)));
       (* 2 propDef *)
       seq (alt ident number) (seq (sym ":") (PNT 0));
       (* 3 statement *)
@@ -129,6 +138,11 @@ Module QuasiJessie.
 
   Example parse_arrow_expr :
     matches_comp grammar expr "() => (count += 1)" 1024 = Some (Success EmptyString).
+  Proof. vm_compute. reflexivity. Qed.
+
+  (* TDD RED: string literal parsing - should fail because string_lit not in grammar *)
+  Example parse_string_lit_single :
+    matches_comp grammar expr "'hello'" 512 = Some (Success "").
   Proof. vm_compute. reflexivity. Qed.
 
   Definition run_pat (g : Syntax.grammar) (p : pat) (fuel : nat) (s : string)
