@@ -15,3 +15,5 @@ Makefile.coq.conf
 *.crashcoqide
 theories/jessie/*_js.v
 theories/jessie/docs/_build/
+*.vok
+*.vos
