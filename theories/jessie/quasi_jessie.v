@@ -94,6 +94,10 @@ Module QuasiJessie.
   Definition return_stmt : pat :=
     seq (kw "return") (seq (PNT 0) (sym ";")).
 
+  (* Throw statement: throw expr; *)
+  Definition throw_stmt : pat :=
+    seq (kw "throw") (seq (PNT 0) (sym ";")).
+
   (* quasi-jessie.js.ts: exprStatement <- ~cantStartExprStatement expr SEMI. *)
   Definition expr_stmt : pat := seq (PNT 0) (sym ";").
 
@@ -123,12 +127,13 @@ Module QuasiJessie.
       (* 2 propDef *)
       seq (alt ident number) (seq (sym ":") (PNT 0));
       (* 3 statement *)
-      (* quasi-jessie.js.ts: binding / import / exprStatement / declOp subset. *)
+      (* quasi-jessie.js.ts: binding / import / throw / exprStatement / declOp subset. *)
       alt import_stmt
-        (alt const_decl
-          (alt let_decl
-            (alt return_stmt
-              (alt assert_stmt expr_stmt))));
+        (alt throw_stmt
+          (alt const_decl
+            (alt let_decl
+              (alt return_stmt
+                (alt assert_stmt expr_stmt)))));
       (* 4 block / arrow body block *)
       block;
       (* 5 module body *)
@@ -158,6 +163,11 @@ Module QuasiJessie.
   (* TDD RED: import statement - should fail because import_stmt not in grammar *)
   Example parse_import_stmt :
     matches_comp grammar statement "import { E } from '@endo/far';" 1024 = Some (Success "").
+  Proof. vm_compute. reflexivity. Qed.
+
+  (* TDD RED: throw statement - should fail because throw_stmt not in grammar *)
+  Example parse_throw_stmt :
+    matches_comp grammar statement "throw Error('join failed');" 1024 = Some (Success "").
   Proof. vm_compute. reflexivity. Qed.
 
   Definition run_pat (g : Syntax.grammar) (p : pat) (fuel : nat) (s : string)
