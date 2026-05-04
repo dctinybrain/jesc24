@@ -98,6 +98,15 @@ Module QuasiJessie.
   Definition throw_stmt : pat :=
     seq (kw "throw") (seq (PNT 0) (sym ";")).
 
+  (* If statement: if (cond) then_branch else else_branch *)
+  Definition if_stmt : pat :=
+    seq (kw "if")
+      (seq (sym "(")
+        (seq (PNT 0)  (* condition *)
+          (seq (sym ")")
+            (seq (PNT 4)  (* then branch - block *)
+              (opt (seq (kw "else") (PNT 4))))))).  (* optional else - block *)
+
   (* quasi-jessie.js.ts: exprStatement <- ~cantStartExprStatement expr SEMI. *)
   Definition expr_stmt : pat := seq (PNT 0) (sym ";").
 
@@ -128,13 +137,14 @@ Module QuasiJessie.
       (* 2 propDef *)
       seq (alt ident number) (seq (sym ":") (PNT 0));
       (* 3 statement *)
-      (* quasi-jessie.js.ts: binding / import / throw / exprStatement / declOp subset. *)
-      alt import_stmt
-        (alt throw_stmt
-          (alt const_decl
-            (alt let_decl
-              (alt return_stmt
-                (alt assert_stmt expr_stmt)))));
+      (* quasi-jessie.js.ts: binding / import / if / throw / exprStatement / declOp subset. *)
+      alt if_stmt
+        (alt import_stmt
+          (alt throw_stmt
+            (alt const_decl
+              (alt let_decl
+                (alt return_stmt
+                  (alt assert_stmt expr_stmt))))));
       (* 4 block / arrow body block *)
       block;
       (* 5 module body *)
@@ -174,6 +184,11 @@ Module QuasiJessie.
   (* TDD RED: ! prefix operator - should fail because prefix ! not in grammar *)
   Example parse_prefix_not :
     matches_comp grammar expr "!true" 512 = Some (Success "").
+  Proof. vm_compute. reflexivity. Qed.
+
+  (* TDD RED: if statement - should fail because if_stmt not in grammar *)
+  Example parse_if_stmt :
+    matches_comp grammar statement "if (true) { }" 1024 = Some (Success "").
   Proof. vm_compute. reflexivity. Qed.
 
   Definition run_pat (g : Syntax.grammar) (p : pat) (fuel : nat) (s : string)
