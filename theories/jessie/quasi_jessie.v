@@ -117,7 +117,8 @@ Module QuasiJessie.
       alt arrow_func
         (alt op_assign
           (alt less_than
-            (seq (PNT 1) (star expr_post_op))));
+            (alt (seq (sym "!") (PNT 0)) (* !expr *)
+              (seq (PNT 1) (star expr_post_op)))));
       (* 1 primaryExpr *)
       (* quasi-jessie.js.ts: primaryExpr inherits Justin primaryExpr. *)
       alt string_lit
@@ -168,6 +169,11 @@ Module QuasiJessie.
   (* TDD RED: throw statement - should fail because throw_stmt not in grammar *)
   Example parse_throw_stmt :
     matches_comp grammar statement "throw Error('join failed');" 1024 = Some (Success "").
+  Proof. vm_compute. reflexivity. Qed.
+
+  (* TDD RED: ! prefix operator - should fail because prefix ! not in grammar *)
+  Example parse_prefix_not :
+    matches_comp grammar expr "!true" 512 = Some (Success "").
   Proof. vm_compute. reflexivity. Qed.
 
   Definition run_pat (g : Syntax.grammar) (p : pat) (fuel : nat) (s : string)
