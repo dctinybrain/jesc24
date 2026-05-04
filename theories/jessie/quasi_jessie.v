@@ -18,6 +18,15 @@ Module QuasiJessie.
 
   Definition string_lit : pat := tok string_lit_single.
 
+  (* Import statement: import { x } from 'path'; *)
+  Definition import_stmt : pat :=
+    seq (kw "import")
+      (seq (sym "{")
+        (seq ident
+          (seq (sym "}")
+            (seq (kw "from")
+              (seq string_lit (sym ";")))))).
+
   (* Experimental peg-coq Jessie layer, parallel to quasi-jessie, but only
      broad enough for the current makeCounter path. The PEG definitions below
      are the sole grammar for this workspace; they run over the vendored
@@ -114,11 +123,12 @@ Module QuasiJessie.
       (* 2 propDef *)
       seq (alt ident number) (seq (sym ":") (PNT 0));
       (* 3 statement *)
-      (* quasi-jessie.js.ts: binding / exprStatement / declOp subset. *)
-      alt const_decl
-        (alt let_decl
-          (alt return_stmt
-            (alt assert_stmt expr_stmt)));
+      (* quasi-jessie.js.ts: binding / import / exprStatement / declOp subset. *)
+      alt import_stmt
+        (alt const_decl
+          (alt let_decl
+            (alt return_stmt
+              (alt assert_stmt expr_stmt))));
       (* 4 block / arrow body block *)
       block;
       (* 5 module body *)
@@ -143,6 +153,11 @@ Module QuasiJessie.
   (* TDD RED: string literal parsing - should fail because string_lit not in grammar *)
   Example parse_string_lit_single :
     matches_comp grammar expr "'hello'" 512 = Some (Success "").
+  Proof. vm_compute. reflexivity. Qed.
+
+  (* TDD RED: import statement - should fail because import_stmt not in grammar *)
+  Example parse_import_stmt :
+    matches_comp grammar statement "import { E } from '@endo/far';" 1024 = Some (Success "").
   Proof. vm_compute. reflexivity. Qed.
 
   Definition run_pat (g : Syntax.grammar) (p : pat) (fuel : nat) (s : string)
