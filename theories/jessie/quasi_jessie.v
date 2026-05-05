@@ -346,6 +346,40 @@ Module QuasiJessie.
         end
     end.
 
+  Fixpoint parse_arrow_params_after_open (fuel : nat) (s : string)
+      : option (list jpat * string) :=
+    match fuel with
+    | O => None
+    | S fuel' =>
+        match expect_sym_tok ")" (S fuel') s with
+        | Some rest => Some ([], rest)
+        | None =>
+            match parse_ident_token (S fuel') s with
+            | Some (x, rest1) =>
+                match expect_sym_tok "," (S fuel') rest1 with
+                | Some rest2 =>
+                    match parse_arrow_params_after_open fuel' rest2 with
+                    | Some (ps, rest3) => Some (JDef x :: ps, rest3)
+                    | None => None
+                    end
+                | None =>
+                    match expect_sym_tok ")" (S fuel') rest1 with
+                    | Some rest2 => Some ([JDef x], rest2)
+                    | None => None
+                    end
+                end
+            | None => None
+            end
+        end
+    end.
+
+  Definition parse_arrow_params_ast (fuel : nat) (s : string)
+      : option (list jpat * string) :=
+    match expect_sym_tok "(" fuel s with
+    | Some rest => parse_arrow_params_after_open fuel rest
+    | None => None
+    end.
+
   Fixpoint parse_expr_ast (fuel : nat) (s : string)
       : option (jexpr * string)
   with parse_primary_ast (fuel : nat) (s : string)
@@ -367,17 +401,15 @@ Module QuasiJessie.
       refine (
         match run_pat grammar arrow_func (S fuel') s with
         | Some _ =>
-            match expect_sym_tok "(" (S fuel') s with
-            | Some rest1 =>
-                match expect_sym_tok ")" (S fuel') rest1 with
-                | Some rest2 =>
-                    match expect_sym_tok "=>" (S fuel') rest2 with
+            match parse_arrow_params_ast (S fuel') s with
+            | Some (params, rest2) =>
+                match expect_sym_tok "=>" (S fuel') rest2 with
                     | Some rest3 =>
                         match expect_sym_tok "{" (S fuel') rest3 with
                         | Some rest4 =>
                             match parse_block_stmts_ast fuel' rest4 with
                             | Some (ss, rest5) =>
-                                Some (JArrow [] (JBodyBlock ss), rest5)
+                                Some (JArrow params (JBodyBlock ss), rest5)
                             | None => None
                             end
                         | None =>
@@ -387,7 +419,7 @@ Module QuasiJessie.
                                 | Some (e, rest5) =>
                                     match expect_sym_tok ")" (S fuel') rest5 with
                                     | Some rest6 =>
-                                        Some (JArrow [] (JBodyExpr e), rest6)
+                                        Some (JArrow params (JBodyExpr e), rest6)
                                     | None => None
                                     end
                                 | None => None
@@ -395,15 +427,13 @@ Module QuasiJessie.
                             | None =>
                                 match parse_expr_ast fuel' rest3 with
                                 | Some (e, rest4) =>
-                                    Some (JArrow [] (JBodyExpr e), rest4)
+                                    Some (JArrow params (JBodyExpr e), rest4)
                                 | None => None
                                 end
                             end
                         end
                     | None => None
                     end
-                | None => None
-                end
             | None => None
             end
         | None =>
@@ -813,6 +843,15 @@ Module QuasiJessie.
 
   Example parse_checkedCounter_source_program :
     parse_program_only checkedCounter_source = Some checkedCounter_jessica_program.
+  Proof. vm_compute. reflexivity. Qed.
+
+  Example parse_arrow_params_program :
+    parse_program_only "const f = (p1, p2) => p1;" =
+      Some (JModule
+        [JConst
+          [JBind
+            (JDef "f")
+            (JArrow [JDef "p1"; JDef "p2"] (JBodyExpr (JUse "p1")))]]).
   Proof. vm_compute. reflexivity. Qed.
 
 End QuasiJessie.
