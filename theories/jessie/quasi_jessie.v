@@ -105,8 +105,7 @@ Module QuasiJessie.
   Definition let_decl : pat :=
     seq (kw "let")
       (seq ident
-        (seq (sym "=")
-          (seq (PNT 0) (sym ";")))).
+        (seq (opt (seq (sym "=") (PNT 0))) (sym ";"))).
 
   (* quasi-jessie.js.ts: returnStatement production subset. *)
   Definition return_stmt : pat :=
@@ -833,18 +832,22 @@ Module QuasiJessie.
                     match parse_ident_token (S fuel') rest1 with
                     | Some (x, rest2) =>
                         match expect_sym_tok "=" (S fuel') rest2 with
-                        | Some rest3 =>
-                            match parse_expr_ast fuel' rest3 with
-                            | Some (rhs, rest4) =>
-                                match expect_sym_tok ";" (S fuel') rest4 with
-                                | Some rest5 =>
-                                    Some (JLet [JBind (JDef x) rhs], rest5)
-                                | None => None
-                                end
-                            | None => None
-                            end
-                        | None => None
-                        end
+	                        | Some rest3 =>
+	                            match parse_expr_ast fuel' rest3 with
+	                            | Some (rhs, rest4) =>
+	                                match expect_sym_tok ";" (S fuel') rest4 with
+	                                | Some rest5 =>
+	                                    Some (JLet [JBind (JDef x) rhs], rest5)
+	                                | None => None
+	                                end
+	                            | None => None
+	                            end
+	                        | None =>
+	                            match expect_sym_tok ";" (S fuel') rest2 with
+	                            | Some rest3 => Some (JLetNames [JDef x], rest3)
+	                            | None => None
+	                            end
+	                        end
                     | None => None
                     end
                 | None => None
@@ -1180,6 +1183,15 @@ Module QuasiJessie.
             (JArrow []
               (JBodyBlock
                 [JExprStmt (JAssign (JUse "decide") (JUse "resolve"))]))]]).
+  Proof. vm_compute. reflexivity. Qed.
+
+  Example parse_let_name_program :
+    parse_program_only "const f = () => { let decide; };" =
+      Some (JModule
+        [JConst
+          [JBind
+            (JDef "f")
+            (JArrow [] (JBodyBlock [JLetNames [JDef "decide"]]))]]).
   Proof. vm_compute. reflexivity. Qed.
 
 End QuasiJessie.
