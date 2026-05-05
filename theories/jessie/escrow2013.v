@@ -31,6 +31,10 @@ Module Escrow2013.
     parse_program_only escrow2013_source = Some escrow2013_program.
   Proof. vm_compute. reflexivity. Qed.
 
+  Example parse_escrow2013_source_program_structured :
+    QuasiJessie.parse_program_only escrow2013_source = Some escrow2013_program.
+  Proof. vm_compute. reflexivity. Qed.
+
   Example escrow2013_source_parses_sound :
     matches [] (exact_module_source escrow2013_source) escrow2013_source
       (Success EmptyString).
