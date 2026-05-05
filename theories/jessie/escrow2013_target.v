@@ -49,6 +49,20 @@ Module Escrow2013Target.
           ])
     ].
 
+  Definition qjoin_expr : jexpr :=
+    callm
+      (callm (u "Q") "all" [arr [u "p1"; u "p2"]])
+      "then"
+      [ arrow
+          [JMatchArray [def "r1"; def "r2"]]
+          [ JIf
+              (not_ (callm (u "Object") "is" [u "r1"; u "r2"]))
+              [JThrow (call (u "Error") [s "join failed"])]
+              None;
+            JReturn (u "r1")
+          ]
+      ].
+
   Definition transfer_body : list jstmt :=
     [ JConstStmt
         [ bind
@@ -98,6 +112,14 @@ Module Escrow2013Target.
               [JThrow (u "cancellation")]
           ])
     ].
+
+  Definition failOnly_expr : jexpr :=
+    callm
+      (call (u "Q") [u "cancellationP"])
+      "then"
+      [ arrow [def "cancellation"]
+          [JThrow (u "cancellation")]
+      ].
 
   Definition escrowExchange_body : list jstmt :=
     [ JLetNames [def "decide"];
@@ -152,7 +174,7 @@ Module Escrow2013Target.
           [ bind
               "Qjoin"
               (call (u "harden")
-                [ JLambda [def "p1"; def "p2"] (JBodyBlock qjoin_body) ])
+                [ arrow_expr [def "p1"; def "p2"] qjoin_expr ])
           ];
         JConst
           [ bind
@@ -166,7 +188,7 @@ Module Escrow2013Target.
           [ bind
               "failOnly"
               (call (u "harden")
-                [ JLambda [def "cancellationP"] (JBodyBlock failOnly_body) ])
+                [ arrow_expr [def "cancellationP"] failOnly_expr ])
           ];
         JConst
           [ bind
