@@ -38,8 +38,12 @@ Module QuasiJson.
   Definition ws_char : pat :=
     charset_pat (one_of [" "%char; "009"%char; "010"%char; "013"%char]).
 
+  Definition line_comment : pat :=
+    seq (string_pat "//")
+      (star (seq (PNot (char_pat "010"%char)) (PSet fullcharset))).
+
   (* quasi-json.js.ts: _WS <- [\t\n\r ]* ${_ => SKIP}; *)
-  Definition ws : pat := star ws_char.
+  Definition ws : pat := star (alt ws_char line_comment).
 
   Definition tok (p : pat) : pat := seq p ws.
 
