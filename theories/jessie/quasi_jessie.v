@@ -220,6 +220,23 @@ Module QuasiJessie.
   Definition string_of_ascii_list (xs : list ascii) : string :=
     fold_right String EmptyString xs.
 
+  Fixpoint parse_string_lit_content (fuel : nat) (s : string)
+      : option (string * string) :=
+    match fuel with
+    | O => None
+    | S fuel' =>
+        match s with
+        | EmptyString => None
+        | String c s' =>
+            if Ascii.eqb c "'"%char then Some (EmptyString, s')
+            else
+              match parse_string_lit_content fuel' s' with
+              | Some (cs, rest) => Some (String c cs, rest)
+              | None => None
+              end
+        end
+    end.
+
   Fixpoint ascii_list_eqb (xs ys : list ascii) : bool :=
     match xs, ys with
     | [], [] => true
@@ -324,6 +341,21 @@ Module QuasiJessie.
         | Some frag =>
             match Z_of_number_token (trim_right_ws frag) with
             | Some n => Some (n, rest)
+            | None => None
+            end
+        | None => None
+        end
+    | None => None
+    end.
+
+  Definition parse_string_lit_token (fuel : nat) (s : string)
+      : option (string * string) :=
+    match expect_sym_tok "'" fuel s with
+    | Some rest1 =>
+        match parse_string_lit_content fuel rest1 with
+        | Some (content, rest2) =>
+            match run_lex ws fuel rest2 with
+            | Some rest3 => Some (content, rest3)
             | None => None
             end
         | None => None
@@ -722,6 +754,38 @@ Module QuasiJessie.
         end).
     - destruct fuel as [| fuel']; [exact (@None (jdecl * string)) |].
       refine (
+        match run_pat grammar import_stmt (S fuel') s with
+        | Some _ =>
+            match expect_kw_tok "import" (S fuel') s with
+            | Some rest1 =>
+                match expect_sym_tok "{" (S fuel') rest1 with
+                | Some rest2 =>
+                    match parse_ident_token (S fuel') rest2 with
+                    | Some (x, rest3) =>
+                        match expect_sym_tok "}" (S fuel') rest3 with
+                        | Some rest4 =>
+                            match expect_kw_tok "from" (S fuel') rest4 with
+                            | Some rest5 =>
+                                match parse_string_lit_token (S fuel') rest5 with
+                                | Some (from, rest6) =>
+                                    match expect_sym_tok ";" (S fuel') rest6 with
+                                    | Some rest7 =>
+                                        Some (JImport [JImportAs x x] from, rest7)
+                                    | None => None
+                                    end
+                                | None => None
+                                end
+                            | None => None
+                            end
+                        | None => None
+                        end
+                    | None => None
+                    end
+                | None => None
+                end
+            | None => None
+            end
+        | None =>
         match run_pat grammar const_decl (S fuel') s with
         | Some _ =>
             match expect_kw_tok "const" (S fuel') s with
@@ -746,6 +810,7 @@ Module QuasiJessie.
             | None => None
             end
         | None => None
+        end
         end).
     - destruct fuel as [| fuel']; [exact (@None (list jdecl * string)) |].
       refine (
@@ -852,6 +917,11 @@ Module QuasiJessie.
           [JBind
             (JDef "f")
             (JArrow [JDef "p1"; JDef "p2"] (JBodyExpr (JUse "p1")))]]).
+  Proof. vm_compute. reflexivity. Qed.
+
+  Example parse_import_program :
+    parse_program_only "import { E } from '@endo/far';" =
+      Some (JModule [JImport [JImportAs "E" "E"] "@endo/far"]).
   Proof. vm_compute. reflexivity. Qed.
 
 End QuasiJessie.
