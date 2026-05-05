@@ -41,6 +41,9 @@ Module QuasiJessie.
     seq lvalue
       (seq (alt (sym "+=") (sym "-=")) (PNT 0)).
 
+  Definition assign_expr : pat :=
+    seq lvalue (seq (sym "=") (PNT 0)).
+
   Definition paren_expr : pat :=
     seq (sym "(") (seq (PNT 0) (sym ")")).
 
@@ -140,9 +143,10 @@ Module QuasiJessie.
       (* quasi-jessie.js.ts: assignExpr production subset. *)
       alt arrow_func
         (alt op_assign
-          (alt less_than
-            (alt (seq (sym "!") (PNT 0)) (* !expr *)
-              (seq (PNT 1) (star expr_post_op)))));
+          (alt assign_expr
+            (alt less_than
+              (alt (seq (sym "!") (PNT 0)) (* !expr *)
+                (seq (PNT 1) (star expr_post_op))))));
       (* 1 primaryExpr *)
       (* quasi-jessie.js.ts: primaryExpr inherits Justin primaryExpr. *)
       alt string_lit
@@ -549,6 +553,22 @@ Module QuasiJessie.
                 | None => None
                 end
             | None =>
+                match run_pat grammar assign_expr (S fuel') s with
+                | Some _ =>
+                    match parse_ident_token (S fuel') s with
+                    | Some (x, rest1) =>
+                        match expect_sym_tok "=" (S fuel') rest1 with
+                        | Some rest2 =>
+                            match parse_expr_ast fuel' rest2 with
+                            | Some (rhs, rest3) =>
+                                Some (JAssign (JUse x) rhs, rest3)
+                            | None => None
+                            end
+                        | None => None
+                        end
+                    | None => None
+                    end
+                | None =>
                 match expect_sym_tok "!" (S fuel') s with
                 | Some rest1 =>
                     match parse_expr_ast fuel' rest1 with
@@ -613,6 +633,7 @@ Module QuasiJessie.
                     | None => parse_post_ops fuel' base rest0
                     end
                 | None => None
+                end
                 end
                 end
             end
@@ -1148,6 +1169,17 @@ Module QuasiJessie.
               (JBodyBlock
                 [JThrow
                   (JCall (JUse "Error") [JDataString "join failed"])]))]]).
+  Proof. vm_compute. reflexivity. Qed.
+
+  Example parse_assign_program :
+    parse_program_only "const f = () => { decide = resolve; };" =
+      Some (JModule
+        [JConst
+          [JBind
+            (JDef "f")
+            (JArrow []
+              (JBodyBlock
+                [JExprStmt (JAssign (JUse "decide") (JUse "resolve"))]))]]).
   Proof. vm_compute. reflexivity. Qed.
 
 End QuasiJessie.
