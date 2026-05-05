@@ -829,6 +829,21 @@ Module QuasiJessie.
                 | None => None
                 end
             | None =>
+                match run_pat grammar throw_stmt (S fuel') s with
+                | Some _ =>
+                    match expect_kw_tok "throw" (S fuel') s with
+                    | Some rest1 =>
+                        match parse_expr_ast fuel' rest1 with
+                        | Some (e, rest2) =>
+                            match expect_sym_tok ";" (S fuel') rest2 with
+                            | Some rest3 => Some (JThrow e, rest3)
+                            | None => None
+                            end
+                        | None => None
+                        end
+                    | None => None
+                    end
+                | None =>
                 match run_pat grammar return_stmt (S fuel') s with
                 | Some _ =>
                     match expect_kw_tok "return" (S fuel') s with
@@ -880,6 +895,7 @@ Module QuasiJessie.
                         | None => None
                         end
                     end
+                end
                 end
             end
         end
@@ -1120,6 +1136,18 @@ Module QuasiJessie.
             (JArrow []
               (JBodyBlock
                 [JIf (JUse "ok") [JReturn (JUse "ok")] None]))]]).
+  Proof. vm_compute. reflexivity. Qed.
+
+  Example parse_throw_program :
+    parse_program_only "const f = () => { throw Error('join failed'); };" =
+      Some (JModule
+        [JConst
+          [JBind
+            (JDef "f")
+            (JArrow []
+              (JBodyBlock
+                [JThrow
+                  (JCall (JUse "Error") [JDataString "join failed"])]))]]).
   Proof. vm_compute. reflexivity. Qed.
 
 End QuasiJessie.
