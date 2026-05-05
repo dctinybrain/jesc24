@@ -57,6 +57,10 @@ Module QuasiJessie.
   Definition comma_list (elem : pat) : pat :=
     seq elem (star (seq (sym ",") elem)).
 
+  Definition array_pat : pat :=
+    seq (sym "[")
+      (seq (opt (comma_list (PNT 0))) (sym "]")).
+
   Definition arrow_params : pat :=
     seq (sym "(") (seq (opt (comma_list ident)) (sym ")")).
 
@@ -137,8 +141,9 @@ Module QuasiJessie.
       (* quasi-jessie.js.ts: primaryExpr inherits Justin primaryExpr. *)
       alt string_lit
         (alt number
-          (alt object_pat
-            (alt paren_expr ident)));
+          (alt array_pat
+            (alt object_pat
+              (alt paren_expr ident))));
       (* 2 propDef *)
       seq (alt ident number) (seq (sym ":") (PNT 0));
       (* 3 statement *)
@@ -562,6 +567,43 @@ Module QuasiJessie.
         match parse_number_token (S fuel') s with
         | Some (n, rest) => Some (JDataNum n, rest)
         | None =>
+            match run_pat grammar array_pat (S fuel') s with
+            | Some _ =>
+                match expect_sym_tok "[" (S fuel') s with
+                | Some rest1 =>
+                    let fix parse_array_elems_after_open (n : nat) (rest : string)
+                        : option (list jexpr * string) :=
+                        match n with
+                        | O => None
+                        | S n' =>
+                            match expect_sym_tok "]" (S fuel') rest with
+                            | Some rest2 => Some ([], rest2)
+                            | None =>
+                                match parse_expr_ast n' rest with
+                                | Some (e, rest2) =>
+                                    match expect_sym_tok "," (S fuel') rest2 with
+                                    | Some rest3 =>
+                                        match parse_array_elems_after_open n' rest3 with
+                                        | Some (es, rest4) => Some (e :: es, rest4)
+                                        | None => None
+                                        end
+                                    | None =>
+                                        match expect_sym_tok "]" (S fuel') rest2 with
+                                        | Some rest3 => Some ([e], rest3)
+                                        | None => None
+                                        end
+                                    end
+                                | None => None
+                                end
+                            end
+                        end in
+                    match parse_array_elems_after_open fuel' rest1 with
+                    | Some (es, rest2) => Some (JArray es, rest2)
+                    | None => None
+                    end
+                | None => None
+                end
+            | None =>
             match run_pat grammar object_pat (S fuel') s with
             | Some _ =>
                 match expect_sym_tok "{" (S fuel') s with
@@ -589,6 +631,7 @@ Module QuasiJessie.
                     | None => None
                     end
                 end
+            end
             end
         end
         end).
@@ -932,6 +975,12 @@ Module QuasiJessie.
     parse_program_only "const message = 'join failed';" =
       Some (JModule
         [JConst [JBind (JDef "message") (JDataString "join failed")]]).
+  Proof. vm_compute. reflexivity. Qed.
+
+  Example parse_array_program :
+    parse_program_only "const xs = [p1, p2];" =
+      Some (JModule
+        [JConst [JBind (JDef "xs") (JArray [JUse "p1"; JUse "p2"])]]).
   Proof. vm_compute. reflexivity. Qed.
 
 End QuasiJessie.
