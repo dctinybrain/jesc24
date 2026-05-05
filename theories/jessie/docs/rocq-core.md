@@ -13,6 +13,53 @@ The kernel is ~8-10k LOC of OCaml that performs these checks.
 
 ---
 
+## Trusted Computing Base
+
+Coq's kernel (`coq/kernel/`) — the code that checks CIC proofs:
+
+```
+coq/kernel/
+├── term.ml              ~1,500 LOC  (CIC term representation)
+├── typeops.ml           ~1,500 LOC  (type-checking + η comparison)
+├── reduction.ml         ~1,500 LOC  (βδιζ reduction)
+├── univ.ml              ~2,000 LOC  (universe constraints)
+├── inductive.ml         ~1,500 LOC  (inductive type checking)
+├── mod_typing.ml        ~1,000 LOC  (module system)
+├── declarations.ml        ~500 LOC
+└── [retroknowledge, etc] ~500 LOC
+```
+
+**Total**: ~8-10k LOC of OCaml
+
+---
+
+## Coq Terms for a JS Dev
+
+Coq terms are like JS expressions where:
+1. You can't write infinite loops
+   - Mechanical check by Kernel's guard checker
+2. Simplifying always gives one answer
+   - Proved: Church-Rosser (1936), SN for CIC (Coquand & Huet 1988)
+
+```
+t, u ::=                              -- terms
+  | Prop, Set, Type(i)             -- sorts (universes)
+  | x                              -- variables
+  | λx:T. t                        -- lambda abstraction (term level)
+  | t u                            -- application
+  | ∀x:T, U                        -- Pi type (Πx:T.U) [Coq syntax]
+  | Inductive types                  -- e.g., nat, list
+  | Constructors                      -- e.g., O, S, nil, cons
+  | match/case                      -- elimination
+  | fix                            -- guarded fixpoints
+```
+
+**Key distinction**:
+- `λx:T. t` is a *term* (function expression)
+- `Πx:T. U` (written `∀x:T, U` in Coq) is the *type* of such terms
+
+---
+
 ## Atomic Proof Steps (CIC Conversion)
 
 The kernel checks `t ≡ u` by reducing both to normal form, then comparing.
@@ -33,6 +80,11 @@ Applying a lambda substitutes the argument into the body.
 
 ```
 (λx:T. t) u  →β  t[x:=u]
+```
+
+**JS translation**:
+```
+(x => x + 1)(2)  →β  2 + 1
 ```
 
 **Example**:
@@ -102,26 +154,6 @@ compare(λx. f x, f):
 ```
 
 **Not a reduction step** — the kernel does NOT rewrite `λx. f x` to `f`. It recognizes this pattern during structural comparison.
-
----
-
-## Trusted Computing Base
-
-Coq's kernel (`coq/kernel/`) — the code that checks CIC proofs:
-
-```
-coq/kernel/
-├── term.ml              ~1,500 LOC  (CIC term representation)
-├── typeops.ml           ~1,500 LOC  (type-checking + η comparison)
-├── reduction.ml         ~1,500 LOC  (βδιζ reduction)
-├── univ.ml              ~2,000 LOC  (universe constraints)
-├── inductive.ml         ~1,500 LOC  (inductive type checking)
-├── mod_typing.ml        ~1,000 LOC  (module system)
-├── declarations.ml        ~500 LOC
-└── [retroknowledge, etc] ~500 LOC
-```
-
-**Total**: ~8-10k LOC of OCaml
 
 ---
 
