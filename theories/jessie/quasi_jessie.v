@@ -62,7 +62,8 @@ Module QuasiJessie.
       (seq (opt (seq (comma_list (PNT 0)) (opt (sym ",")))) (sym "]")).
 
   Definition arrow_params : pat :=
-    seq (sym "(") (seq (opt (comma_list ident)) (sym ")")).
+    alt ident
+      (seq (sym "(") (seq (opt (comma_list ident)) (sym ")"))).
 
   Definition arrow_body : pat :=
     alt (PNT 4)
@@ -412,9 +413,13 @@ Module QuasiJessie.
 
   Definition parse_arrow_params_ast (fuel : nat) (s : string)
       : option (list jpat * string) :=
-    match expect_sym_tok "(" fuel s with
-    | Some rest => parse_arrow_params_after_open fuel rest
-    | None => None
+    match parse_ident_token fuel s with
+    | Some (x, rest) => Some ([JDef x], rest)
+    | None =>
+        match expect_sym_tok "(" fuel s with
+        | Some rest => parse_arrow_params_after_open fuel rest
+        | None => None
+        end
     end.
 
   Fixpoint parse_expr_ast (fuel : nat) (s : string)
@@ -987,6 +992,12 @@ Module QuasiJessie.
     parse_program_only "const xs = [p1, p2,];" =
       Some (JModule
         [JConst [JBind (JDef "xs") (JArray [JUse "p1"; JUse "p2"])]]).
+  Proof. vm_compute. reflexivity. Qed.
+
+  Example parse_bare_arrow_param_program :
+    parse_program_only "const f = x => x;" =
+      Some (JModule
+        [JConst [JBind (JDef "f") (JArrow [JDef "x"] (JBodyExpr (JUse "x")))]]).
   Proof. vm_compute. reflexivity. Qed.
 
 End QuasiJessie.
