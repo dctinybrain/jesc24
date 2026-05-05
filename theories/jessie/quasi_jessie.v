@@ -556,6 +556,9 @@ Module QuasiJessie.
         end).
     - destruct fuel as [| fuel']; [exact (@None (jexpr * string)) |].
       refine (
+        match parse_string_lit_token (S fuel') s with
+        | Some (lit, rest) => Some (JDataString lit, rest)
+        | None =>
         match parse_number_token (S fuel') s with
         | Some (n, rest) => Some (JDataNum n, rest)
         | None =>
@@ -587,6 +590,7 @@ Module QuasiJessie.
                     end
                 end
             end
+        end
         end).
     - destruct fuel as [| fuel']; [exact (@None (list jexpr * string)) |].
       refine (
@@ -922,6 +926,12 @@ Module QuasiJessie.
   Example parse_import_program :
     parse_program_only "import { E } from '@endo/far';" =
       Some (JModule [JImport [JImportAs "E" "E"] "@endo/far"]).
+  Proof. vm_compute. reflexivity. Qed.
+
+  Example parse_string_lit_program :
+    parse_program_only "const message = 'join failed';" =
+      Some (JModule
+        [JConst [JBind (JDef "message") (JDataString "join failed")]]).
   Proof. vm_compute. reflexivity. Qed.
 
 End QuasiJessie.
