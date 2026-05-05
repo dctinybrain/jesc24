@@ -61,9 +61,14 @@ Module QuasiJessie.
     seq (sym "[")
       (seq (opt (seq (comma_list (PNT 0)) (opt (sym ",")))) (sym "]")).
 
+  Definition match_array_param : pat :=
+    seq (sym "[") (seq (opt (comma_list ident)) (sym "]")).
+
+  Definition arrow_param : pat := alt match_array_param ident.
+
   Definition arrow_params : pat :=
     alt ident
-      (seq (sym "(") (seq (opt (comma_list ident)) (sym ")"))).
+      (seq (sym "(") (seq (opt (comma_list arrow_param)) (sym ")"))).
 
   Definition arrow_body : pat :=
     alt (PNT 4)
@@ -385,31 +390,71 @@ Module QuasiJessie.
     end.
 
   Fixpoint parse_arrow_params_after_open (fuel : nat) (s : string)
-      : option (list jpat * string) :=
-    match fuel with
-    | O => None
-    | S fuel' =>
-        match expect_sym_tok ")" (S fuel') s with
-        | Some rest => Some ([], rest)
-        | None =>
-            match parse_ident_token (S fuel') s with
-            | Some (x, rest1) =>
-                match expect_sym_tok "," (S fuel') rest1 with
-                | Some rest2 =>
-                    match parse_arrow_params_after_open fuel' rest2 with
-                    | Some (ps, rest3) => Some (JDef x :: ps, rest3)
-                    | None => None
-                    end
-                | None =>
-                    match expect_sym_tok ")" (S fuel') rest1 with
-                    | Some rest2 => Some ([JDef x], rest2)
-                    | None => None
-                    end
-                end
-            | None => None
-            end
-        end
-    end.
+      : option (list jpat * string)
+  with parse_match_array_params_after_open (fuel : nat) (s : string)
+      : option (list jpat * string)
+  with parse_arrow_param_ast (fuel : nat) (s : string)
+      : option (jpat * string).
+  Proof.
+  - destruct fuel as [| fuel']; [exact (@None (list jpat * string)) |].
+    refine (
+      match expect_sym_tok ")" (S fuel') s with
+      | Some rest => Some ([], rest)
+      | None =>
+          match parse_arrow_param_ast fuel' s with
+          | Some (p, rest1) =>
+              match expect_sym_tok "," (S fuel') rest1 with
+              | Some rest2 =>
+                  match parse_arrow_params_after_open fuel' rest2 with
+                  | Some (ps, rest3) => Some (p :: ps, rest3)
+                  | None => None
+                  end
+              | None =>
+                  match expect_sym_tok ")" (S fuel') rest1 with
+                  | Some rest2 => Some ([p], rest2)
+                  | None => None
+                  end
+              end
+          | None => None
+          end
+      end).
+  - destruct fuel as [| fuel']; [exact (@None (list jpat * string)) |].
+    refine (
+      match expect_sym_tok "]" (S fuel') s with
+      | Some rest => Some ([], rest)
+      | None =>
+          match parse_arrow_param_ast fuel' s with
+          | Some (p, rest1) =>
+              match expect_sym_tok "," (S fuel') rest1 with
+              | Some rest2 =>
+                  match parse_match_array_params_after_open fuel' rest2 with
+                  | Some (ps, rest3) => Some (p :: ps, rest3)
+                  | None => None
+                  end
+              | None =>
+                  match expect_sym_tok "]" (S fuel') rest1 with
+                  | Some rest2 => Some ([p], rest2)
+                  | None => None
+                  end
+              end
+          | None => None
+          end
+      end).
+  - destruct fuel as [| fuel']; [exact (@None (jpat * string)) |].
+    refine (
+      match expect_sym_tok "[" (S fuel') s with
+      | Some rest1 =>
+          match parse_match_array_params_after_open fuel' rest1 with
+          | Some (ps, rest2) => Some (JMatchArray ps, rest2)
+          | None => None
+          end
+      | None =>
+          match parse_ident_token (S fuel') s with
+          | Some (x, rest) => Some (JDef x, rest)
+          | None => None
+          end
+      end).
+  Defined.
 
   Definition parse_arrow_params_ast (fuel : nat) (s : string)
       : option (list jpat * string) :=
@@ -998,6 +1043,17 @@ Module QuasiJessie.
     parse_program_only "const f = x => x;" =
       Some (JModule
         [JConst [JBind (JDef "f") (JArrow [JDef "x"] (JBodyExpr (JUse "x")))]]).
+  Proof. vm_compute. reflexivity. Qed.
+
+  Example parse_array_pattern_arrow_param_program :
+    parse_program_only "const f = ([r1, r2]) => r1;" =
+      Some (JModule
+        [JConst
+          [JBind
+            (JDef "f")
+            (JArrow
+              [JMatchArray [JDef "r1"; JDef "r2"]]
+              (JBodyExpr (JUse "r1")))]]).
   Proof. vm_compute. reflexivity. Qed.
 
 End QuasiJessie.
