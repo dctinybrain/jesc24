@@ -59,7 +59,7 @@ Module QuasiJessie.
 
   Definition array_pat : pat :=
     seq (sym "[")
-      (seq (opt (comma_list (PNT 0))) (sym "]")).
+      (seq (opt (seq (comma_list (PNT 0)) (opt (sym ",")))) (sym "]")).
 
   Definition arrow_params : pat :=
     seq (sym "(") (seq (opt (comma_list ident)) (sym ")")).
@@ -979,6 +979,12 @@ Module QuasiJessie.
 
   Example parse_array_program :
     parse_program_only "const xs = [p1, p2];" =
+      Some (JModule
+        [JConst [JBind (JDef "xs") (JArray [JUse "p1"; JUse "p2"])]]).
+  Proof. vm_compute. reflexivity. Qed.
+
+  Example parse_array_trailing_comma_program :
+    parse_program_only "const xs = [p1, p2,];" =
       Some (JModule
         [JConst [JBind (JDef "xs") (JArray [JUse "p1"; JUse "p2"])]]).
   Proof. vm_compute. reflexivity. Qed.
