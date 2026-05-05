@@ -1194,4 +1194,10 @@ Module QuasiJessie.
             (JArrow [] (JBodyBlock [JLetNames [JDef "decide"]]))]]).
   Proof. vm_compute. reflexivity. Qed.
 
+  Example parse_line_comment_program :
+    parse_program_only "const x = 1; // phase 1
+" =
+      Some (JModule [JConst [JBind (JDef "x") (JDataNum 1)]]).
+  Proof. vm_compute. reflexivity. Qed.
+
 End QuasiJessie.
