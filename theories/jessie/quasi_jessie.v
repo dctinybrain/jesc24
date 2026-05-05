@@ -54,6 +54,12 @@ Module QuasiJessie.
               (opt (sym ",")))))
         (sym "}")).
 
+  Definition comma_list (elem : pat) : pat :=
+    seq elem (star (seq (sym ",") elem)).
+
+  Definition arrow_params : pat :=
+    seq (sym "(") (seq (opt (comma_list ident)) (sym ")")).
+
   Definition arrow_body : pat :=
     alt (PNT 4)
       (alt paren_expr (PNT 0)).
@@ -63,9 +69,8 @@ Module QuasiJessie.
                 / arrowParams _NO_NEWLINE ARROW assignExpr;
   *)
   Definition arrow_func : pat :=
-    seq (sym "(")
-      (seq (sym ")")
-        (seq (sym "=>") arrow_body)).
+    seq arrow_params
+      (seq (sym "=>") arrow_body).
 
   (* quasi-jessie.js.ts:
      memberPostOp / callPostOp extensions inherited from Justin.
@@ -189,6 +194,11 @@ Module QuasiJessie.
   (* TDD RED: if statement - should fail because if_stmt not in grammar *)
   Example parse_if_stmt :
     matches_comp grammar statement "if (true) { }" 1024 = Some (Success "").
+  Proof. vm_compute. reflexivity. Qed.
+
+  (* TDD RED: escrow2013 uses arrow functions with named parameters. *)
+  Example parse_arrow_params :
+    matches_comp grammar expr "(p1, p2) => p1" 1024 = Some (Success "").
   Proof. vm_compute. reflexivity. Qed.
 
   Definition run_pat (g : Syntax.grammar) (p : pat) (fuel : nat) (s : string)
