@@ -549,6 +549,13 @@ Module QuasiJessie.
                 | None => None
                 end
             | None =>
+                match expect_sym_tok "!" (S fuel') s with
+                | Some rest1 =>
+                    match parse_expr_ast fuel' rest1 with
+                    | Some (e, rest2) => Some (JPreOp "!" e, rest2)
+                    | None => None
+                    end
+                | None =>
                 match parse_primary_ast fuel' s with
                 | Some (base, rest0) =>
                     let fix parse_post_ops (n : nat) (e : jexpr) (rest : string)
@@ -606,6 +613,7 @@ Module QuasiJessie.
                     | None => parse_post_ops fuel' base rest0
                     end
                 | None => None
+                end
                 end
             end
         end).
@@ -1054,6 +1062,12 @@ Module QuasiJessie.
             (JArrow
               [JMatchArray [JDef "r1"; JDef "r2"]]
               (JBodyExpr (JUse "r1")))]]).
+  Proof. vm_compute. reflexivity. Qed.
+
+  Example parse_prefix_not_program :
+    parse_program_only "const negated = !ok;" =
+      Some (JModule
+        [JConst [JBind (JDef "negated") (JPreOp "!" (JUse "ok"))]]).
   Proof. vm_compute. reflexivity. Qed.
 
 End QuasiJessie.
