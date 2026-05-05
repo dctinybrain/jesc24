@@ -741,6 +741,46 @@ Module QuasiJessie.
         end).
     - destruct fuel as [| fuel']; [exact (@None (jstmt * string)) |].
       refine (
+        match run_pat grammar if_stmt (S fuel') s with
+        | Some _ =>
+            match expect_kw_tok "if" (S fuel') s with
+            | Some rest1 =>
+                match expect_sym_tok "(" (S fuel') rest1 with
+                | Some rest2 =>
+                    match parse_expr_ast fuel' rest2 with
+                    | Some (cond, rest3) =>
+                        match expect_sym_tok ")" (S fuel') rest3 with
+                        | Some rest4 =>
+                            match expect_sym_tok "{" (S fuel') rest4 with
+                            | Some rest5 =>
+                                match parse_block_stmts_ast fuel' rest5 with
+                                | Some (then_branch, rest6) =>
+                                    match expect_kw_tok "else" (S fuel') rest6 with
+                                    | Some rest7 =>
+                                        match expect_sym_tok "{" (S fuel') rest7 with
+                                        | Some rest8 =>
+                                            match parse_block_stmts_ast fuel' rest8 with
+                                            | Some (else_branch, rest9) =>
+                                                Some (JIf cond then_branch (Some else_branch), rest9)
+                                            | None => None
+                                            end
+                                        | None => None
+                                        end
+                                    | None => Some (JIf cond then_branch None, rest6)
+                                    end
+                                | None => None
+                                end
+                            | None => None
+                            end
+                        | None => None
+                        end
+                    | None => None
+                    end
+                | None => None
+                end
+            | None => None
+            end
+        | None =>
         match run_pat grammar const_decl (S fuel') s with
         | Some _ =>
             match expect_kw_tok "const" (S fuel') s with
@@ -842,6 +882,7 @@ Module QuasiJessie.
                     end
                 end
             end
+        end
         end).
     - destruct fuel as [| fuel']; [exact (@None (list jstmt * string)) |].
       refine (
@@ -1068,6 +1109,17 @@ Module QuasiJessie.
     parse_program_only "const negated = !ok;" =
       Some (JModule
         [JConst [JBind (JDef "negated") (JPreOp "!" (JUse "ok"))]]).
+  Proof. vm_compute. reflexivity. Qed.
+
+  Example parse_if_program :
+    parse_program_only "const f = () => { if (ok) { return ok; } };" =
+      Some (JModule
+        [JConst
+          [JBind
+            (JDef "f")
+            (JArrow []
+              (JBodyBlock
+                [JIf (JUse "ok") [JReturn (JUse "ok")] None]))]]).
   Proof. vm_compute. reflexivity. Qed.
 
 End QuasiJessie.
