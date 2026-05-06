@@ -24,6 +24,7 @@ jobs:
         with:
           ocaml-compiler: ${{ matrix.ocaml-compiler }}
           opam-repositories: |
+            default: git+https://github.com/ocaml/opam-repository.git
             coq-released: https://coq.inria.fr/opam/released
           opam-disable-sandboxing: true # matches iris.mk: opam init --disable-sandboxing
 
