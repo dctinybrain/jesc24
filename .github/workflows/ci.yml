@@ -13,7 +13,39 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: cachix/install-nix-action@v31
+      - name: Install Ubuntu dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential m4 pkg-config bubblewrap opam git
 
-      - name: build
-        run: nix develop --command make
+      - name: Initialize opam
+        run: opam init --disable-sandboxing -y
+
+      - name: Create OCaml switch
+        env:
+          OPAM_SWITCH: ocpl-coq-8.9.1-ocaml-4.07.1
+          OCAML_VER: 4.07.1
+        run: |
+          opam switch create "$OPAM_SWITCH" "ocaml-base-compiler.$OCAML_VER" || opam switch set "$OPAM_SWITCH"
+          eval "$(opam env --switch="$OPAM_SWITCH")"
+          ocaml -version
+
+      - name: Install Coq 8.9.1
+        env:
+          OPAM_SWITCH: ocpl-coq-8.9.1-ocaml-4.07.1
+          COQ_VER: 8.9.1
+        run: |
+          eval "$(opam env --switch="$OPAM_SWITCH")"
+          opam repo add coq-released https://coq.inria.fr/opam/released -y
+          opam update
+          opam install -y "coq.$COQ_VER"
+          coqc --version
+        timeout-minutes: 60
+
+      - name: Build ocpl-coq
+        env:
+          OPAM_SWITCH: ocpl-coq-8.9.1-ocaml-4.07.1
+        run: |
+          eval "$(opam env --switch="$OPAM_SWITCH")"
+          make
+        timeout-minutes: 60
