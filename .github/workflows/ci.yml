@@ -18,7 +18,7 @@ jobs:
       # - Automatically skips compiler install on cache hits
       - uses: ocaml/setup-ocaml@v3
         with:
-          ocaml-compiler: ${{ matrix.ocaml-compiler }}
+          ocaml-compiler: ocaml-base-compiler.4.07.1
           opam-repositories: |
             default: git+https://github.com/ocaml/opam-repository.git
             coq-released: https://coq.inria.fr/opam/released
@@ -28,12 +28,7 @@ jobs:
       # Note: opam is installed by setup-ocaml action, not from apt
       - name: Install Ubuntu dependencies
         run: |
-          sudo apt install -y build-essential m4 pkg-config git python3
-
-      - name: install ocaml compiler
-        run: |
-          opam switch create . ocaml-base-compiler.4.07.1
-          opam exec -- ocaml -version
+          sudo apt install -y build-essential m4 pkg-config
 
       # Install Coq (from iris.mk install target)
       # Breadcrumb: Coq 8.9.1 is old (2019); opam still has it in default repo
