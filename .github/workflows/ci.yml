@@ -22,7 +22,7 @@ jobs:
       # - Automatically skips compiler install on cache hits
       - uses: ocaml/setup-ocaml@v3
         with:
-          ocaml-compiler: 4.07.1
+          ocaml-compiler: ocaml-base-compiler.4.07.1
           opam-repositories: |
             default: https://opam.ocaml.org
             coq-released: https://coq.inria.fr/opam/released
