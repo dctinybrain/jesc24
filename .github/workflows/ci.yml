@@ -11,7 +11,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        ocaml-compiler: ['ocaml-base-compiler.4.07.1']
+        ocaml-compiler: ['ocaml-variants.4.07.1+options']
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
