@@ -9,44 +9,11 @@ name: Build ocpl-coq
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
-      # Install system deps (from iris.mk ubuntu-deps target)
-      # Note: opam is installed by setup-ocaml action, not from apt
-      - name: Install Ubuntu dependencies
-        run: |
-          sudo apt install -y build-essential m4 pkg-config opam bubblewrap
+      - uses: cachix/install-nix-action@v31
 
-      - name: create opam switch
-        run: |
-          opam init -y --disable-sandboxing git+https://github.com/ocaml/opam-repository.git
-          eval $(opam env)
-          opam repository add coq-released https://coq.inria.fr/opam/released
-          opam update
-          opam switch create . ocaml-base-compiler.4.07.1
-          eval $(opam env)
-          ocaml -version
-
-      # Install Coq (from iris.mk install target)
-      # Breadcrumb: Coq 8.9.1 is old (2019); opam still has it in default repo
-      # - Verified locally: opam show coq.8.9.1 works, source from GitHub releases
-      - name: Install Coq 8.9.1
-        run: |
-          eval $(opam env)
-          opam install -y coq.8.9.1
-          coqc --version
-        timeout-minutes: 60
-
-      # Build ocpl-coq (uses local Makefile)
-      # Note: Iris is vendored in ocpl-coq, not installed via opam
-      - name: Build ocpl-coq
-        run: |
-          eval $(opam env)
-          make
-        timeout-minutes: 60
-# Alternative approach considered:
-# - coq-community/docker-coq-action: https://github.com/rocq-community/docker-coq-action
-#   - Uses pre-built Docker images with Coq
-#   - Breadcrumb: https://github.com/rocq-community/docker-coq/wiki/CI-setup
-#   - Rejected: Coq 8.9.1 is too old for their image registry
+      - name: build
+        run: nix develop --command make
