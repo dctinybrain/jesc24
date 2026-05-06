@@ -1,13 +1,9 @@
 name: Build ocpl-coq
 
-# Triggers: only run when ocpl-coq files change
+# Triggers: run on push and PR
 on:
   push:
-    paths:
-      - 'packages/zoe/spec/_research/ocpl-coq/**'
   pull_request:
-    paths:
-      - 'packages/zoe/spec/_research/ocpl-coq/**'
 
 jobs:
   build:
@@ -39,7 +35,6 @@ jobs:
           sudo apt install -y build-essential m4 pkg-config git python3
 
       # Create switch (from iris.mk switch target)
-      # setup-ocaml creates the switch automatically, but we need to name it
       - name: Create opam switch (matching iris.mk)
         run: |
           opam switch create ocpl-coq-8.9.1-ocaml-4.07.1 ocaml-base-compiler.4.07.1 || \
@@ -64,7 +59,6 @@ jobs:
       # Build ocpl-coq (uses local Makefile)
       # Note: Iris is vendored in ocpl-coq, not installed via opam
       - name: Build ocpl-coq
-        working-directory: packages/zoe/spec/_research/ocpl-coq
         run: |
           eval $(opam env --switch=ocpl-coq-8.9.1-ocaml-4.07.1)
           make
