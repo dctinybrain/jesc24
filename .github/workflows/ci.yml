@@ -18,10 +18,6 @@ jobs:
       # - Automatically skips compiler install on cache hits
       - uses: ocaml/setup-ocaml@v3
         with:
-          ocaml-compiler: ocaml-base-compiler.4.07.1
-          opam-repositories: |
-            default: git+https://github.com/ocaml/opam-repository.git
-            coq-released: https://coq.inria.fr/opam/released
           opam-disable-sandboxing: true # matches iris.mk: opam init --disable-sandboxing
 
       # Install system deps (from iris.mk ubuntu-deps target)
@@ -29,6 +25,14 @@ jobs:
       - name: Install Ubuntu dependencies
         run: |
           sudo apt install -y build-essential m4 pkg-config
+
+      - name: create opam switch
+        run: |
+          opam repository set-url default git+https://github.com/ocaml/opam-repository.git
+          opam repository add coq-released https://coq.inria.fr/opam/released
+          opam switch create . ocaml-base-compiler.4.07.1
+          opam update
+          opam exec -- ocaml -version
 
       # Install Coq (from iris.mk install target)
       # Breadcrumb: Coq 8.9.1 is old (2019); opam still has it in default repo
