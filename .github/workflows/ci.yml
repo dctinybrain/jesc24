@@ -11,7 +11,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        ocaml-compiler: ['4.07.1']
+        ocaml-compiler: ['ocaml-base-compiler.4.07.1']
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -24,7 +24,6 @@ jobs:
         with:
           ocaml-compiler: ${{ matrix.ocaml-compiler }}
           opam-repositories: |
-            default: https://opam.ocaml.org
             coq-released: https://coq.inria.fr/opam/released
           opam-disable-sandboxing: true # matches iris.mk: opam init --disable-sandboxing
 
@@ -46,13 +45,13 @@ jobs:
 
       - name: Verify Coq installation
         run: |
-          coqc --version
+          opam exec -- coqc --version
 
       # Build ocpl-coq (uses local Makefile)
       # Note: Iris is vendored in ocpl-coq, not installed via opam
       - name: Build ocpl-coq
         run: |
-          make
+          opam exec -- make
         timeout-minutes: 60
 # Alternative approach considered:
 # - coq-community/docker-coq-action: https://github.com/rocq-community/docker-coq-action
