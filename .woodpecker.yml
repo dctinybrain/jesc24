@@ -1,0 +1,33 @@
+# Woodpecker CI for Codeberg
+# https://woodpecker-ci.org/docs/usage/configuration
+
+pipeline:
+  build-ocpl-coq:
+    # Use Debian with OCaml/opam
+    image: ocaml/opam:debian-4.07
+    environment:
+      - OPAMYES: "true"
+      - OPAMCOLOR: "never"
+    commands:
+      # Install system deps (from iris.mk)
+      - apt-get update && apt-get install -y build-essential m4 pkg-config git python3
+      
+      # Initialize opam (from iris.mk)
+      - opam init --disable-sandboxing -y
+      - eval $$(opam env)
+      
+      # Create switch (from iris.mk)
+      - opam switch create ocpl-coq-8.9.1-ocaml-4.07.1 ocaml-base-compiler.4.07.1 || true
+      - eval $$(opam env --switch=ocpl-coq-8.9.1-ocaml-4.07.1)
+      
+      # Add coq-released repo and install Coq 8.9.1
+      - opam repo add coq-released https://coq.inria.fr/opam/released -y
+      - opam update
+      - opam install -y coq.8.9.1
+      
+      # Verify Coq
+      - coqc --version
+      
+      # Build ocpl-coq
+      - make
+    timeout: 60m
