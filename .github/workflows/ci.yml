@@ -8,11 +8,7 @@ name: Build ocpl-coq
 
 jobs:
   build:
-    strategy:
-      matrix:
-        os: [ubuntu-latest]
-        ocaml-compiler: ['ocaml-variants.4.07.1+options']
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       # Breadcrumb: ocaml/setup-ocaml is the de-facto standard for OCaml CI
@@ -32,21 +28,21 @@ jobs:
       # Note: opam is installed by setup-ocaml action, not from apt
       - name: Install Ubuntu dependencies
         run: |
-          sudo apt update
           sudo apt install -y build-essential m4 pkg-config git python3
+
+      - name: install ocaml compiler
+        run: |
+          opam switch create . ocaml-base-compiler.4.07.1
+          opam exec -- ocaml -version
 
       # Install Coq (from iris.mk install target)
       # Breadcrumb: Coq 8.9.1 is old (2019); opam still has it in default repo
       # - Verified locally: opam show coq.8.9.1 works, source from GitHub releases
       - name: Install Coq 8.9.1
         run: |
-          opam update
           opam install -y coq.8.9.1
-        timeout-minutes: 60
-
-      - name: Verify Coq installation
-        run: |
           opam exec -- coqc --version
+        timeout-minutes: 60
 
       # Build ocpl-coq (uses local Makefile)
       # Note: Iris is vendored in ocpl-coq, not installed via opam
