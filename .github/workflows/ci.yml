@@ -1,0 +1,77 @@
+name: Build ocpl-coq
+
+# Triggers: only run when ocpl-coq files change
+on:
+  push:
+    paths:
+      - 'packages/zoe/spec/_research/ocpl-coq/**'
+  pull_request:
+    paths:
+      - 'packages/zoe/spec/_research/ocpl-coq/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # If ocpl-coq is a git submodule, uncomment below:
+          # submodules: recursive
+
+      # Breadcrumb: ocaml/setup-ocaml is the de-facto standard for OCaml CI
+      # - https://github.com/ocaml/setup-ocaml (224 stars, maintained by smorimoto)
+      # - https://ocaml.org/docs/using-ocaml-with-github-actions
+      # - Has built-in GitHub Actions cache for opam root and switches
+      # - Automatically skips compiler install on cache hits
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: 4.07.1
+          opam-repositories: |
+            default: https://opam.ocaml.org
+            coq-released: https://coq.inria.fr/opam/released
+          opam-disable-sandboxing: true  # matches iris.mk: opam init --disable-sandboxing
+
+      # Install system deps (from iris.mk ubuntu-deps target)
+      # Note: opam is installed by setup-ocaml action, not from apt
+      - name: Install Ubuntu dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential m4 pkg-config git python3
+
+      # Create switch (from iris.mk switch target)
+      # setup-ocaml creates the switch automatically, but we need to name it
+      - name: Create opam switch (matching iris.mk)
+        run: |
+          opam switch create ocpl-coq-8.9.1-ocaml-4.07.1 ocaml-base-compiler.4.07.1 || \
+          opam switch set ocpl-coq-8.9.1-ocaml-4.07.1
+          eval $(opam env --switch=ocpl-coq-8.9.1-ocaml-4.07.1) && ocaml -version
+
+      # Install Coq (from iris.mk install target)
+      # Breadcrumb: Coq 8.9.1 is old (2019); opam still has it in default repo
+      # - Verified locally: opam show coq.8.9.1 works, source from GitHub releases
+      - name: Install Coq 8.9.1
+        run: |
+          eval $(opam env --switch=ocpl-coq-8.9.1-ocaml-4.07.1)
+          opam update
+          opam install -y coq.8.9.1
+        timeout-minutes: 60
+
+      - name: Verify Coq installation
+        run: |
+          eval $(opam env --switch=ocpl-coq-8.9.1-ocaml-4.07.1)
+          coqc --version
+
+      # Build ocpl-coq (uses local Makefile)
+      # Note: Iris is vendored in ocpl-coq, not installed via opam
+      - name: Build ocpl-coq
+        working-directory: packages/zoe/spec/_research/ocpl-coq
+        run: |
+          eval $(opam env --switch=ocpl-coq-8.9.1-ocaml-4.07.1)
+          make
+        timeout-minutes: 60
+
+# Alternative approach considered:
+# - coq-community/docker-coq-action: https://github.com/rocq-community/docker-coq-action
+#   - Uses pre-built Docker images with Coq
+#   - Breadcrumb: https://github.com/rocq-community/docker-coq/wiki/CI-setup
+#   - Rejected: Coq 8.9.1 is too old for their image registry
