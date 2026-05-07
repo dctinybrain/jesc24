@@ -1,0 +1,22 @@
+name: Build ocpl-coq
+
+# Triggers: run on push, PR, or manual dispatch
+'on':
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v31
+
+      - name: set up dev tools
+        run: nix develop --command true
+
+      - name: build
+        run: nix develop --command make
