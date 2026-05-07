@@ -13,6 +13,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Jessie lives in an old OCPL/Coq 8.9.1 proof workspace. The opam
+      # route now depends on archived metadata for the old OCaml compiler,
+      # and the working opam CI path builds old OCaml and Coq from source.
+      # Use the Nix dev shell so CI gets this legacy proof toolchain from
+      # binary cache before running make.
       - uses: cachix/install-nix-action@v31
 
       - name: set up dev tools
