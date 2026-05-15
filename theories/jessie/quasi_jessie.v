@@ -54,11 +54,8 @@ Module QuasiJessie.
 
   (* ── String literals ──────────────────────────────────────────── *)
   (* quasi-jessie.js.ts: stringLitSngl <- SQUOTE ... SQUOTE;
-     No escape handling in this subset. *)
-  Definition string_lit_single : pat :=
-    sym "'" >> star (PNot (sym "'") >> PSet fullcharset) >> sym "'".
-
-  Definition string_lit : pat := tok string_lit_single.
+     TODO: No escape handling in this subset.
+     Definition lives in QuasiJustin, imported above. *)
 
   (* ══════════════════════════════════════════════════════════════════
      Expressions

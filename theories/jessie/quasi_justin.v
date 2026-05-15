@@ -1,5 +1,5 @@
 From Coq Require Import Bool Lists.List Strings.Ascii Strings.String.
-From Peg Require Import Syntax Match.
+From Peg Require Import Charset Syntax Match.
 From iris.jessie Require Import quasi_json.
 
 Import ListNotations.
@@ -32,6 +32,17 @@ Module QuasiJustin.
 
   (* quasi-justin.js.ts: useVar <- IDENT ${id => ['use', id]}; *)
   Definition ident : pat := tok ident_core.
+
+  (* ── String literals ──────────────────────────────────────────── *)
+  (* quasi-justin.js.ts:
+     STRING <- super.STRING
+            / "'" < (~"'" character)* > "'" _WS  ${s => transformSingleQuote(s)};
+     No double-quoted string literals (super.STRING from JSON) in this
+     simplified subset; only single-quoted strings are defined here. *)
+  Definition string_lit_single : pat :=
+    seq (sym "'") (seq (star (seq (PNot (sym "'")) (PSet fullcharset))) (sym "'")).
+
+  Definition string_lit : pat := tok string_lit_single.
 
   (* quasi-justin.js.ts:
      memberPostOp <- LEFT_BRACKET indexExpr RIGHT_BRACKET / DOT IDENT_NAME / quasiExpr
