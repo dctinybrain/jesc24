@@ -514,7 +514,7 @@ Module QuasiJessie.
                 | None => None
                 end
             | None =>
-            match run_pat grammar object_pat (S fuel') s with
+            match run_pat grammar record (S fuel') s with
             | Some _ =>
                 match expect_sym_tok "{" (S fuel') s with
                 | Some rest1 =>
