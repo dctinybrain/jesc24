@@ -135,7 +135,6 @@ vendor/peg-coq/theories/Match.v
 theories/jessie/jessica_ast.v
 theories/jessie/quasi_json.v
 theories/jessie/quasi_justin.v
-theories/jessie/jessie_grammar.v
 theories/jessie/quasi_jessie.v
 theories/jessie/makeCounter_js.v
 theories/jessie/escrow2013_js.v
