@@ -37,12 +37,11 @@ Module QuasiJustin.
   (* quasi-justin.js.ts:
      STRING <- super.STRING
             / "'" < (~"'" character)* > "'" _WS  ${s => transformSingleQuote(s)};
-     No double-quoted string literals (super.STRING from JSON) in this
-     simplified subset; only single-quoted strings are defined here. *)
+     super.STRING from QuasiJson handles double-quoted strings. *)
   Definition string_lit_single : pat :=
     seq (sym "'") (seq (star (seq (PNot (sym "'")) (PSet fullcharset))) (sym "'")).
 
-  Definition string_lit : pat := tok string_lit_single.
+  Definition string_lit : pat := QuasiJson.STRING /// tok string_lit_single.
 
   (* ── Punctuation aliases ──────────────────────────────────────── *)
   (* DOT comes from quasi-justin.js.ts (memberPostOp uses DOT). *)
