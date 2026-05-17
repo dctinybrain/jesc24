@@ -29,6 +29,31 @@ End JessiePegNotation.
 Import JessiePegNotation.
 
 Module QuasiJessie.
+  (** PEG-based parser for a subset of Jessie (the escrow2013 pattern).
+      Grammatical rules mirror the TypeScript PEG at
+      <https://github.com/endojs/Jessie/blob/main/packages/parse/src/quasi-jessie.js.ts>
+
+      This parser is broad enough for the escrow2013 pattern and the
+      checkedCounter example. Not all Jessie productions are covered;
+      notably missing are function declarations (the grammar supports
+      arrow functions only), class declarations, for/while loops, and
+      the full expression operator precedence hierarchy.
+
+      Non-terminal indices (PNT n):
+        0  expr         — assignExpr subset
+        1  primaryExpr  — primary expression (inherits Justin)
+        2  propDef      — property definition
+        3  statement    — statement
+        4  block        — block / arrow body
+        5  moduleBody   — module (start production) *)
+
+  Definition exprIdx := 0.
+  Definition primaryExprIdx := 1.
+  Definition propDefIdx := 2.
+  Definition statementIdx := 3.
+  Definition blockIdx := 4.
+  Definition moduleBodyIdx := 5.
+
   Import JessicaAst.
   Import QuasiJson.
   Import QuasiJustin.
@@ -64,24 +89,24 @@ Module QuasiJessie.
   (* quasi-jessie.js.ts: opAssign <- lValue OP_ASSIGN assignExpr;
      OP_ASSIGN is inlined as "+=" / "-=" per the assignOp rule. *)
   Definition op_assign : pat :=
-    lvalue >> (sym "+=" /// sym "-=") >> PNT 0.
+    lvalue >> (sym "+=" /// sym "-=") >> PNT exprIdx.
 
   (* quasi-jessie.js.ts: assignExpr <- lValue EQUALS assignExpr *)
   Definition assign_expr : pat :=
-    lvalue >> EQUALS >> PNT 0.
+    lvalue >> EQUALS >> PNT exprIdx.
 
   Definition paren_expr : pat :=
-    LPAREN >> PNT 0 >> RPAREN.
+    LPAREN >> PNT exprIdx >> RPAREN.
 
   (* quasi-jessie.js.ts: record <- LEFT_BRACE propDef ** _COMMA _COMMA? RIGHT_BRACE *)
   Definition record : pat :=
-    LEFT_BRACE >> opt (PNT 2 >> star (COMMA >> PNT 2) >> opt COMMA) >> RIGHT_BRACE.
+    LEFT_BRACE >> opt (PNT propDefIdx >> star (COMMA >> PNT propDefIdx) >> opt COMMA) >> RIGHT_BRACE.
 
   Definition comma_list (elem : pat) : pat :=
     elem >> star (COMMA >> elem).
 
   Definition array_pat : pat :=
-    LEFT_BRACKET >> opt (comma_list (PNT 0) >> opt COMMA) >> RIGHT_BRACKET.
+    LEFT_BRACKET >> opt (comma_list (PNT exprIdx) >> opt COMMA) >> RIGHT_BRACKET.
 
   Definition match_array_param : pat :=
     LEFT_BRACKET >> opt (comma_list ident) >> RIGHT_BRACKET.
@@ -92,7 +117,7 @@ Module QuasiJessie.
     ident /// (LPAREN >> opt (comma_list arrow_param) >> RPAREN).
 
   Definition arrow_body : pat :=
-    PNT 4 /// paren_expr /// PNT 0.
+    PNT blockIdx /// paren_expr /// PNT exprIdx.
 
   (* quasi-jessie.js.ts:
      arrowFunc <- arrowParams _NO_NEWLINE ARROW block
@@ -105,18 +130,18 @@ Module QuasiJessie.
   Definition expr_post_op : pat := QuasiJustin.post_op 0.
 
   Definition less_than : pat :=
-    PNT 1 >> star expr_post_op >> LESS_THAN
-         >> PNT 1 >> star expr_post_op.
+    PNT primaryExprIdx >> star expr_post_op >> LESS_THAN
+         >> PNT primaryExprIdx >> star expr_post_op.
 
   End Expressions.
 
   Section Declarations.
 
   Definition const_decl : pat :=
-    kw "const" >> ident >> EQUALS >> PNT 0 >> SEMI.
+    kw "const" >> ident >> EQUALS >> PNT exprIdx >> SEMI.
 
   Definition let_decl : pat :=
-    kw "let" >> ident >> opt (EQUALS >> PNT 0) >> SEMI.
+    kw "let" >> ident >> opt (EQUALS >> PNT exprIdx) >> SEMI.
 
   (* quasi-jessie.js.ts: importDeclaration *)
   Definition import_stmt : pat :=
@@ -127,49 +152,49 @@ Module QuasiJessie.
 
   Section Statements.
   Definition return_stmt : pat :=
-    kw "return" >> PNT 0 >> SEMI.
+    kw "return" >> PNT exprIdx >> SEMI.
 
   Definition throw_stmt : pat :=
-    kw "throw" >> PNT 0 >> SEMI.
+    kw "throw" >> PNT exprIdx >> SEMI.
 
   (* quasi-jessie.js.ts: ifStatement *)
   Definition if_stmt : pat :=
-    kw "if" >> LPAREN >> PNT 0 >> RPAREN
-         >> PNT 4
-         >> opt (kw "else" >> PNT 4).
+    kw "if" >> LPAREN >> PNT exprIdx >> RPAREN
+         >> PNT blockIdx
+         >> opt (kw "else" >> PNT blockIdx).
 
   (* quasi-jessie.js.ts: exprStatement <- ~cantStartExprStatement expr SEMI. *)
-  Definition expr_stmt : pat := PNT 0 >> SEMI.
+  Definition expr_stmt : pat := PNT exprIdx >> SEMI.
 
   Definition assert_stmt : pat :=
-    kw "assert" >> LPAREN >> PNT 0 >> RPAREN >> SEMI.
+    kw "assert" >> LPAREN >> PNT exprIdx >> RPAREN >> SEMI.
 
   (* quasi-jessie.js.ts: block production subset. *)
   Definition block : pat :=
-    LEFT_BRACE >> star (PNT 3) >> RIGHT_BRACE.
+    LEFT_BRACE >> star (PNT statementIdx) >> RIGHT_BRACE.
 
   End Statements.
 
   Section Grammar.
 
   Definition grammar : Syntax.grammar :=
-    [ (* 0 expr — quasi-jessie.js.ts: assignExpr production subset *)
+    [ (* exprIdx — quasi-jessie.js.ts: assignExpr production subset *)
       arrow_func
       /// op_assign
       /// assign_expr
       /// less_than
-      /// (BANG >> PNT 0)
-      /// (PNT 1 >> star expr_post_op);
-      (* 1 primaryExpr — quasi-jessie.js.ts: primaryExpr inherits Justin *)
+      /// (BANG >> PNT exprIdx)
+      /// (PNT primaryExprIdx >> star expr_post_op);
+      (* primaryExprIdx — quasi-jessie.js.ts: primaryExpr inherits Justin *)
       string_lit
       /// number
       /// array_pat
       /// record
       /// paren_expr
       /// ident;
-      (* 2 propDef *)
-      (ident /// number) >> COLON >> PNT 0;
-      (* 3 statement — quasi-jessie.js.ts: binding/import/if/throw/exprStatement/declOp *)
+      (* propDefIdx *)
+      (ident /// number) >> COLON >> PNT exprIdx;
+      (* statementIdx — quasi-jessie.js.ts: binding/import/if/throw/exprStatement/declOp *)
       if_stmt
       /// import_stmt
       /// throw_stmt
@@ -178,15 +203,15 @@ Module QuasiJessie.
       /// return_stmt
       /// assert_stmt
       /// expr_stmt;
-      (* 4 block / arrow body block *)
+      (* blockIdx *)
       block;
-      (* 5 module body — quasi-jessie.js.ts: start production subset *)
-      ws >> star (PNT 3) >> ws >> eof
+      (* moduleBodyIdx — quasi-jessie.js.ts: start production subset *)
+      ws >> star (PNT statementIdx) >> ws >> eof
     ].
 
-  Definition expr : pat := PNT 0.
-  Definition statement : pat := PNT 3.
-  Definition moduleBody : pat := PNT 5.
+  Definition expr : pat := PNT exprIdx.
+  Definition statement : pat := PNT statementIdx.
+  Definition moduleBody : pat := PNT moduleBodyIdx.
   Definition exact_module_source (src : string) : pat :=
     ws >> string_pat src >> ws >> eof.
 
