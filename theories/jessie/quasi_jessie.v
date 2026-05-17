@@ -19,11 +19,14 @@ Open Scope Z_scope.
     a /// b  — choice    (PEG /)
 *)
 
-Notation "p >> q" := (PSequence p q)
-  (at level 69, right associativity).
+Module JessiePegNotation.
+  Notation "p >> q" := (PSequence p q)
+    (at level 69, right associativity).
+  Notation "p /// q" := (PChoice p q)
+    (at level 60, right associativity).
+End JessiePegNotation.
 
-Notation "p /// q" := (PChoice p q)
-  (at level 60, right associativity).
+Import JessiePegNotation.
 
 Module QuasiJessie.
   Import JessicaAst.
