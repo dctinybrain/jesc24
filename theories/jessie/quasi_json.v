@@ -71,6 +71,17 @@ Module QuasiJson.
   (* quasi-json.js.ts: _EOF <- ~.; *)
   Definition eof : pat := PNot (charset_pat fullcharset).
 
+  (* ── Punctuation aliases ──────────────────────────────────────── *)
+  (* These token patterns come from quasi-json.js.ts, which defines
+     the shared lexical base (braces, brackets, comma, etc.) that
+     quasi-justin.js and quasi-jessie.js inherit from. *)
+  Definition LEFT_BRACE  : pat := sym "{".
+  Definition RIGHT_BRACE : pat := sym "}".
+  Definition LEFT_BRACKET  : pat := sym "[".
+  Definition RIGHT_BRACKET : pat := sym "]".
+  Definition COMMA  : pat := sym ",".
+  Definition COLON  : pat := sym ":".
+
   Example parse_number_0 :
     matches_comp [] number "0" 64 = Some (Success EmptyString).
   Proof. vm_compute. reflexivity. Qed.

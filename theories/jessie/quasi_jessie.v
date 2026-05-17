@@ -34,16 +34,14 @@ Module QuasiJessie.
   Import QuasiJustin.
 
   (* ── Punctuation aliases ──────────────────────────────────────── *)
-  Definition LEFT_BRACE  : pat := sym "{".
-  Definition RIGHT_BRACE : pat := sym "}".
-  Definition LEFT_BRACKET  : pat := sym "[".
-  Definition RIGHT_BRACKET : pat := sym "]".
+  (* LEFT_BRACE, RIGHT_BRACE, LEFT_BRACKET, RIGHT_BRACKET, COMMA, COLON
+     come from quasi-json.js.ts; they are defined in QuasiJson and
+     imported above.  DOT comes from quasi-justin.js.ts and is defined
+     in QuasiJustin.  The remaining symbols are Jessie-specific and
+     live here. *)
   Definition LPAREN : pat := sym "(".
   Definition RPAREN : pat := sym ")".
-  Definition COMMA  : pat := sym ",".
   Definition SEMI   : pat := sym ";".
-  Definition COLON  : pat := sym ":".
-  Definition DOT    : pat := sym ".".
   Definition ARROW  : pat := sym "=>".
   Definition BANG   : pat := sym "!".
   Definition ASSIGN : pat := sym "=".

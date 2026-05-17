@@ -44,13 +44,17 @@ Module QuasiJustin.
 
   Definition string_lit : pat := tok string_lit_single.
 
+  (* ── Punctuation aliases ──────────────────────────────────────── *)
+  (* DOT comes from quasi-justin.js.ts (memberPostOp uses DOT). *)
+  Definition DOT : pat := sym ".".
+
   (* quasi-justin.js.ts:
      memberPostOp <- LEFT_BRACKET indexExpr RIGHT_BRACKET / DOT IDENT_NAME / quasiExpr
      callPostOp <- memberPostOp / args
   *)
   Definition post_op (expr_nt : nat) : pat :=
     alt
-      (seq (sym ".") ident)
+      (seq DOT ident)
       (seq (sym "(")
         (seq
           (opt (seq (PNT expr_nt) (star (seq (sym ",") (PNT expr_nt)))))
