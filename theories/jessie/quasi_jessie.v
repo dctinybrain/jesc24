@@ -49,20 +49,15 @@ Module QuasiJessie.
   (* quasi-jessie.js.ts: OP_ASSIGN is inlined as sym "+=" / sym "-=" per assignOp *)
   Definition LESS_THAN    : pat := sym "<".
 
-  (* ══════════════════════════════════════════════════════════════════
-     Lexical rules
-     ══════════════════════════════════════════════════════════════════ *)
+  Section LexicalRules.
 
-  (* ── String literals ──────────────────────────────────────────── *)
-  (* quasi-jessie.js.ts: stringLitSngl <- SQUOTE ... SQUOTE;
+  (* String literals: stringLitSngl <- SQUOTE ... SQUOTE;
      TODO: No escape handling in this subset.
      Definition lives in QuasiJustin, imported above. *)
 
-  (* ══════════════════════════════════════════════════════════════════
-     Expressions
-     ══════════════════════════════════════════════════════════════════ *)
+  End LexicalRules.
 
-  (* ── L-value ──────────────────────────────────────────────────── *)
+  Section Expressions.
   (* quasi-jessie.js.ts: lValue <- ... ; narrowed to identifiers only. *)
   Definition lvalue : pat := ident.
 
@@ -78,19 +73,16 @@ Module QuasiJessie.
   Definition paren_expr : pat :=
     LPAREN >> PNT 0 >> RPAREN.
 
-  (* ── Record / object literal ──────────────────────────────────── *)
   (* quasi-jessie.js.ts: record <- LEFT_BRACE propDef ** _COMMA _COMMA? RIGHT_BRACE *)
   Definition record : pat :=
     LEFT_BRACE >> opt (PNT 2 >> star (COMMA >> PNT 2) >> opt COMMA) >> RIGHT_BRACE.
 
-  (* ── Array literal ────────────────────────────────────────────── *)
   Definition comma_list (elem : pat) : pat :=
     elem >> star (COMMA >> elem).
 
   Definition array_pat : pat :=
     LEFT_BRACKET >> opt (comma_list (PNT 0) >> opt COMMA) >> RIGHT_BRACKET.
 
-  (* ── Arrow function ───────────────────────────────────────────── *)
   Definition match_array_param : pat :=
     LEFT_BRACKET >> opt (comma_list ident) >> RIGHT_BRACKET.
 
@@ -108,19 +100,17 @@ Module QuasiJessie.
   Definition arrow_func : pat :=
     arrow_params >> ARROW >> arrow_body.
 
-  (* ── Postfix operations ───────────────────────────────────────── *)
   (* quasi-jessie.js.ts:
      memberPostOp / callPostOp extensions inherited from Justin. *)
   Definition expr_post_op : pat := QuasiJustin.post_op 0.
 
-  (* ── Comparison ───────────────────────────────────────────────── *)
   Definition less_than : pat :=
     PNT 1 >> star expr_post_op >> LESS_THAN
          >> PNT 1 >> star expr_post_op.
 
-  (* ══════════════════════════════════════════════════════════════════
-     Declarations
-     ══════════════════════════════════════════════════════════════════ *)
+  End Expressions.
+
+  Section Declarations.
 
   Definition const_decl : pat :=
     kw "const" >> ident >> EQUALS >> PNT 0 >> SEMI.
@@ -133,11 +123,9 @@ Module QuasiJessie.
     kw "import" >> LEFT_BRACE >> ident >> RIGHT_BRACE
                 >> kw "from" >> string_lit >> SEMI.
 
-  (* ══════════════════════════════════════════════════════════════════
-     Statements
-     ══════════════════════════════════════════════════════════════════ *)
+  End Declarations.
 
-  (* quasi-jessie.js.ts: returnStatement production subset. *)
+  Section Statements.
   Definition return_stmt : pat :=
     kw "return" >> PNT 0 >> SEMI.
 
@@ -160,9 +148,10 @@ Module QuasiJessie.
   Definition block : pat :=
     LEFT_BRACE >> star (PNT 3) >> RIGHT_BRACE.
 
-  (* ══════════════════════════════════════════════════════════════════
-     Grammar (indexed productions, referenced by PNT n)
-     ══════════════════════════════════════════════════════════════════ *)
+  End Statements.
+
+  Section Grammar.
+
   Definition grammar : Syntax.grammar :=
     [ (* 0 expr — quasi-jessie.js.ts: assignExpr production subset *)
       arrow_func
@@ -200,6 +189,8 @@ Module QuasiJessie.
   Definition moduleBody : pat := PNT 5.
   Definition exact_module_source (src : string) : pat :=
     ws >> string_pat src >> ws >> eof.
+
+  End Grammar.
 
   Example parse_op_assign :
     matches_comp grammar expr "count += 1" 512 = Some (Success EmptyString).
