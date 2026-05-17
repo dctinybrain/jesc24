@@ -60,12 +60,11 @@ Module QuasiJessie.
   Import QuasiJson.
   Import QuasiJustin.
 
-  (* ── Punctuation aliases ──────────────────────────────────────── *)
+  Section PunctuationAliases.
   (* LEFT_BRACE, RIGHT_BRACE, LEFT_BRACKET, RIGHT_BRACKET, COMMA, COLON
      come from quasi-json.js.ts; they are defined in QuasiJson and
      imported above.  DOT comes from quasi-justin.js.ts and is defined
-     in QuasiJustin.  The remaining symbols are Jessie-specific and
-     live here. *)
+     in QuasiJustin.  The remaining symbols are Jessie-specific. *)
   Definition LPAREN : pat := sym "(".
   Definition RPAREN : pat := sym ")".
   Definition SEMI   : pat := sym ";".
@@ -73,8 +72,8 @@ Module QuasiJessie.
   Definition BANG   : pat := sym "!".
   (* quasi-jessie.js.ts: EQUALS, defined at line 376. *)
   Definition EQUALS : pat := sym "=".
-  (* quasi-jessie.js.ts: OP_ASSIGN is inlined as sym "+=" / sym "-=" per assignOp *)
   Definition LESS_THAN    : pat := sym "<".
+  End PunctuationAliases.
 
   Section LexicalRules.
 
@@ -180,23 +179,23 @@ Module QuasiJessie.
   Section Grammar.
 
   Definition grammar : Syntax.grammar :=
-    [ (* exprIdx — quasi-jessie.js.ts: assignExpr production subset *)
+    [ (* 0 expr -- quasi-jessie.js.ts: assignExpr production subset *)
       arrow_func
       /// op_assign
       /// assign_expr
       /// less_than
       /// (BANG >> PNT exprIdx)
       /// (PNT primaryExprIdx >> star expr_post_op);
-      (* primaryExprIdx — quasi-jessie.js.ts: primaryExpr inherits Justin *)
+      (* 1 primaryExpr -- quasi-jessie.js.ts: primaryExpr inherits Justin *)
       string_lit
       /// number
       /// array_pat
       /// record
       /// paren_expr
       /// ident;
-      (* propDefIdx *)
+      (* 2 propDef *)
       (ident /// number) >> COLON >> PNT exprIdx;
-      (* statementIdx — quasi-jessie.js.ts: binding/import/if/throw/exprStatement/declOp *)
+      (* 3 statement -- quasi-jessie.js.ts: binding/import/if/throw/exprStatement/declOp *)
       if_stmt
       /// import_stmt
       /// throw_stmt
@@ -205,9 +204,9 @@ Module QuasiJessie.
       /// return_stmt
       /// assert_stmt
       /// expr_stmt;
-      (* blockIdx *)
+      (* 4 block / arrow body block *)
       block;
-      (* moduleBodyIdx — quasi-jessie.js.ts: start production subset *)
+      (* 5 module body -- quasi-jessie.js.ts: start production subset *)
       ws >> star (PNT statementIdx) >> ws >> eof
     ].
 
