@@ -44,9 +44,9 @@ Module QuasiJessie.
   Definition SEMI   : pat := sym ";".
   Definition ARROW  : pat := sym "=>".
   Definition BANG   : pat := sym "!".
-  Definition ASSIGN : pat := sym "=".
-  Definition PLUS_ASSIGN  : pat := sym "+=".
-  Definition MINUS_ASSIGN : pat := sym "-=".
+  (* quasi-jessie.js.ts: EQUALS, defined at line 376. *)
+  Definition EQUALS : pat := sym "=".
+  (* quasi-jessie.js.ts: OP_ASSIGN is inlined as sym "+=" / sym "-=" per assignOp *)
   Definition LESS_THAN    : pat := sym "<".
 
   (* ══════════════════════════════════════════════════════════════════
@@ -66,13 +66,14 @@ Module QuasiJessie.
   (* quasi-jessie.js.ts: lValue <- ... ; narrowed to identifiers only. *)
   Definition lvalue : pat := ident.
 
-  (* quasi-jessie.js.ts: opAssign <- lValue OP_ASSIGN assignExpr *)
+  (* quasi-jessie.js.ts: opAssign <- lValue OP_ASSIGN assignExpr;
+     OP_ASSIGN is inlined as "+=" / "-=" per the assignOp rule. *)
   Definition op_assign : pat :=
-    lvalue >> (PLUS_ASSIGN /// MINUS_ASSIGN) >> PNT 0.
+    lvalue >> (sym "+=" /// sym "-=") >> PNT 0.
 
-  (* quasi-jessie.js.ts: assignExpr <- lValue EQ assignExpr *)
+  (* quasi-jessie.js.ts: assignExpr <- lValue EQUALS assignExpr *)
   Definition assign_expr : pat :=
-    lvalue >> ASSIGN >> PNT 0.
+    lvalue >> EQUALS >> PNT 0.
 
   Definition paren_expr : pat :=
     LPAREN >> PNT 0 >> RPAREN.
@@ -122,10 +123,10 @@ Module QuasiJessie.
      ══════════════════════════════════════════════════════════════════ *)
 
   Definition const_decl : pat :=
-    kw "const" >> ident >> ASSIGN >> PNT 0 >> SEMI.
+    kw "const" >> ident >> EQUALS >> PNT 0 >> SEMI.
 
   Definition let_decl : pat :=
-    kw "let" >> ident >> opt (ASSIGN >> PNT 0) >> SEMI.
+    kw "let" >> ident >> opt (EQUALS >> PNT 0) >> SEMI.
 
   (* quasi-jessie.js.ts: importDeclaration *)
   Definition import_stmt : pat :=
