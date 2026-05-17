@@ -8,13 +8,9 @@ Open Scope string_scope.
 Module QuasiJustin.
   Import QuasiJson.
 
-  (* Experimental peg-coq expression/recognizer layer, parallel to
-     quasi-justin, but limited to the fragments used by the current Jessie
-     makeCounter examples. This file defines PEG patterns and executable
-     recognition tests over the vendored peg-coq slice under
-     vendor/peg-coq/theories, imported here through the upstream-style Peg
-     namespace, not AST construction. *)
+  (* These patterns come from quasi-justin.js.ts. *)
 
+  Section Identifiers.
   Definition ident_start : pat :=
     charset_pat (fun a =>
       orb (ascii_between 65 90 a)
@@ -32,8 +28,9 @@ Module QuasiJustin.
 
   (* quasi-justin.js.ts: useVar <- IDENT ${id => ['use', id]}; *)
   Definition ident : pat := tok ident_core.
+  End Identifiers.
 
-  (* ── String literals ──────────────────────────────────────────── *)
+  Section StringLiterals.
   (* quasi-justin.js.ts:
      STRING <- super.STRING
             / "'" < (~"'" character)* > "'" _WS  ${s => transformSingleQuote(s)};
@@ -42,11 +39,14 @@ Module QuasiJustin.
     seq (sym "'") (seq (star (seq (PNot (sym "'")) (PSet fullcharset))) (sym "'")).
 
   Definition string_lit : pat := QuasiJson.STRING /// tok string_lit_single.
+  End StringLiterals.
 
-  (* ── Punctuation aliases ──────────────────────────────────────── *)
+  Section PunctuationAliases.
   (* DOT comes from quasi-justin.js.ts (memberPostOp uses DOT). *)
   Definition DOT : pat := sym ".".
+  End PunctuationAliases.
 
+  Section PostOperations.
   (* quasi-justin.js.ts:
      memberPostOp <- LEFT_BRACKET indexExpr RIGHT_BRACKET / DOT IDENT_NAME / quasiExpr
      callPostOp <- memberPostOp / args
@@ -70,7 +70,9 @@ Module QuasiJustin.
             (seq (star (seq (sym ",") (PNT propdef_nt)))
               (opt (sym ",")))))
         (sym "}")).
+  End PostOperations.
 
+  Section Grammar.
   Definition grammar : grammar :=
     [ (* 0 *) (* quasi-justin.js.ts: callExpr production subset. *)
       seq (PNT 1) (star (post_op 0));
@@ -86,7 +88,9 @@ Module QuasiJustin.
   Definition expr : pat := PNT 0.
   Definition primaryExpr : pat := PNT 1.
   Definition propDef : pat := PNT 2.
+  End Grammar.
 
+  Section Examples.
   Example parse_use_var :
     matches_comp grammar expr "count" 128 = Some (Success EmptyString).
   Proof. vm_compute. reflexivity. Qed.
@@ -102,4 +106,5 @@ Module QuasiJustin.
   Example parse_record_expr :
     matches_comp grammar expr "{ incr: c.incr }" 512 = Some (Success EmptyString).
   Proof. vm_compute. reflexivity. Qed.
+  End Examples.
 End QuasiJustin.
