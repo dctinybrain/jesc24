@@ -71,6 +71,14 @@ Module QuasiJson.
   (* quasi-json.js.ts: _EOF <- ~.; *)
   Definition eof : pat := PNot (charset_pat fullcharset).
 
+  (* quasi-json.js.ts: STRING <- ... double-quoted string. *)
+  Definition string_lit_double_core : pat :=
+    seq (sym "\"")
+      (seq (star (seq (PNot (sym "\"")) (PSet fullcharset)))
+           (sym "\"")).
+
+  Definition STRING : pat := tok string_lit_double_core.
+
   (* ── Punctuation aliases ──────────────────────────────────────── *)
   (* These token patterns come from quasi-json.js.ts, which defines
      the shared lexical base (braces, brackets, comma, etc.) that
