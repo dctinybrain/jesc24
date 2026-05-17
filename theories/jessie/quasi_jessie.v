@@ -24,6 +24,8 @@ Module JessiePegNotation.
     (at level 69, right associativity).
   Notation "p /// q" := (PChoice p q)
     (at level 60, right associativity).
+  Notation "p ?" := (opt p)
+    (at level 68).
 End JessiePegNotation.
 
 Import JessiePegNotation.
@@ -100,21 +102,21 @@ Module QuasiJessie.
 
   (* quasi-jessie.js.ts: record <- LEFT_BRACE propDef ** _COMMA _COMMA? RIGHT_BRACE *)
   Definition record : pat :=
-    LEFT_BRACE >> opt (PNT propDefIdx >> star (COMMA >> PNT propDefIdx) >> opt COMMA) >> RIGHT_BRACE.
+    LEFT_BRACE >> opt (PNT propDefIdx >> star (COMMA >> PNT propDefIdx) >> COMMA?) >> RIGHT_BRACE.
 
   Definition comma_list (elem : pat) : pat :=
     elem >> star (COMMA >> elem).
 
   Definition array_pat : pat :=
-    LEFT_BRACKET >> opt (comma_list (PNT exprIdx) >> opt COMMA) >> RIGHT_BRACKET.
+    LEFT_BRACKET >> opt (comma_list (PNT exprIdx) >> COMMA?) >> RIGHT_BRACKET.
 
   Definition match_array_param : pat :=
-    LEFT_BRACKET >> opt (comma_list ident) >> RIGHT_BRACKET.
+    LEFT_BRACKET >> (comma_list ident)? >> RIGHT_BRACKET.
 
   Definition arrow_param : pat := match_array_param /// ident.
 
   Definition arrow_params : pat :=
-    ident /// (LPAREN >> opt (comma_list arrow_param) >> RPAREN).
+    ident /// (LPAREN >> (comma_list arrow_param)? >> RPAREN).
 
   Definition arrow_body : pat :=
     PNT blockIdx /// paren_expr /// PNT exprIdx.
@@ -141,7 +143,7 @@ Module QuasiJessie.
     kw "const" >> ident >> EQUALS >> PNT exprIdx >> SEMI.
 
   Definition let_decl : pat :=
-    kw "let" >> ident >> opt (EQUALS >> PNT exprIdx) >> SEMI.
+    kw "let" >> ident >> (EQUALS >> PNT exprIdx)? >> SEMI.
 
   (* quasi-jessie.js.ts: importDeclaration *)
   Definition import_stmt : pat :=
@@ -161,7 +163,7 @@ Module QuasiJessie.
   Definition if_stmt : pat :=
     kw "if" >> LPAREN >> PNT exprIdx >> RPAREN
          >> PNT blockIdx
-         >> opt (kw "else" >> PNT blockIdx).
+         >> (kw "else" >> PNT blockIdx)?.
 
   (* quasi-jessie.js.ts: exprStatement <- ~cantStartExprStatement expr SEMI. *)
   Definition expr_stmt : pat := PNT exprIdx >> SEMI.
