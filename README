@@ -9,7 +9,7 @@ The development depends only on Coq, and we've tested it under Coq
 8.9.1 (July 2019). After installing Coq (e.g., [via
 Opam](https://coq.inria.fr/opam-using.html), a simple `make -jN`,
 where `N` is the number of cores you have, should compile everything.
-The file `./Iris_README.md` contains (outdated build instructions and)
+The file `./vendor/iris-coq/README.md` contains (outdated build instructions and)
 a brief tour of the version of Iris we started with.
 
 To develop OCPL, we changed Iris' sample program logic to support the
@@ -18,22 +18,22 @@ preconditions and Iris' sample heap language to support assertion
 expressions (i.e., so we could state robust safety). We call the
 modified heap language HLA.
 
-Our work on progress bits appears in ./theories/program_logic/; in
-particular ./theories/program_logic/weakestpre.v. For presentation
+Our work on progress bits appears in ./vendor/iris-coq/theories/program_logic/; in
+particular ./vendor/iris-coq/theories/program_logic/weakestpre.v. For presentation
 purposes, we use Hoare triples in the paper (and, in the Coq
 development, to state many of our lemmas), but proofs always work at
 the more fundamental level of weakest preconditions.
 
-Our work on HLA appears in ./theories/heap_lang/. The most interesting
+Our work on HLA appears in ./vendor/iris-coq/theories/heap_lang/. The most interesting
 bits are:
 
-	theories/heap_lang/lang.v
+	vendor/iris-coq/theories/heap_lang/lang.v
 		language definition
 
-	theories/heap_lang/on_val.v
+	vendor/iris-coq/theories/heap_lang/on_val.v
 		the predicate transformer called `lift` in the paper
 
-	theories/heap_lang/heap.v
+	vendor/iris-coq/theories/heap_lang/heap.v
 		heap resources (e.g., the points-to assertion), the
 		invariant supporting robust safety, and rules for
 		working with the heap
@@ -48,36 +48,36 @@ bits are:
 		location containing a low value into a low-integrity
 		location.
 
-	theories/heap_lang/substitution.v
-	theories/heap_lang/robust_safety.v
+	vendor/iris-coq/theories/heap_lang/substitution.v
+	vendor/iris-coq/theories/heap_lang/robust_safety.v
 		the fundamental theorem of logical relations and the
 		"internal" version of robust safety (generalizing the
 		meta-level robust safety theorem from contexts with no
 		locations to contexts with only low locations)
 
-	theories/heap_lang/adequacy.v
+	vendor/iris-coq/theories/heap_lang/adequacy.v
 		metatheory, including the robust safety theorem stated
 		in the paper
 
 As far as examples go, you will find general object capability
 patterns (OCPs) in
 
-	./theories/heap_lang/lib/sealing.v
-	./theories/heap_lang/lib/caretaker.v
-	./theories/heap_lang/lib/membrane.v
+	./vendor/iris-coq/theories/heap_lang/lib/sealing.v
+	./vendor/iris-coq/theories/heap_lang/lib/caretaker.v
+	./vendor/iris-coq/theories/heap_lang/lib/membrane.v
 
 and derived OCPs and client programs in
 
-	./theories/tests/sealing.v
-	./theories/tests/caretaker.v
-	./theories/tests/membrane.v
-	./theories/tests/readonly.v
+	./vendor/iris-coq/theories/tests/sealing.v
+	./vendor/iris-coq/theories/tests/caretaker.v
+	./vendor/iris-coq/theories/tests/membrane.v
+	./vendor/iris-coq/theories/tests/readonly.v
 
 (These are the files in which we apply the robust safety theorem to
 whole programs and ask Coq to confirm that the result is axiom-free.)
 
 The paper mentions a few libraries:
 
-	./theories/heap_lang/lib/lock.v
-	./theories/heap_lang/lib/spin_lock.v
-	./theories/heap_lang/lib/maps.v
+	./vendor/iris-coq/theories/heap_lang/lib/lock.v
+	./vendor/iris-coq/theories/heap_lang/lib/spin_lock.v
+	./vendor/iris-coq/theories/heap_lang/lib/maps.v
