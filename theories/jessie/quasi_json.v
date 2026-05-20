@@ -82,9 +82,9 @@ Module QuasiJson.
   Section StringLiteral.
   (* quasi-json.js.ts: STRING <- ... double-quoted string. *)
   Definition string_lit_double_core : pat :=
-    seq (sym "\"")
-      (seq (star (seq (PNot (sym "\"")) (PSet fullcharset)))
-           (sym "\"")).
+    seq (sym """")
+      (seq (star (seq (PNot (sym """")) (PSet fullcharset)))
+           (sym """")).
 
   Definition STRING : pat := tok string_lit_double_core.
   End StringLiteral.
