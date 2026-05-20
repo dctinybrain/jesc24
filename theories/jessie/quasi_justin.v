@@ -1,11 +1,12 @@
 From Coq Require Import Bool Lists.List Strings.Ascii Strings.String.
 From Peg Require Import Charset Syntax Match.
-From iris.jessie Require Import quasi_json.
+From iris.jessie Require Import peg_notation quasi_json.
 
 Import ListNotations.
 Open Scope string_scope.
 
 Module QuasiJustin.
+  Import JessiePegNotation.
   Import QuasiJson.
 
   (* These patterns come from quasi-justin.js.ts. *)
@@ -42,8 +43,11 @@ Module QuasiJustin.
   End StringLiterals.
 
   Section PunctuationAliases.
-  (* DOT comes from quasi-justin.js.ts (memberPostOp uses DOT). *)
+  (* DOT, LEFT_PAREN, RIGHT_PAREN come from quasi-justin.js.ts
+     (memberPostOp / callPostOp use DOT; arrowParams uses parens). *)
   Definition DOT : pat := sym ".".
+  Definition LPAREN : pat := sym "(".
+  Definition RPAREN : pat := sym ")".
   End PunctuationAliases.
 
   Section PostOperations.
@@ -52,37 +56,21 @@ Module QuasiJustin.
      callPostOp <- memberPostOp / args
   *)
   Definition post_op (expr_nt : nat) : pat :=
-    alt
-      (seq DOT ident)
-      (seq (sym "(")
-        (seq
-          (opt (seq (PNT expr_nt) (star (seq (sym ",") (PNT expr_nt)))))
-          (sym ")"))).
+    (DOT >> ident) ///
+    (sym "(" >> ((PNT expr_nt) `sepBy` sym ",")? >> sym ")").
 
   (* quasi-justin.js.ts:
      record <- LEFT_BRACE propDef ** _COMMA _COMMA? RIGHT_BRACE
   *)
   Definition object_pat (expr_nt propdef_nt : nat) : pat :=
-    seq (sym "{")
-      (seq
-        (opt
-          (seq (PNT propdef_nt)
-            (seq (star (seq (sym ",") (PNT propdef_nt)))
-              (opt (sym ",")))))
-        (sym "}")).
+    sym "{" >> ((PNT propdef_nt) `sepBy` sym "," >> (sym ",")?)? >> sym "}".
   End PostOperations.
 
   Section Grammar.
   Definition grammar : grammar :=
-    [ (* 0 *) (* quasi-justin.js.ts: callExpr production subset. *)
-      seq (PNT 1) (star (post_op 0));
-      (* 1 *) (* quasi-justin.js.ts: primaryExpr production subset. *)
-      alt number
-                (alt (object_pat 0 2)
-                  (alt (seq (sym "(") (seq (PNT 0) (sym ")")))
-                       ident));
-      (* 2 *) (* quasi-justin.js.ts: propDef production subset. *)
-      seq (alt ident number) (seq (sym ":") (PNT 0))
+    [ PNT 1 >> star (post_op 0);
+      number /// object_pat 0 2 /// (sym "(" >> PNT 0 >> sym ")") /// ident;
+      (ident /// number) >> sym ":" >> PNT 0
     ].
 
   Definition expr : pat := PNT 0.
