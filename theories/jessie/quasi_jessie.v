@@ -1,181 +1,210 @@
 From Coq Require Import Lists.List Strings.Ascii Strings.String ZArith.
 From Peg Require Import Charset Syntax Match.
-From iris.jessie Require Import jessica_ast quasi_json quasi_justin.
+From iris.jessie Require Import jessica_ast peg_notation quasi_json quasi_justin.
 
 Import ListNotations.
 Open Scope string_scope.
+Open Scope Z_scope.
+
+(*
+  Jessie PEG grammar, mirroring the TypeScript PEG at:
+
+    https://github.com/endojs/Jessie/blob/main/packages/parse/src/quasi-jessie.js.ts
+
+  Each Coq rule corresponds to a production in that file.  The non-terminal
+  indices (PNT n) map directly to the grammar list at the bottom of this module.
+
+  Notation:
+    a >> b   — sequence  (PEG adjacency)
+    a /// b  — choice    (PEG /)
+*)
+
+Import JessiePegNotation.
 
 Module QuasiJessie.
+  (** PEG-based parser for a subset of Jessie (the escrow2013 pattern).
+      Grammatical rules mirror the TypeScript PEG at
+      <https://github.com/endojs/Jessie/blob/main/packages/parse/src/quasi-jessie.js.ts>
+
+      This parser is broad enough for the escrow2013 pattern and the
+      checkedCounter example. Not all Jessie productions are covered;
+      notably missing are function declarations (the grammar supports
+      arrow functions only), class declarations, for/while loops, and
+      the full expression operator precedence hierarchy.
+
+      Non-terminal indices (PNT n):
+        0  expr         — assignExpr subset
+        1  primaryExpr  — primary expression (inherits Justin)
+        2  propDef      — property definition
+        3  statement    — statement
+        4  block        — block / arrow body
+        5  moduleBody   — module (start production) *)
+
+  Definition exprIdx : nat := 0.
+  Definition primaryExprIdx : nat := 1.
+  Definition propDefIdx : nat := 2.
+  Definition statementIdx : nat := 3.
+  Definition blockIdx : nat := 4.
+  Definition moduleBodyIdx : nat := 5.
+
   Import JessicaAst.
   Import QuasiJson.
   Import QuasiJustin.
 
-  (* String literal: matches '...' (single quoted, no escape handling) *)
-  Definition string_lit_single : pat :=
-    seq (sym "'")
-      (seq (star (seq (PNot (sym "'")) (PSet fullcharset)))
-            (sym "'")).
+  Section PunctuationAliases.
+  (* LEFT_BRACE, RIGHT_BRACE, LEFT_BRACKET, RIGHT_BRACKET, COMMA, COLON
+     come from quasi-json.js.ts (defined in QuasiJson).
+     DOT, LPAREN, RPAREN come from quasi-justin.js.ts (defined in QuasiJustin).
+     The remaining symbols are Jessie-specific. *)
+  Definition SEMI  : pat := sym ";".
+  Definition ARROW : pat := sym "=>".
+  (* quasi-jessie.js.ts: EQUALS, defined at line 376. *)
+  Definition EQUALS : pat := sym "=".
+  Definition LESS_THAN    : pat := sym "<".
+  End PunctuationAliases.
 
-  Definition string_lit : pat := tok string_lit_single.
+  Section LexicalRules.
 
-  (* Import statement: import { x } from 'path'; *)
-  Definition import_stmt : pat :=
-    seq (kw "import")
-      (seq (sym "{")
-        (seq ident
-          (seq (sym "}")
-            (seq (kw "from")
-              (seq string_lit (sym ";")))))).
+  (* String literals: stringLitSngl <- SQUOTE ... SQUOTE;
+     TODO: No escape handling in this subset.
+     Definition lives in QuasiJustin, imported above. *)
 
-  (* Experimental peg-coq Jessie layer, parallel to quasi-jessie, but only
-     broad enough for the current makeCounter path. The PEG definitions below
-     are the sole grammar for this workspace; they run over the vendored
-     peg-coq slice under vendor/peg-coq/theories, imported here through the
-     upstream-style Peg namespace, and the AST helpers later in the file
-     build JessicaAst terms by consuming those PEG matches. *)
+  End LexicalRules.
 
-  (* quasi-jessie.js.ts: lValue <- ... ; here narrowed to identifiers only. *)
+  Section Expressions.
+  (* quasi-jessie.js.ts: lValue <- ... ; narrowed to identifiers only. *)
   Definition lvalue : pat := ident.
 
+  (* quasi-jessie.js.ts: opAssign <- lValue OP_ASSIGN assignExpr;
+     OP_ASSIGN is inlined as "+=" / "-=" per the assignOp rule. *)
   Definition op_assign : pat :=
-    seq lvalue
-      (seq (alt (sym "+=") (sym "-=")) (PNT 0)).
+    lvalue >> (sym "+=" /// sym "-=") >> PNT exprIdx.
 
+  (* quasi-jessie.js.ts: assignExpr <- lValue EQUALS assignExpr *)
   Definition assign_expr : pat :=
-    seq lvalue (seq (sym "=") (PNT 0)).
+    lvalue >> EQUALS >> PNT exprIdx.
 
   Definition paren_expr : pat :=
-    seq (sym "(") (seq (PNT 0) (sym ")")).
+    LPAREN >> PNT exprIdx >> RPAREN.
 
   (* quasi-jessie.js.ts: record <- LEFT_BRACE propDef ** _COMMA _COMMA? RIGHT_BRACE *)
-  Definition object_pat : pat :=
-    seq (sym "{")
-      (seq
-        (opt
-          (seq (PNT 2)
-            (seq (star (seq (sym ",") (PNT 2)))
-              (opt (sym ",")))))
-        (sym "}")).
+  Definition record : pat :=
+    LEFT_BRACE >> ((PNT propDefIdx) `sepBy` COMMA >> COMMA?)? >> RIGHT_BRACE.
 
   Definition comma_list (elem : pat) : pat :=
-    seq elem (star (seq (sym ",") elem)).
+    elem >> star (COMMA >> elem).
 
   Definition array_pat : pat :=
-    seq (sym "[")
-      (seq (opt (seq (comma_list (PNT 0)) (opt (sym ",")))) (sym "]")).
+    LEFT_BRACKET >> (((PNT exprIdx) `sepBy` COMMA) >> COMMA?)? >> RIGHT_BRACKET.
 
   Definition match_array_param : pat :=
-    seq (sym "[") (seq (opt (comma_list ident)) (sym "]")).
+    LEFT_BRACKET >> (comma_list ident)? >> RIGHT_BRACKET.
 
-  Definition arrow_param : pat := alt match_array_param ident.
+  Definition arrow_param : pat := match_array_param /// ident.
 
   Definition arrow_params : pat :=
-    alt ident
-      (seq (sym "(") (seq (opt (comma_list arrow_param)) (sym ")"))).
+    ident /// (LPAREN >> (comma_list arrow_param)? >> RPAREN).
 
   Definition arrow_body : pat :=
-    alt (PNT 4)
-      (alt paren_expr (PNT 0)).
+    PNT blockIdx /// paren_expr /// PNT exprIdx.
 
   (* quasi-jessie.js.ts:
      arrowFunc <- arrowParams _NO_NEWLINE ARROW block
-                / arrowParams _NO_NEWLINE ARROW assignExpr;
-  *)
+                / arrowParams _NO_NEWLINE ARROW assignExpr; *)
   Definition arrow_func : pat :=
-    seq arrow_params
-      (seq (sym "=>") arrow_body).
+    arrow_params >> ARROW >> arrow_body.
 
   (* quasi-jessie.js.ts:
-     memberPostOp / callPostOp extensions inherited from Justin.
-  *)
+     memberPostOp / callPostOp extensions inherited from Justin. *)
   Definition expr_post_op : pat := QuasiJustin.post_op 0.
 
   Definition less_than : pat :=
-    seq (PNT 1)
-      (seq (star expr_post_op)
-        (seq (sym "<")
-          (seq (PNT 1) (star expr_post_op)))).
+    PNT primaryExprIdx >> star expr_post_op >> LESS_THAN
+         >> PNT primaryExprIdx >> star expr_post_op.
+
+  End Expressions.
+
+  Section Declarations.
 
   Definition const_decl : pat :=
-    seq (kw "const")
-      (seq ident
-        (seq (sym "=")
-          (seq (PNT 0) (sym ";")))).
+    kw "const" >> ident >> EQUALS >> PNT exprIdx >> SEMI.
 
   Definition let_decl : pat :=
-    seq (kw "let")
-      (seq ident
-        (seq (opt (seq (sym "=") (PNT 0))) (sym ";"))).
+    kw "let" >> ident >> (EQUALS >> PNT exprIdx)? >> SEMI.
 
-  (* quasi-jessie.js.ts: returnStatement production subset. *)
+  (* quasi-jessie.js.ts: importDeclaration *)
+  Definition import_stmt : pat :=
+    kw "import" >> LEFT_BRACE >> ident >> RIGHT_BRACE
+                >> kw "from" >> string_lit >> SEMI.
+
+  End Declarations.
+
+  Section Statements.
   Definition return_stmt : pat :=
-    seq (kw "return") (seq (PNT 0) (sym ";")).
+    kw "return" >> PNT exprIdx >> SEMI.
 
-  (* Throw statement: throw expr; *)
   Definition throw_stmt : pat :=
-    seq (kw "throw") (seq (PNT 0) (sym ";")).
+    kw "throw" >> PNT exprIdx >> SEMI.
 
-  (* If statement: if (cond) then_branch else else_branch *)
+  (* quasi-jessie.js.ts: ifStatement *)
   Definition if_stmt : pat :=
-    seq (kw "if")
-      (seq (sym "(")
-        (seq (PNT 0)  (* condition *)
-          (seq (sym ")")
-            (seq (PNT 4)  (* then branch - block *)
-              (opt (seq (kw "else") (PNT 4))))))).  (* optional else - block *)
+    kw "if" >> LPAREN >> PNT exprIdx >> RPAREN
+         >> PNT blockIdx
+         >> (kw "else" >> PNT blockIdx)?.
 
   (* quasi-jessie.js.ts: exprStatement <- ~cantStartExprStatement expr SEMI. *)
-  Definition expr_stmt : pat := seq (PNT 0) (sym ";").
+  Definition expr_stmt : pat := PNT exprIdx >> SEMI.
 
   Definition assert_stmt : pat :=
-    seq (kw "assert")
-      (seq (sym "(")
-        (seq (PNT 0)
-          (seq (sym ")") (sym ";")))).
+    kw "assert" >> LPAREN >> PNT exprIdx >> RPAREN >> SEMI.
 
   (* quasi-jessie.js.ts: block production subset. *)
   Definition block : pat :=
-    seq (sym "{") (seq (star (PNT 3)) (sym "}")).
+    LEFT_BRACE >> star (PNT statementIdx) >> RIGHT_BRACE.
+
+  End Statements.
+
+  Section Grammar.
 
   Definition grammar : Syntax.grammar :=
-    [ (* 0 expr *)
-      (* quasi-jessie.js.ts: assignExpr production subset. *)
-      alt arrow_func
-        (alt op_assign
-          (alt assign_expr
-            (alt less_than
-              (alt (seq (sym "!") (PNT 0)) (* !expr *)
-                (seq (PNT 1) (star expr_post_op))))));
-      (* 1 primaryExpr *)
-      (* quasi-jessie.js.ts: primaryExpr inherits Justin primaryExpr. *)
-      alt string_lit
-        (alt number
-          (alt array_pat
-            (alt object_pat
-              (alt paren_expr ident))));
+    [ (* 0 expr -- quasi-jessie.js.ts: assignExpr production subset *)
+      arrow_func
+      /// op_assign
+      /// assign_expr
+      /// less_than
+      /// (sym "!" >> PNT exprIdx)
+      /// (PNT primaryExprIdx >> star expr_post_op);
+      (* 1 primaryExpr -- quasi-jessie.js.ts: primaryExpr inherits Justin *)
+      string_lit
+      /// number
+      /// array_pat
+      /// record
+      /// paren_expr
+      /// ident;
       (* 2 propDef *)
-      seq (alt ident number) (seq (sym ":") (PNT 0));
-      (* 3 statement *)
-      (* quasi-jessie.js.ts: binding / import / if / throw / exprStatement / declOp subset. *)
-      alt if_stmt
-        (alt import_stmt
-          (alt throw_stmt
-            (alt const_decl
-              (alt let_decl
-                (alt return_stmt
-                  (alt assert_stmt expr_stmt))))));
+      (ident /// number) >> COLON >> PNT exprIdx;
+      (* 3 statement -- quasi-jessie.js.ts: binding/import/if/throw/exprStatement/declOp *)
+      if_stmt
+      /// import_stmt
+      /// throw_stmt
+      /// const_decl
+      /// let_decl
+      /// return_stmt
+      /// assert_stmt
+      /// expr_stmt;
       (* 4 block / arrow body block *)
       block;
-      (* 5 module body *)
-      (* quasi-jessie.js.ts: start production subset. *)
-      seq ws (seq (star (PNT 3)) (seq ws eof))
+      (* 5 module body -- quasi-jessie.js.ts: start production subset *)
+      ws >> star (PNT statementIdx) >> ws >> eof
     ].
 
-  Definition expr : pat := PNT 0.
-  Definition statement : pat := PNT 3.
-  Definition moduleBody : pat := PNT 5.
+  Definition expr : pat := PNT exprIdx.
+  Definition statement : pat := PNT statementIdx.
+  Definition moduleBody : pat := PNT moduleBodyIdx.
   Definition exact_module_source (src : string) : pat :=
-    seq ws (seq (string_pat src) (seq ws eof)).
+    ws >> string_pat src >> ws >> eof.
+
+  End Grammar.
 
   Example parse_op_assign :
     matches_comp grammar expr "count += 1" 512 = Some (Success EmptyString).
@@ -682,7 +711,7 @@ Module QuasiJessie.
                 | None => None
                 end
             | None =>
-            match run_pat grammar object_pat (S fuel') s with
+            match run_pat grammar record (S fuel') s with
             | Some _ =>
                 match expect_sym_tok "{" (S fuel') s with
                 | Some rest1 =>
@@ -832,22 +861,22 @@ Module QuasiJessie.
                     match parse_ident_token (S fuel') rest1 with
                     | Some (x, rest2) =>
                         match expect_sym_tok "=" (S fuel') rest2 with
-	                        | Some rest3 =>
-	                            match parse_expr_ast fuel' rest3 with
-	                            | Some (rhs, rest4) =>
-	                                match expect_sym_tok ";" (S fuel') rest4 with
-	                                | Some rest5 =>
-	                                    Some (JLet [JBind (JDef x) rhs], rest5)
-	                                | None => None
-	                                end
-	                            | None => None
-	                            end
-	                        | None =>
-	                            match expect_sym_tok ";" (S fuel') rest2 with
-	                            | Some rest3 => Some (JLetNames [JDef x], rest3)
-	                            | None => None
-	                            end
-	                        end
+                          | Some rest3 =>
+                              match parse_expr_ast fuel' rest3 with
+                              | Some (rhs, rest4) =>
+                                  match expect_sym_tok ";" (S fuel') rest4 with
+                                  | Some rest5 =>
+                                      Some (JLet [JBind (JDef x) rhs], rest5)
+                                  | None => None
+                                  end
+                              | None => None
+                              end
+                          | None =>
+                              match expect_sym_tok ";" (S fuel') rest2 with
+                              | Some rest3 => Some (JLetNames [JDef x], rest3)
+                              | None => None
+                              end
+                          end
                     | None => None
                     end
                 | None => None
