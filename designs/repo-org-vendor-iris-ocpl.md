@@ -75,12 +75,13 @@ vendor/
 | `theories/heap_lang/` | `vendor/iris-coq/theories/heap_lang/` |
 | `theories/proofmode/` | `vendor/iris-coq/theories/proofmode/` |
 | `theories/tests/` | `vendor/iris-coq/theories/tests/` |
+| `docs/` | `vendor/iris-coq/docs/` |
 
 ### What stays at top level
 
 - `README.md` (the jesc24-oriented README, already drafted on `readme/repo-scope-ocpl-to-jesc`)
 - `theories/jessie/` (active Jessie work, currently on `dc-jessie`)
-- `docs/`, `benchmark/`, `CHANGELOG.md`, `LICENSE*`, `flake.*`, `.github/`
+- `benchmark/`, `CHANGELOG.md`, `LICENSE*`, `flake.*`, `.github/`
 
 ### The `theories/` directory at top level
 
@@ -192,10 +193,10 @@ Rejected. The Iris directory structure (prelude, algebra, base_logic, etc.) is w
 2. Open a draft PR against `main`.
 3. After merge, rebase `dc-jessie` and other dependent branches.
 
-## Open questions
+## Resolved decisions
 
-1. Should `theories/tests/` (OCPL example proofs) move entirely to `vendor/`, or should a subset remain at the top level as integration tests for the jesc24 build? The OCPL examples (sealing, caretaker, membrane) are self-contained and compile against the vendored iris theories. Moving them to `vendor/iris-coq/theories/tests/` is the cleanest option, but if the maintainer wants them as top-level smoke tests, they could stay.
+1. **`theories/tests/` moves to `vendor/iris-coq/theories/tests/`.** The OCPL example proofs (sealing, caretaker, membrane) are self-contained and compile against the vendored iris theories — they go with the rest of the vendored material.
 
-2. Should the `-Q` logical path remain `iris`, or should it change to something like `iris-coq` or `ocpl-iris` to reflect that this is a modified fork? Keeping `iris` minimizes changes to import statements. Changing it would require updating every `From iris Require ...` in the codebase. The recommendation is to keep `iris` as the logical path.
+2. **The `-Q` logical path stays `iris`.** Minimizes disruption to import statements across the codebase.
 
-3. The `docs/` directory at top level contains the OCPL paper appendix (`iris.tex`). Should this also move to `vendor/iris-coq/docs/`, or stay at the top level as project documentation? The recommendation is to keep it at the top level since it is project documentation, not part of the Coq build.
+3. **`docs/` moves to `vendor/iris-coq/docs/`.** The LaTeX source (`iris.tex`) is the Iris paper appendix, not jesc24 project documentation — it belongs with the vendored Iris material.
