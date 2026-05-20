@@ -1,6 +1,6 @@
 From Coq Require Import Lists.List Strings.Ascii Strings.String ZArith.
 From Peg Require Import Charset Syntax Match.
-From iris.jessie Require Import jessica_ast quasi_json quasi_justin.
+From iris.jessie Require Import jessica_ast peg_notation quasi_json quasi_justin.
 
 Import ListNotations.
 Open Scope string_scope.
@@ -18,15 +18,6 @@ Open Scope Z_scope.
     a >> b   — sequence  (PEG adjacency)
     a /// b  — choice    (PEG /)
 *)
-
-Module JessiePegNotation.
-  Notation "p >> q" := (PSequence p q)
-    (at level 69, right associativity).
-  Notation "p /// q" := (PChoice p q)
-    (at level 60, right associativity).
-  Notation "p ?" := (opt p)
-    (at level 68).
-End JessiePegNotation.
 
 Import JessiePegNotation.
 
@@ -62,14 +53,11 @@ Module QuasiJessie.
 
   Section PunctuationAliases.
   (* LEFT_BRACE, RIGHT_BRACE, LEFT_BRACKET, RIGHT_BRACKET, COMMA, COLON
-     come from quasi-json.js.ts; they are defined in QuasiJson and
-     imported above.  DOT comes from quasi-justin.js.ts and is defined
-     in QuasiJustin.  The remaining symbols are Jessie-specific. *)
-  Definition LPAREN : pat := sym "(".
-  Definition RPAREN : pat := sym ")".
-  Definition SEMI   : pat := sym ";".
-  Definition ARROW  : pat := sym "=>".
-  Definition BANG   : pat := sym "!".
+     come from quasi-json.js.ts (defined in QuasiJson).
+     DOT, LPAREN, RPAREN come from quasi-justin.js.ts (defined in QuasiJustin).
+     The remaining symbols are Jessie-specific. *)
+  Definition SEMI  : pat := sym ";".
+  Definition ARROW : pat := sym "=>".
   (* quasi-jessie.js.ts: EQUALS, defined at line 376. *)
   Definition EQUALS : pat := sym "=".
   Definition LESS_THAN    : pat := sym "<".
@@ -101,13 +89,13 @@ Module QuasiJessie.
 
   (* quasi-jessie.js.ts: record <- LEFT_BRACE propDef ** _COMMA _COMMA? RIGHT_BRACE *)
   Definition record : pat :=
-    LEFT_BRACE >> opt (PNT propDefIdx >> star (COMMA >> PNT propDefIdx) >> COMMA?) >> RIGHT_BRACE.
+    LEFT_BRACE >> ((PNT propDefIdx) `sepBy` COMMA >> COMMA?)? >> RIGHT_BRACE.
 
   Definition comma_list (elem : pat) : pat :=
     elem >> star (COMMA >> elem).
 
   Definition array_pat : pat :=
-    LEFT_BRACKET >> opt (comma_list (PNT exprIdx) >> COMMA?) >> RIGHT_BRACKET.
+    LEFT_BRACKET >> (((PNT exprIdx) `sepBy` COMMA) >> COMMA?)? >> RIGHT_BRACKET.
 
   Definition match_array_param : pat :=
     LEFT_BRACKET >> (comma_list ident)? >> RIGHT_BRACKET.
@@ -184,7 +172,7 @@ Module QuasiJessie.
       /// op_assign
       /// assign_expr
       /// less_than
-      /// (BANG >> PNT exprIdx)
+      /// (sym "!" >> PNT exprIdx)
       /// (PNT primaryExprIdx >> star expr_post_op);
       (* 1 primaryExpr -- quasi-jessie.js.ts: primaryExpr inherits Justin *)
       string_lit
