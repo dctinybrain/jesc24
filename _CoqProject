@@ -133,6 +133,7 @@ vendor/peg-coq/theories/Syntax.v
 vendor/peg-coq/theories/Suffix.v
 vendor/peg-coq/theories/Match.v
 theories/jessie/jessica_ast.v
+theories/jessie/peg_notation.v
 theories/jessie/quasi_json.v
 theories/jessie/quasi_justin.v
 theories/jessie/quasi_jessie.v
