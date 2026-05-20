@@ -40,12 +40,12 @@ Module QuasiJessie.
         4  block        — block / arrow body
         5  moduleBody   — module (start production) *)
 
-  Definition exprIdx := 0.
-  Definition primaryExprIdx := 1.
-  Definition propDefIdx := 2.
-  Definition statementIdx := 3.
-  Definition blockIdx := 4.
-  Definition moduleBodyIdx := 5.
+  Definition exprIdx : nat := 0.
+  Definition primaryExprIdx : nat := 1.
+  Definition propDefIdx : nat := 2.
+  Definition statementIdx : nat := 3.
+  Definition blockIdx : nat := 4.
+  Definition moduleBodyIdx : nat := 5.
 
   Import JessicaAst.
   Import QuasiJson.
