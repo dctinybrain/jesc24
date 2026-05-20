@@ -1,8 +1,7 @@
 name: Build ocpl-coq
 
-# Triggers: run on push, PR, or manual dispatch
+# Triggers: run on PR or manual dispatch
 'on':
-  push:
   pull_request:
   workflow_dispatch:
 
