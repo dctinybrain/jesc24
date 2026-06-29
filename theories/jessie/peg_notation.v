@@ -1,5 +1,5 @@
 From Peg Require Import Charset Syntax Match.
-From iris.jessie Require Import quasi_json.
+From jessie Require Import quasi_json.
 
 Module JessiePegNotation.
   Import QuasiJson.
