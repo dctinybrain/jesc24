@@ -11,6 +11,9 @@ Open Scope Z_scope.
 
     https://github.com/endojs/Jessie/blob/main/packages/parse/src/quasi-jessie.js.ts
 
+  Subsets of JavaScript, starting from the grammar as defined at
+  http://www.ecma-international.org/ecma-262/9.0/#sec-grammar-summary
+
   Each Coq rule corresponds to a production in that file.  The non-terminal
   indices (PNT n) map directly to the grammar list at the bottom of this module.
 
